@@ -44,14 +44,19 @@ export const t = {
     } satisfies Record<Status, string>,
   },
   sizing: {
-    label: { over: "Over-provisioned", under: "Under-provisioned", fit: "Right-sized", unknown: "–" } satisfies Record<
-      Sizing,
-      string
-    >,
+    label: {
+      over: "Over-provisioned",
+      under: "Under-provisioned",
+      fit: "Right-sized",
+      unset: "No requests",
+      unknown: "–",
+    } satisfies Record<Sizing, string>,
     help: {
       over: "Requests are above the VPA target.",
       under: "Requests are below the VPA target: risk of CPU throttling or OOM kills.",
       fit: "Requests are within 10% of the VPA target.",
+      unset:
+        "No CPU or memory requests: the scheduler treats these pods as best-effort. Use the VPA target as a starting point.",
       unknown: "",
     } satisfies Record<Sizing, string>,
   },
@@ -69,6 +74,7 @@ export const t = {
       all: "All",
       under: "Under-provisioned",
       over: "Over-provisioned",
+      unset: "No requests",
       learning: "Learning",
       disabled: "Disabled",
     },

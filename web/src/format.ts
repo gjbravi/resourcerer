@@ -36,13 +36,14 @@ export function change(current?: string, target?: string): number | undefined {
   return Math.round(((t - c) / c) * 100);
 }
 
-export type Sizing = "over" | "under" | "fit" | "unknown";
+export type Sizing = "over" | "under" | "fit" | "unset" | "unknown";
 
 /** Within ±10% of the VPA target counts as right-sized. */
 const TOLERANCE = 10;
 
 export function containerSizing(c: Container): Sizing {
   if (!c.target) return "unknown";
+  if (!c.requests.cpu && !c.requests.memory) return "unset";
   let over = false;
   let under = false;
   for (const r of ["cpu", "memory"] as const) {
@@ -66,6 +67,7 @@ export function sizing(w: Workload): Sizing {
   if (s.length === 0) return "unknown";
   if (s.includes("under")) return "under";
   if (s.includes("over")) return "over";
+  if (s.includes("unset")) return "unset";
   return "fit";
 }
 

@@ -37,8 +37,14 @@ describe("sizing", () => {
     expect(containerSizing(c)).toBe("under");
   });
 
-  it("missing requests count as under-provisioned", () => {
-    expect(containerSizing(container({ requests: {}, target: { cpu: "100m" } }))).toBe("under");
+  it("no requests at all is its own state", () => {
+    expect(containerSizing(container({ requests: {}, target: { cpu: "100m" } }))).toBe("unset");
+  });
+
+  it("a missing request on one resource is under-provisioned", () => {
+    expect(containerSizing(container({ requests: { memory: "1Gi" }, target: { cpu: "100m", memory: "1Gi" } }))).toBe(
+      "under",
+    );
   });
 
   it("within 10% is right-sized, no target is unknown", () => {

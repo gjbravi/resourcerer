@@ -15,6 +15,7 @@ import Block from "@mui/icons-material/Block";
 import CheckCircleOutlined from "@mui/icons-material/CheckCircleOutlined";
 import DragHandle from "@mui/icons-material/DragHandle";
 import ErrorOutlined from "@mui/icons-material/ErrorOutlined";
+import HelpOutline from "@mui/icons-material/HelpOutlineOutlined";
 import HourglassEmpty from "@mui/icons-material/HourglassEmpty";
 import Lightbulb from "@mui/icons-material/LightbulbOutlined";
 import SyncProblem from "@mui/icons-material/SyncProblem";
@@ -72,6 +73,7 @@ const sizingSpec: Record<Exclude<Sizing, "unknown">, Spec> = {
   over: { color: "success", icon: <TrendingDown /> },
   under: { color: "error", icon: <TrendingUp /> },
   fit: { color: "default", icon: <DragHandle /> },
+  unset: { color: "warning", icon: <HelpOutline /> },
 };
 
 export function SizingChip({ sizing }: { sizing: Sizing }) {

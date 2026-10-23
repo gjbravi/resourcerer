@@ -18,7 +18,7 @@ import { sizing } from "../format";
 import { useInfo, useWorkloads } from "../hooks";
 import { t } from "../strings";
 
-export const FILTERS = ["all", "under", "over", "learning", "disabled"] as const;
+export const FILTERS = ["all", "under", "over", "unset", "learning", "disabled"] as const;
 export type Filter = (typeof FILTERS)[number];
 
 export function matches(w: Workload, f: Filter): boolean {
@@ -29,6 +29,8 @@ export function matches(w: Workload, f: Filter): boolean {
       return sizing(w) === "under";
     case "over":
       return sizing(w) === "over";
+    case "unset":
+      return sizing(w) === "unset";
     case "learning":
       return w.status === "Pending" || w.status === "LowConfidence";
     case "disabled":
@@ -54,7 +56,7 @@ function Resource({ w, resource }: { w: Workload; resource: ResourceName }) {
   );
 }
 
-const sizingOrder = { under: 0, over: 1, fit: 2, unknown: 3 };
+const sizingOrder = { under: 0, over: 1, unset: 2, fit: 3, unknown: 4 };
 
 const columns: GridColDef<Workload>[] = [
   {
