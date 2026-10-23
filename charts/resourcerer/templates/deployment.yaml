@@ -1,0 +1,96 @@
+{{- if not (has .Values.selection (list "all" "label")) }}
+{{- fail "selection must be \"all\" or \"label\"" }}
+{{- end }}
+{{- if not (has .Values.defaultMode (list "Off" "Auto")) }}
+{{- fail "defaultMode must be \"Off\" or \"Auto\"" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "resourcerer.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "resourcerer.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "resourcerer.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "resourcerer.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "resourcerer.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: resourcerer
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --selection={{ .Values.selection }}
+            - --default-mode={{ .Values.defaultMode }}
+            - --excluded-namespaces={{ include "resourcerer.excludedNamespaces" . }}
+            - --http-bind-address=:8080
+            - --metrics-bind-address={{ if .Values.metrics.enabled }}:8081{{ else }}0{{ end }}
+            - --health-probe-bind-address=:8082
+            {{- if gt (int .Values.replicaCount) 1 }}
+            - --leader-elect
+            {{- end }}
+            {{- if .Values.ui.readOnly }}
+            - --read-only
+            {{- end }}
+            {{- if not .Values.ui.enabled }}
+            - --disable-ui
+            {{- end }}
+            {{- range .Values.extraArgs }}
+            - {{ . }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: 8081
+            {{- end }}
+            - name: probes
+              containerPort: 8082
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

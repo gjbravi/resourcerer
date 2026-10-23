@@ -1,0 +1,38 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Include what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. helm install ... with values ...
+        2. kubectl label ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: resourcerer version
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: input
+    id: k8s
+    attributes:
+      label: Kubernetes and VPA versions
+      placeholder: Kubernetes 1.35, VPA 1.8.1
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `kubectl -n resourcerer logs deploy/resourcerer`.
+      render: shell

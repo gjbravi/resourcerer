@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "selection": { "type": "string", "enum": ["all", "label"] },
+    "defaultMode": { "type": "string", "enum": ["Off", "Auto"] },
+    "excludedNamespaces": { "type": "array", "items": { "type": "string" } },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "readOnly": { "type": "boolean" }
+      }
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": "string" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "extraArgs": { "type": "array", "items": { "type": "string" } }
+  }
+}

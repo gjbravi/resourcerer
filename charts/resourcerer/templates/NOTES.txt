@@ -1,0 +1,19 @@
+resourcerer is managing VPAs with selection={{ .Values.selection }} and defaultMode={{ .Values.defaultMode }}.
+
+{{- if eq .Values.selection "label" }}
+
+Opt workloads in by labeling them or their namespace:
+  kubectl label namespace <ns> resourcerer.io/enabled=true
+{{- else }}
+
+Every workload outside these namespaces gets a VPA:
+  {{ include "resourcerer.excludedNamespaces" . }}
+Opt out with:
+  kubectl label namespace <ns> resourcerer.io/enabled=false
+{{- end }}
+
+Requires the Vertical Pod Autoscaler (recommender, and updater + admission controller for Auto mode).
+
+Open the UI:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "resourcerer.fullname" . }} 8080:{{ .Values.service.port }}
+  open http://localhost:8080

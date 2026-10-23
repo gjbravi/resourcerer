@@ -1,0 +1,97 @@
+# -- Number of replicas. Leader election is enabled automatically above 1.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/gjbravi/resourcerer
+  # -- Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Which workloads get a VPA.
+# `all`: every Deployment, StatefulSet and DaemonSet outside excludedNamespaces;
+# opt out with the `resourcerer.io/enabled=false` label on the workload or namespace.
+# `label`: only workloads with `resourcerer.io/enabled=true` on the workload or its namespace.
+selection: all
+
+# -- VPA mode when a workload has no `resourcerer.io/mode` annotation.
+# `Off`: recommendations only. `Auto`: VPA updates pods (InPlaceOrRecreate).
+defaultMode: "Off"
+
+# -- Namespaces that are never managed. The release namespace is always added.
+excludedNamespaces:
+  - kube-system
+  - kube-public
+  - kube-node-lease
+
+ui:
+  # -- Serve the embedded UI. The API is served either way.
+  enabled: true
+  # -- Disallow mode changes from the UI and API.
+  readOnly: false
+
+serviceAccount:
+  create: true
+  annotations: {}
+  # -- Defaults to the fullname.
+  name: ""
+
+rbac:
+  # -- Create the ClusterRole and ClusterRoleBinding.
+  create: true
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: resourcerer.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+metrics:
+  # -- Expose controller-runtime metrics on a separate port.
+  enabled: true
+  serviceMonitor:
+    # -- Create a Prometheus Operator ServiceMonitor.
+    enabled: false
+    interval: 30s
+    labels: {}
+
+# -- Extra command-line flags, e.g. ["--zap-log-level=debug"].
+extraArgs: []
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""

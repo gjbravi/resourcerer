@@ -1,0 +1,20 @@
+apiVersion: v2
+name: resourcerer
+description: Creates and manages Vertical Pod Autoscalers for your workloads, with a UI to review recommendations.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.33.0-0"
+home: https://github.com/gjbravi/resourcerer
+sources:
+  - https://github.com/gjbravi/resourcerer
+keywords:
+  - vpa
+  - vertical-pod-autoscaler
+  - rightsizing
+  - resources
+maintainers:
+  - name: gjbravi
+    url: https://github.com/gjbravi
+annotations:
+  artifacthub.io/license: Apache-2.0
