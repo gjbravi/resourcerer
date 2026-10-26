@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"math"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func TestBandsBucketsPercentiles(t *testing.T) {
 	if len(b) != buckets {
 		t.Fatalf("got %d buckets, want %d", len(b), buckets)
 	}
-	if b[0].P50 != 22.5 || b[0].P95 != 42.75 {
+	if !near(b[0].P50, 22.5) || !near(b[0].P95, 42.75) {
 		t.Errorf("bucket 0 = %+v, want p50 22.5 and p95 42.75 for samples 0,15,30,45", b[0])
 	}
 }
@@ -42,3 +43,5 @@ func TestCacheCollapsesAndExpires(t *testing.T) {
 		t.Errorf("errors must not be cached, got %v", v)
 	}
 }
+
+func near(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
