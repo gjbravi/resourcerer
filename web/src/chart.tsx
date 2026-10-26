@@ -16,7 +16,29 @@ function useWidth() {
 function niceMax(v: number) {
   const e = 10 ** Math.floor(Math.log10(v));
   const m = v / e;
-  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * e;
+  return (
+    (m <= 1
+      ? 1
+      : m <= 1.25
+        ? 1.25
+        : m <= 1.5
+          ? 1.5
+          : m <= 2
+            ? 2
+            : m <= 2.5
+              ? 2.5
+              : m <= 3
+                ? 3
+                : m <= 4
+                  ? 4
+                  : m <= 5
+                    ? 5
+                    : m <= 6
+                      ? 6
+                      : m <= 8
+                        ? 8
+                        : 10) * e
+  );
 }
 
 export interface Line {

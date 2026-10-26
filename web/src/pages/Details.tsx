@@ -71,7 +71,8 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
       <div className="rz-titlerow">
         <h1>{d.name}</h1>
         <span className="rz-dim">
-          {d.namespace} · {d.kind} · {d.replicas} replicas now · {d.avgReplicas.toFixed(1)} avg
+          {d.namespace} · {d.kind} · {d.replicas} {d.replicas === 1 ? "replica" : "replicas"} now ·{" "}
+          {d.avgReplicas.toFixed(1)} avg
         </span>
         {d.hpaRecommendation && (
           <span className="rz-src s-namespace">

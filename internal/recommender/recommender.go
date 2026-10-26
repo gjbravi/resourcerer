@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strconv"
+	"sync"
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -33,6 +34,8 @@ import (
 
 type Reconciler struct {
 	client.Client
+	// emitted remembers the last announced hash per workload; the cache can lag behind status patches.
+	emitted  sync.Map
 	Kind     string
 	Cluster  cluster.Config
 	Prom     *prom.Client
@@ -200,7 +203,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 	export(rec)
-	if changed && out.Phase != "Pending" {
+	last, _ := r.emitted.Swap(key.String(), hash)
+	if changed && last != hash && out.Phase != "Pending" {
 		r.Recorder.Eventf(obj, rec, corev1.EventTypeNormal, "RecommendationGenerated", "Generate",
 			"%s recommendation %s (score %d)", out.Phase, hash, sum.Score)
 	}
