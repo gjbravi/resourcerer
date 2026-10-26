@@ -4,7 +4,7 @@ kind: Namespace
 metadata:
   name: demo
 ---
-# Over-provisioned: requests 1 CPU / 1Gi, uses ~100m / ~60Mi. The istio-proxy sidecar is not optimized by default.
+# Over-provisioned: requests 500m / 1Gi, uses ~100m / ~60Mi. The istio-proxy sidecar is not optimized by default.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,7 +23,7 @@ spec:
           image: ghcr.io/colinianking/stress-ng:latest
           args: ["--cpu", "1", "--cpu-load", "10", "--vm", "1", "--vm-bytes", "60M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
           resources:
-            requests: { cpu: "1", memory: 1Gi }
+            requests: { cpu: 500m, memory: 1Gi }
             limits: { cpu: "2", memory: 2Gi }
         - name: istio-proxy
           image: ghcr.io/colinianking/stress-ng:latest
@@ -128,7 +128,7 @@ metadata:
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: web }
   minReplicas: 2
-  maxReplicas: 4
+  maxReplicas: 3
   metrics:
     - type: Resource
       resource:
@@ -181,7 +181,7 @@ spec:
           image: ghcr.io/colinianking/stress-ng:latest
           args: ["--cpu", "1", "--cpu-load", "12", "--vm", "1", "--vm-bytes", "80M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
           resources:
-            requests: { cpu: 400m, memory: 512Mi }
+            requests: { cpu: 250m, memory: 512Mi }
             limits: { cpu: "1", memory: 768Mi }
 ---
 # Leaks memory until the 320Mi limit kills it, then starts over. Auto-deploy is turned off for this one workload.

@@ -6,6 +6,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -484,14 +486,14 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 		if rec.Status.Hash != body.Hash {
 			return errors.New("the recommendation changed since it was displayed; reload and review it again")
 		}
-		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{Action: v1alpha1.ActionApply, Hash: body.Hash, RequestedBy: User, RequestedAt: metav1.NewTime(time.Now())}
+		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionApply, Hash: body.Hash, RequestedBy: User, RequestedAt: metav1.NewTime(time.Now())}
 		return nil
 	})
 }
 
 func (s *Server) revert(w http.ResponseWriter, r *http.Request) {
 	s.patchSpec(w, r, func(rec *v1alpha1.Recommendation) error {
-		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{Action: v1alpha1.ActionRevert, RequestedBy: User, RequestedAt: metav1.NewTime(time.Now())}
+		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionRevert, RequestedBy: User, RequestedAt: metav1.NewTime(time.Now())}
 		return nil
 	})
 }
@@ -502,6 +504,12 @@ func (s *Server) regenerate(w http.ResponseWriter, r *http.Request) {
 		rec.Spec.RegenerateRequestedAt = &now
 		return nil
 	})
+}
+
+func requestID() string {
+	var b [6]byte
+	_, _ = rand.Read(b[:])
+	return strconv.FormatInt(time.Now().UnixNano(), 36) + "-" + hex.EncodeToString(b[:])
 }
 
 type settingBody struct {

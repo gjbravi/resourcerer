@@ -73,6 +73,7 @@ kind-up: ## Create a kind cluster with metrics-server, VPA and demo workloads
 .PHONY: kind-deploy
 kind-deploy: image ## Build, load into kind and install the chart
 	CLUSTER_NAME=$(CLUSTER_NAME) ./hack/kind-load.sh $(IMG)
+	kubectl --context $(KUBE_CONTEXT) apply --server-side --force-conflicts -f charts/resourcerer/crds
 	helm upgrade --install resourcerer charts/resourcerer \
 	  --kube-context $(KUBE_CONTEXT) --namespace resourcerer --create-namespace -f hack/resourcerer-values.yaml \
 	  --set image.repository=$(firstword $(subst :, ,$(IMG))) --set image.tag=$(lastword $(subst :, ,$(IMG))) \

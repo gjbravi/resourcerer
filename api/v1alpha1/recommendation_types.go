@@ -37,8 +37,10 @@ type TargetRef struct {
 	Name       string `json:"name"`
 }
 
-// ApplyRequest asks the applier to act. It is handled once per RequestedAt.
+// ApplyRequest asks the applier to act. It is handled once per ID.
 type ApplyRequest struct {
+	// ID is unique per request; timestamps alone cannot tell apart two requests in the same second.
+	ID     string `json:"id"`
 	Action Action `json:"action"`
 	// Hash of the recommendation the user reviewed; Apply is refused if it changed since.
 	// +optional
@@ -162,6 +164,8 @@ type RecommendationStatus struct {
 	// Newest first, at most 10 entries.
 	// +optional
 	History []HistoryEntry `json:"history,omitempty"`
+	// +optional
+	LastHandledRequestID string `json:"lastHandledRequestID,omitempty"`
 	// +optional
 	LastHandledRequestAt *metav1.Time `json:"lastHandledRequestAt,omitempty"`
 	// +optional

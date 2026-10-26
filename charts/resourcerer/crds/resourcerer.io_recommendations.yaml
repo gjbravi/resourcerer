@@ -65,7 +65,7 @@ spec:
             properties:
               applyRequest:
                 description: ApplyRequest asks the applier to act. It is handled once
-                  per RequestedAt.
+                  per ID.
                 properties:
                   action:
                     enum:
@@ -76,6 +76,10 @@ spec:
                     description: Hash of the recommendation the user reviewed; Apply
                       is refused if it changed since.
                     type: string
+                  id:
+                    description: ID is unique per request; timestamps alone cannot
+                      tell apart two requests in the same second.
+                    type: string
                   requestedAt:
                     format: date-time
                     type: string
@@ -83,6 +87,7 @@ spec:
                     type: string
                 required:
                 - action
+                - id
                 - requestedAt
                 - requestedBy
                 type: object
@@ -487,6 +492,8 @@ spec:
                 type: object
               lastHandledRequestAt:
                 format: date-time
+                type: string
+              lastHandledRequestID:
                 type: string
               message:
                 type: string

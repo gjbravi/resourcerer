@@ -31,10 +31,19 @@ wait_for() {
   fail "$desc"
 }
 
-k -n resourcerer port-forward svc/resourcerer "$PORT:80" >/dev/null 2>&1 &
-PF=$!
-trap 'kill $PF 2>/dev/null || true' EXIT
 API="http://localhost:$PORT/api/v1"
+PF=""
+trap 'kill $PF 2>/dev/null || true' EXIT
+# Right after a rollout the forward can land on a terminating pod and exit; reopen it until the API answers.
+k -n resourcerer rollout status deploy/resourcerer-server --timeout=120s >/dev/null
+for _ in $(seq 1 20); do
+  if [[ -z "$PF" ]] || ! kill -0 "$PF" 2>/dev/null; then
+    k -n resourcerer port-forward svc/resourcerer "$PORT:80" >/dev/null 2>&1 &
+    PF=$!
+  fi
+  curl -fs "$API/info" >/dev/null 2>&1 && break
+  sleep 3
+done
 wait_for "server answers" 30 curl -fs "$API/info"
 
 # Start from the manifests, also when an earlier run stopped halfway.

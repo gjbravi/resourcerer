@@ -42,5 +42,12 @@ helm upgrade --install prometheus prometheus-community/prometheus \
 
 log "demo workloads"
 kubectl --context "$CTX" apply -f "$ROOT/hack/demo.yaml"
+# Fail here, with the reason, if the demo does not fit on the nodes.
+if ! kubectl --context "$CTX" -n demo wait deploy --all --for=condition=Available --timeout=180s ||
+  ! kubectl --context "$CTX" -n payments wait deploy/checkout --for=condition=Available --timeout=120s; then
+  kubectl --context "$CTX" get pods -n demo -n payments -o wide
+  kubectl --context "$CTX" get events -A --field-selector reason=FailedScheduling | tail -20
+  exit 1
+fi
 
 log "ready: run 'make kind-deploy' to install resourcerer"

@@ -71,8 +71,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	key := req.String()
-	if ar := rec.Spec.ApplyRequest; ar != nil && (rec.Status.LastHandledRequestAt == nil || ar.RequestedAt.After(rec.Status.LastHandledRequestAt.Time)) {
-		id := "request:" + ar.RequestedAt.UTC().Format(time.RFC3339Nano)
+	if ar := rec.Spec.ApplyRequest; ar != nil && ar.ID != "" && ar.ID != rec.Status.LastHandledRequestID {
+		id := "request:" + ar.ID
 		if r.seen(key, id) {
 			return ctrl.Result{}, nil
 		}
@@ -259,6 +259,7 @@ func (r *Reconciler) mark(rec *v1alpha1.Recommendation, ar *v1alpha1.ApplyReques
 	if ar != nil {
 		t := ar.RequestedAt
 		rec.Status.LastHandledRequestAt = &t
+		rec.Status.LastHandledRequestID = ar.ID
 	}
 	rec.Status.LastApplyResult = &v1alpha1.ApplyResult{Time: metav1.Time{Time: r.Now()}, Result: result, Message: msg}
 }
