@@ -19,13 +19,14 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { api, type Detail, type Range, type Ref, type Resource, type SettingInfo } from "../api";
-import { Art, NoteArt } from "../art";
+import { Art, NoteArt, WandArt } from "../art";
 import { TimeChart } from "../chart";
 import {
   Change,
   CopyButton,
   Delta,
   ErrorBox,
+  FitBar,
   Metric,
   Modal,
   Money,
@@ -118,11 +119,11 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
             </>
           }
         >
-          <Money value={Math.abs(net)} />
+          <Money value={Math.abs(net)} tone={net >= 0 ? "save" : "cost"} />
         </Metric>
         <Metric
           label="Fit score"
-          art={<Art kind="orb" size={128} />}
+          art={<WandArt />}
           trend={
             <span className="rz-dim">
               {d.score ? `CPU ${d.score.cpu}% · Memory ${d.score.memory}%` : "not scored yet"}
@@ -133,6 +134,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
             {d.score ? d.score.overall : "–"}
             <span className="dec">/100</span>
           </div>
+          <FitBar value={d.score?.overall} />
         </Metric>
       </section>
 
@@ -390,7 +392,7 @@ function Zoom({ value, onChange }: { value: Range; onChange: (r: Range) => void 
 
 const Arrow = ({ a, b }: { a?: number; b?: number }) =>
   a == null || b == null || Math.abs(b - a) / (a || 1) < 0.02 ? null : b < a ? (
-    <ArrowDown size={13} className="t-accent" />
+    <ArrowDown size={13} className="t-save" />
   ) : (
     <ArrowUp size={13} className="t-bad" />
   );

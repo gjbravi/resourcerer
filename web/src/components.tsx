@@ -95,12 +95,12 @@ export function Delta({ from, to, r, money }: { from: number; to: number; r?: Re
 }
 
 /** Large currency figure: faded symbol, bold dollars, small cents and unit. */
-export function Money({ value, unit = "/mo" }: { value: number; unit?: string }) {
+export function Money({ value, unit = "/mo", tone }: { value: number; unit?: string; tone?: "save" | "cost" }) {
   const abs = Math.abs(value);
   const dollars = Math.floor(abs).toLocaleString();
   const cents = (abs % 1).toFixed(2).slice(1);
   return (
-    <div className="rz-money">
+    <div className={`rz-money${tone ? ` t-${tone}` : ""}`}>
       {value < 0 && "−"}
       <span className="pre">$</span>
       {dollars}
@@ -257,6 +257,26 @@ export function Metric({
         {trend && <div className="rz-metric-trend">{trend}</div>}
       </div>
       {art && <div className="rz-metric-art">{art}</div>}
+    </div>
+  );
+}
+
+/** Themed progress bar for the fit score; high scores glow and shimmer. */
+export function FitBar({ value }: { value?: number }) {
+  const v = value == null ? 0 : Math.max(0, Math.min(100, value));
+  const level = value == null ? "none" : v >= 80 ? "high" : v >= 50 ? "mid" : "low";
+  return (
+    <div
+      className={`rz-fitbar ${level}`}
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={value == null ? undefined : Math.round(v)}
+      aria-label="Fit score"
+    >
+      <span className="fill" style={{ width: `${Math.max(v, value == null ? 0 : 3)}%` }}>
+        {level === "high" && <i className="spark" />}
+      </span>
     </div>
   );
 }

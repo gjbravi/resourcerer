@@ -1,8 +1,8 @@
 import { Activity, Boxes, Cpu, Flame, Info, MemoryStick, PiggyBank, ShieldCheck, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Summary } from "../api";
-import { Art, NoteArt } from "../art";
-import { Delta, Metric, Money, PHASE_NAMES, phaseTone, Ring, StatusBadge, WlCell } from "../components";
+import { NoteArt, WandArt } from "../art";
+import { Delta, FitBar, Metric, Money, PHASE_NAMES, phaseTone, Ring, StatusBadge, WlCell } from "../components";
 import { fmtCores, fmtMem, fmtMoney } from "../format";
 import { navigate, workloadHash } from "../hooks";
 import { applicable } from "./Workloads";
@@ -101,7 +101,7 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
           <ShieldCheck size={15} /> {risks.length} reliability risks
         </a>
         <a className="rz-btn ghost" href="#/workloads?view=savings">
-          <PiggyBank size={15} /> {savings.length} savings
+          <PiggyBank size={15} className="t-save" /> {savings.length} savings
         </a>
       </div>
 
@@ -122,7 +122,7 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
             </>
           }
         >
-          <Money value={reclaim} />
+          <Money value={reclaim} tone="save" />
         </Metric>
         <Metric
           label={
@@ -131,7 +131,7 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
               <Info size={15} aria-label="How closely current requests match the recommendations, weighted by cost" />
             </>
           }
-          art={<Art kind="orb" size={128} />}
+          art={<WandArt />}
           trend={
             <span className="rz-dim">
               {scored.length} of {rows.length} workloads scored
@@ -142,6 +142,7 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
             {score == null ? "–" : Math.round(score)}
             <span className="dec">/100</span>
           </div>
+          <FitBar value={score} />
         </Metric>
       </section>
 
@@ -190,7 +191,7 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
         <section className="rz-card">
           <div className="rz-cardhd">
             <h2>
-              <PiggyBank size={17} className="t-accent" /> Top savings
+              <PiggyBank size={17} className="t-save" /> Top savings
             </h2>
             <a className="rz-link" href="#/workloads?view=savings">
               View all

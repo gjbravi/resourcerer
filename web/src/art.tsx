@@ -18,14 +18,14 @@ export function NoteArt({ size = 132 }: { size?: number }) {
       {top && (
         <>
           <ellipse cx="69" cy="37.5" rx="6.5" ry="3.6" fill="#fff" opacity=".9" transform="rotate(-22 69 37.5)" />
-          <path d="M69 35 l.9 1.7 1.9.6 -1.9.7 -.9 1.7 -.8 -1.7 -1.9 -.7 1.9 -.6z" fill="var(--art-deep)" />
+          <path d="M69 35 l.9 1.7 1.9.6 -1.9.7 -.9 1.7 -.8 -1.7 -1.9 -.7 1.9 -.6z" fill="var(--accent)" />
           <ellipse cx="45" cy="47" rx="3.2" ry="1.8" fill="#fff" opacity=".55" transform="rotate(-22 45 47)" />
         </>
       )}
     </g>
   );
   return (
-    <svg width={size} height={size * 0.9} viewBox="0 0 114 102" aria-hidden className="rz-art rz-note">
+    <svg width={size} height={size * 0.9} viewBox="0 0 114 102" aria-hidden className="rz-art rz-note rz-save-art">
       <defs>
         <linearGradient id={g("paper")} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="var(--art-light)" />
@@ -189,6 +189,57 @@ export function Gauge({ value, size = 180 }: { value?: number; size?: number }) 
       <text x="100" y="86" textAnchor="middle" className="rz-gaugev">
         {value == null ? "–" : Math.round(v)}
       </text>
+    </svg>
+  );
+}
+
+/** A floating magic wand casting sparkles, for the fit score. */
+export function WandArt({ size = 128 }: { size?: number }) {
+  const id = useId().replace(/:/g, "");
+  const g = (n: string) => `${id}-${n}`;
+  return (
+    <svg width={size} height={size * 0.9} viewBox="0 0 114 102" aria-hidden className="rz-art">
+      <defs>
+        <linearGradient id={g("plat")} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--art-plat-top)" />
+          <stop offset="1" stopColor="var(--art-plat-bottom)" />
+        </linearGradient>
+        <linearGradient id={g("stick")} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#3d3166" />
+          <stop offset=".5" stopColor="#5a4a92" />
+          <stop offset="1" stopColor="#2a1f4d" />
+        </linearGradient>
+        <radialGradient id={g("star")} cx=".5" cy=".45" r=".6">
+          <stop offset="0" stopColor="#fff" />
+          <stop offset=".45" stopColor="var(--art-light)" />
+          <stop offset="1" stopColor="var(--art-deep)" />
+        </radialGradient>
+        <filter id={g("glow")} x="-80%" y="-80%" width="260%" height="260%">
+          <feGaussianBlur stdDeviation="5" />
+        </filter>
+      </defs>
+      <ellipse className="rz-note-shadow" cx="57" cy="92" rx="40" ry="8" fill="var(--art-shadow)" />
+      <path d="M17 82 L57 96 L97 82 L97 75 L57 89 L17 75Z" fill="var(--art-plat-bottom)" />
+      <path d="M17 75 L57 61 L97 75 L57 89Z" fill={`url(#${g("plat")})`} />
+      <ellipse cx="57" cy="75" rx="22" ry="7" fill="var(--art-deep)" opacity=".3" filter={`url(#${g("glow")})`} />
+      <g className="rz-wand-float">
+        <g transform="rotate(-38 57 46)">
+          <rect x="53.5" y="30" width="7" height="44" rx="3.5" fill={`url(#${g("stick")})`} />
+          <rect x="53.5" y="30" width="7" height="8" rx="3" fill="#fff" />
+          <rect x="53.5" y="64" width="7" height="3" fill="#fff" opacity=".35" />
+        </g>
+        <circle cx="70" cy="29" r="13" fill="var(--art-deep)" opacity=".55" filter={`url(#${g("glow")})`} />
+        <path
+          d="M70 17 l3.4 7.4 8 1.2 -5.8 5.6 1.4 8 -7 -3.8 -7 3.8 1.4 -8 -5.8 -5.6 8 -1.2z"
+          fill={`url(#${g("star")})`}
+        />
+      </g>
+      <g className="rz-sparkles" fill="var(--art-light)">
+        <path d="M88 14 l1.2 2.6 2.6 1.2 -2.6 1.2 -1.2 2.6 -1.2 -2.6 -2.6 -1.2 2.6 -1.2z" />
+        <path d="M92 40 l.9 2 2 .9 -2 .9 -.9 2 -.9 -2 -2 -.9 2 -.9z" />
+        <circle cx="50" cy="16" r="1.6" />
+        <circle cx="84" cy="54" r="1.2" />
+      </g>
     </svg>
   );
 }
