@@ -1,0 +1,558 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: recommendations.resourcerer.io
+spec:
+  group: resourcerer.io
+  names:
+    kind: Recommendation
+    listKind: RecommendationList
+    plural: recommendations
+    shortNames:
+    - rec
+    - recs
+    singular: recommendation
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.targetRef.kind
+      name: Kind
+      type: string
+    - jsonPath: .spec.targetRef.name
+      name: Target
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.score.overall
+      name: Score
+      type: integer
+    - jsonPath: .status.impact.current.monthlyCost
+      name: Cost/mo
+      type: string
+    - jsonPath: .status.impact.recommended.monthlyCost
+      name: Recommended/mo
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Recommendation holds the resource recommendation for one workload.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              applyRequest:
+                description: ApplyRequest asks the applier to act. It is handled once
+                  per RequestedAt.
+                properties:
+                  action:
+                    enum:
+                    - Apply
+                    - Revert
+                    type: string
+                  hash:
+                    description: Hash of the recommendation the user reviewed; Apply
+                      is refused if it changed since.
+                    type: string
+                  requestedAt:
+                    format: date-time
+                    type: string
+                  requestedBy:
+                    type: string
+                required:
+                - action
+                - requestedAt
+                - requestedBy
+                type: object
+              regenerateRequestedAt:
+                description: Regenerate now instead of waiting for the schedule, when
+                  newer than status.generatedAt.
+                format: date-time
+                type: string
+              targetRef:
+                properties:
+                  apiVersion:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                - name
+                type: object
+            required:
+            - targetRef
+            type: object
+          status:
+            properties:
+              containers:
+                items:
+                  properties:
+                    basis:
+                      additionalProperties:
+                        type: string
+                      description: Basis explains each value, e.g. "p95 + 10% over
+                        7d".
+                      type: object
+                    current:
+                      description: ResourceRequirements describes the compute resource
+                        requirements.
+                      properties:
+                        claims:
+                          description: |-
+                            Claims lists the names of resources, defined in spec.resourceClaims,
+                            that are used by this container.
+
+                            This field depends on the
+                            DynamicResourceAllocation feature gate.
+
+                            This field is immutable. It can only be set for containers.
+                          items:
+                            description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                            properties:
+                              name:
+                                description: |-
+                                  Name must match the name of one entry in pod.spec.resourceClaims of
+                                  the Pod where this field is used. It makes that resource available
+                                  inside a container.
+                                type: string
+                              request:
+                                description: |-
+                                  Request is the name chosen for a request in the referenced claim.
+                                  If empty, everything from the claim is made available, otherwise
+                                  only the result of this request.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
+                        limits:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: |-
+                            Limits describes the maximum amount of compute resources allowed.
+                            More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                          type: object
+                        requests:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: |-
+                            Requests describes the minimum amount of compute resources required.
+                            If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                            otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                            More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                          type: object
+                      type: object
+                    name:
+                      type: string
+                    recommended:
+                      description: ResourceRequirements describes the compute resource
+                        requirements.
+                      properties:
+                        claims:
+                          description: |-
+                            Claims lists the names of resources, defined in spec.resourceClaims,
+                            that are used by this container.
+
+                            This field depends on the
+                            DynamicResourceAllocation feature gate.
+
+                            This field is immutable. It can only be set for containers.
+                          items:
+                            description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                            properties:
+                              name:
+                                description: |-
+                                  Name must match the name of one entry in pod.spec.resourceClaims of
+                                  the Pod where this field is used. It makes that resource available
+                                  inside a container.
+                                type: string
+                              request:
+                                description: |-
+                                  Request is the name chosen for a request in the referenced claim.
+                                  If empty, everything from the claim is made available, otherwise
+                                  only the result of this request.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
+                        limits:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: |-
+                            Limits describes the maximum amount of compute resources allowed.
+                            More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                          type: object
+                        requests:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: |-
+                            Requests describes the minimum amount of compute resources required.
+                            If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                            otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                            More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                          type: object
+                      type: object
+                    skipped:
+                      description: Skipped containers keep their resources (containers.skip
+                        or DoNotOptimize).
+                      type: boolean
+                  required:
+                  - name
+                  type: object
+                type: array
+              generatedAt:
+                format: date-time
+                type: string
+              hash:
+                description: Hash identifies the recommended values.
+                type: string
+              history:
+                description: Newest first, at most 10 entries.
+                items:
+                  properties:
+                    action:
+                      enum:
+                      - Apply
+                      - Revert
+                      type: string
+                    by:
+                      type: string
+                    containers:
+                      items:
+                        properties:
+                          from:
+                            description: ResourceRequirements describes the compute
+                              resource requirements.
+                            properties:
+                              claims:
+                                description: |-
+                                  Claims lists the names of resources, defined in spec.resourceClaims,
+                                  that are used by this container.
+
+                                  This field depends on the
+                                  DynamicResourceAllocation feature gate.
+
+                                  This field is immutable. It can only be set for containers.
+                                items:
+                                  description: ResourceClaim references one entry
+                                    in PodSpec.ResourceClaims.
+                                  properties:
+                                    name:
+                                      description: |-
+                                        Name must match the name of one entry in pod.spec.resourceClaims of
+                                        the Pod where this field is used. It makes that resource available
+                                        inside a container.
+                                      type: string
+                                    request:
+                                      description: |-
+                                        Request is the name chosen for a request in the referenced claim.
+                                        If empty, everything from the claim is made available, otherwise
+                                        only the result of this request.
+                                      type: string
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - name
+                                x-kubernetes-list-type: map
+                              limits:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                description: |-
+                                  Limits describes the maximum amount of compute resources allowed.
+                                  More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                type: object
+                              requests:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                description: |-
+                                  Requests describes the minimum amount of compute resources required.
+                                  If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                  otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                  More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                type: object
+                            type: object
+                          name:
+                            type: string
+                          to:
+                            description: ResourceRequirements describes the compute
+                              resource requirements.
+                            properties:
+                              claims:
+                                description: |-
+                                  Claims lists the names of resources, defined in spec.resourceClaims,
+                                  that are used by this container.
+
+                                  This field depends on the
+                                  DynamicResourceAllocation feature gate.
+
+                                  This field is immutable. It can only be set for containers.
+                                items:
+                                  description: ResourceClaim references one entry
+                                    in PodSpec.ResourceClaims.
+                                  properties:
+                                    name:
+                                      description: |-
+                                        Name must match the name of one entry in pod.spec.resourceClaims of
+                                        the Pod where this field is used. It makes that resource available
+                                        inside a container.
+                                      type: string
+                                    request:
+                                      description: |-
+                                        Request is the name chosen for a request in the referenced claim.
+                                        If empty, everything from the claim is made available, otherwise
+                                        only the result of this request.
+                                      type: string
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - name
+                                x-kubernetes-list-type: map
+                              limits:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                description: |-
+                                  Limits describes the maximum amount of compute resources allowed.
+                                  More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                type: object
+                              requests:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                description: |-
+                                  Requests describes the minimum amount of compute resources required.
+                                  If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                  otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                  More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                type: object
+                            type: object
+                        required:
+                        - from
+                        - name
+                        - to
+                        type: object
+                      type: array
+                    hash:
+                      type: string
+                    time:
+                      format: date-time
+                      type: string
+                  required:
+                  - action
+                  - by
+                  - containers
+                  - time
+                  type: object
+                type: array
+              hpa:
+                properties:
+                  clamped:
+                    type: boolean
+                  current:
+                    format: int32
+                    type: integer
+                  name:
+                    type: string
+                  recommended:
+                    description: Target utilization that keeps the HPA scaling at
+                      the same absolute CPU per pod.
+                    format: int32
+                    type: integer
+                required:
+                - current
+                - name
+                - recommended
+                type: object
+              impact:
+                properties:
+                  avgReplicas:
+                    type: string
+                  current:
+                    description: Totals are requests summed over containers and multiplied
+                      by average replicas.
+                    properties:
+                      cpu:
+                        type: string
+                      memory:
+                        type: string
+                      monthlyCost:
+                        type: string
+                    required:
+                    - cpu
+                    - memory
+                    - monthlyCost
+                    type: object
+                  recommended:
+                    description: Totals are requests summed over containers and multiplied
+                      by average replicas.
+                    properties:
+                      cpu:
+                        type: string
+                      memory:
+                        type: string
+                      monthlyCost:
+                        type: string
+                    required:
+                    - cpu
+                    - memory
+                    - monthlyCost
+                    type: object
+                required:
+                - avgReplicas
+                - current
+                - recommended
+                type: object
+              lastApplyResult:
+                properties:
+                  message:
+                    type: string
+                  result:
+                    enum:
+                    - Succeeded
+                    - Failed
+                    - Rejected
+                    type: string
+                  time:
+                    format: date-time
+                    type: string
+                required:
+                - result
+                - time
+                type: object
+              lastHandledRequestAt:
+                format: date-time
+                type: string
+              message:
+                type: string
+              nextScheduleAt:
+                format: date-time
+                type: string
+              oomKills:
+                description: OOM kills seen during the learning period.
+                format: int32
+                type: integer
+              pending:
+                description: Pending is true when recommended requests differ from
+                  current ones by more than the auto-deploy threshold.
+                type: boolean
+              phase:
+                description: Phase summarizes whether a recommendation can be trusted
+                  and applied.
+                enum:
+                - Pending
+                - Learning
+                - Ready
+                - Warning
+                - Unsupported
+                - Error
+                type: string
+              score:
+                properties:
+                  cpu:
+                    format: int32
+                    type: integer
+                  memory:
+                    format: int32
+                    type: integer
+                  overall:
+                    format: int32
+                    type: integer
+                required:
+                - cpu
+                - memory
+                - overall
+                type: object
+              settings:
+                additionalProperties:
+                  description: Setting is the effective value of one setting and the
+                    level that set it.
+                  properties:
+                    source:
+                      enum:
+                      - cluster
+                      - namespace
+                      - workload
+                      type: string
+                    value:
+                      type: string
+                  required:
+                  - source
+                  - value
+                  type: object
+                type: object
+              warnings:
+                items:
+                  type: string
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

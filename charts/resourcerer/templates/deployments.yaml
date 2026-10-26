@@ -1,0 +1,19 @@
+{{- if not (has .Values.selection (list "all" "label")) }}
+{{- fail "selection must be \"all\" or \"label\"" }}
+{{- end }}
+{{- if ne .Values.auth.strategy "anonymous" }}
+{{- fail "auth.strategy: only \"anonymous\" is supported" }}
+{{- end }}
+{{ include "resourcerer.deployment" (dict "root" . "component" "controller" "values" .Values.controller
+  "args" (list "--metrics-bind-address=:8081") "ports" (list (dict "name" "metrics" "port" 8081))) }}
+---
+{{ $serverArgs := list "--http-bind-address=:8080" "--metrics-bind-address=0" }}
+{{- if .Values.readOnly }}{{ $serverArgs = append $serverArgs "--read-only" }}{{ end }}
+{{- if not .Values.server.ui }}{{ $serverArgs = append $serverArgs "--disable-ui" }}{{ end }}
+{{- include "resourcerer.deployment" (dict "root" . "component" "server" "values" .Values.server
+  "args" $serverArgs "ports" (list (dict "name" "http" "port" 8080))) }}
+{{- if .Values.applier.enabled }}
+---
+{{ include "resourcerer.deployment" (dict "root" . "component" "applier" "values" .Values.applier
+  "args" (list "--metrics-bind-address=0") "ports" list) }}
+{{- end }}

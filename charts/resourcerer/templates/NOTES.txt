@@ -1,19 +1,25 @@
-resourcerer is managing VPAs with selection={{ .Values.selection }} and defaultMode={{ .Values.defaultMode }}.
-
+resourcerer recommends requests from {{ .Values.prometheus.url }} (selection={{ .Values.selection }}).
 {{- if eq .Values.selection "label" }}
 
 Opt workloads in by labeling them or their namespace:
   kubectl label namespace <ns> resourcerer.io/enabled=true
 {{- else }}
 
-Every workload outside these namespaces gets a VPA:
+Every workload outside these namespaces gets a recommendation:
   {{ include "resourcerer.excludedNamespaces" . }}
 Opt out with:
   kubectl label namespace <ns> resourcerer.io/enabled=false
 {{- end }}
 
-Requires the Vertical Pod Autoscaler (recommender, and updater + admission controller for Auto mode).
-
 Open the UI:
-  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "resourcerer.fullname" . }} 8080:{{ .Values.service.port }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "resourcerer.fullname" . }} 8080:{{ .Values.server.service.port }}
   open http://localhost:8080
+
+Authentication is anonymous: anyone who can reach the UI can apply recommendations
+{{- if .Values.readOnly }} (read-only mode is on, so the UI cannot change anything){{ end }}.
+{{- if and .Values.server.ingress.enabled (not .Values.readOnly) }}
+WARNING: the Ingress exposes the UI without authentication. Put an authenticating proxy in front, or set readOnly=true.
+{{- end }}
+{{- if not .Values.applier.enabled }}
+The applier is disabled: recommendations are never applied to workloads.
+{{- end }}

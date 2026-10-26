@@ -1,0 +1,15 @@
+# Values for the kind environment: short periods so recommendations show up within minutes.
+clusterName: kind-resourcerer
+prometheus:
+  url: http://prometheus-server.monitoring.svc
+  rateWindow: 1m
+  minStep: 15s
+defaults:
+  learning-period: PT15M
+  schedule: "@every 2m"
+excludedNamespaces:
+  - kube-system
+  - kube-public
+  - kube-node-lease
+  - local-path-storage
+  - monitoring

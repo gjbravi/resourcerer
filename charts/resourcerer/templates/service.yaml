@@ -5,16 +5,34 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "resourcerer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
 spec:
-  type: {{ .Values.service.type }}
+  type: {{ .Values.server.service.type }}
   selector:
-    {{- include "resourcerer.selectorLabels" . | nindent 4 }}
+    {{- include "resourcerer.selectorLabels" (dict "root" . "component" "server") | nindent 4 }}
   ports:
     - name: http
-      port: {{ .Values.service.port }}
+      port: {{ .Values.server.service.port }}
       targetPort: http
-    {{- if .Values.metrics.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "resourcerer.fullname" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "resourcerer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  {{- if .Values.metrics.scrapeAnnotations }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8081"
+    prometheus.io/path: /metrics
+  {{- end }}
+spec:
+  selector:
+    {{- include "resourcerer.selectorLabels" (dict "root" . "component" "controller") | nindent 4 }}
+  ports:
     - name: metrics
       port: 8081
       targetPort: metrics
-    {{- end }}

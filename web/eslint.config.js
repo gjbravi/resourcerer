@@ -4,7 +4,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "src/api/generated.d.ts"] },
+  { ignores: ["dist"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -13,10 +13,6 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
-      "no-restricted-imports": [
-        "error",
-        { patterns: [{ group: ["@mui/*/*/*"], message: "Import from the package or its first-level path only." }] },
-      ],
     },
   },
 );

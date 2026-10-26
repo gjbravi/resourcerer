@@ -1,4 +1,4 @@
-{{- if and .Values.metrics.enabled .Values.metrics.serviceMonitor.enabled }}
+{{- if .Values.metrics.serviceMonitor.enabled }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -12,7 +12,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      {{- include "resourcerer.selectorLabels" . | nindent 6 }}
+      {{- include "resourcerer.selectorLabels" (dict "root" . "component" "controller") | nindent 6 }}
   endpoints:
     - port: metrics
       interval: {{ .Values.metrics.serviceMonitor.interval }}

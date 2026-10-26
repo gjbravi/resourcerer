@@ -49,7 +49,7 @@ jobs:
       - uses: azure/setup-helm@v4
       - run: helm lint charts/resourcerer
       - run: helm template resourcerer charts/resourcerer >/dev/null
-      - run: helm template resourcerer charts/resourcerer --set selection=label --set replicaCount=2 --set ui.readOnly=true >/dev/null
+      - run: helm template resourcerer charts/resourcerer --set selection=label --set readOnly=true --set applier.enabled=false --set controller.replicas=2 --set server.ingress.enabled=true >/dev/null
 
   e2e:
     runs-on: ubuntu-latest

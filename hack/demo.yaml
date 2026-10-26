@@ -1,10 +1,10 @@
-# Demo workloads with deliberately wrong requests, so VPA has something to recommend.
+# Demo workloads with deliberately wrong requests. stress-ng burns a fixed share of CPU and holds memory.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: demo
 ---
-# Over-provisioned: requests 1 CPU / 1Gi, uses ~100m / ~60Mi.
+# Over-provisioned: requests 1 CPU / 1Gi, uses ~100m / ~60Mi. The istio-proxy sidecar is not optimized by default.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,20 +13,24 @@ metadata:
 spec:
   replicas: 2
   selector:
-    matchLabels:
-      app: api
+    matchLabels: { app: api }
   template:
     metadata:
-      labels:
-        app: api
+      labels: { app: api }
     spec:
       containers:
         - name: api
           image: ghcr.io/colinianking/stress-ng:latest
-          args: ["--cpu", "1", "--cpu-load", "10", "--vm", "1", "--vm-bytes", "60M", "--vm-keep", "--vm-hang", "0", "--timeout", "0"]
+          args: ["--cpu", "1", "--cpu-load", "10", "--vm", "1", "--vm-bytes", "60M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
           resources:
             requests: { cpu: "1", memory: 1Gi }
             limits: { cpu: "2", memory: 2Gi }
+        - name: istio-proxy
+          image: ghcr.io/colinianking/stress-ng:latest
+          args: ["--cpu", "1", "--cpu-load", "3", "--vm", "1", "--vm-bytes", "20M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
 ---
 # Under-provisioned: requests 50m / 64Mi, uses ~400m / ~100Mi.
 apiVersion: apps/v1
@@ -34,20 +38,20 @@ kind: Deployment
 metadata:
   name: worker
   namespace: demo
+  annotations:
+    resourcerer.io/cpu.optimization-goal: Reliability
 spec:
   replicas: 1
   selector:
-    matchLabels:
-      app: worker
+    matchLabels: { app: worker }
   template:
     metadata:
-      labels:
-        app: worker
+      labels: { app: worker }
     spec:
       containers:
         - name: worker
           image: ghcr.io/colinianking/stress-ng:latest
-          args: ["--cpu", "1", "--cpu-load", "40", "--vm", "1", "--vm-bytes", "100M", "--vm-keep", "--vm-hang", "0", "--timeout", "0"]
+          args: ["--cpu", "1", "--cpu-load", "40", "--vm", "1", "--vm-bytes", "100M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
           resources:
             requests: { cpu: 50m, memory: 64Mi }
             limits: { cpu: "1", memory: 512Mi }
@@ -61,17 +65,15 @@ spec:
   replicas: 1
   serviceName: cache
   selector:
-    matchLabels:
-      app: cache
+    matchLabels: { app: cache }
   template:
     metadata:
-      labels:
-        app: cache
+      labels: { app: cache }
     spec:
       containers:
         - name: cache
           image: ghcr.io/colinianking/stress-ng:latest
-          args: ["--cpu", "1", "--cpu-load", "15", "--vm", "1", "--vm-bytes", "100M", "--vm-keep", "--vm-hang", "0", "--timeout", "0"]
+          args: ["--cpu", "1", "--cpu-load", "15", "--vm", "1", "--vm-bytes", "100M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
           resources:
             requests: { cpu: 200m, memory: 256Mi }
             limits: { cpu: 500m, memory: 512Mi }
@@ -79,21 +81,136 @@ spec:
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: agent
+  name: log-agent
   namespace: demo
 spec:
   selector:
-    matchLabels:
-      app: agent
+    matchLabels: { app: log-agent }
   template:
     metadata:
-      labels:
-        app: agent
+      labels: { app: log-agent }
     spec:
       containers:
-        - name: agent
+        - name: log-agent
           image: ghcr.io/colinianking/stress-ng:latest
-          args: ["--cpu", "1", "--cpu-load", "2", "--vm", "1", "--vm-bytes", "16M", "--vm-keep", "--vm-hang", "0", "--timeout", "0"]
+          args: ["--cpu", "1", "--cpu-load", "2", "--vm", "1", "--vm-bytes", "20M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
           resources:
             requests: { cpu: 250m, memory: 256Mi }
             limits: { cpu: 500m, memory: 512Mi }
+---
+# CPU-scaled by an HPA: the recommendation also proposes a new target utilization.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web }
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/colinianking/stress-ng:latest
+          args: ["--cpu", "1", "--cpu-load", "20", "--vm", "1", "--vm-bytes", "50M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
+          resources:
+            requests: { cpu: 300m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web
+  namespace: demo
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: web }
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+---
+# No requests at all: best-effort pods.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: indexer
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: indexer }
+  template:
+    metadata:
+      labels: { app: indexer }
+    spec:
+      containers:
+        - name: indexer
+          image: ghcr.io/colinianking/stress-ng:latest
+          args: ["--cpu", "1", "--cpu-load", "30", "--vm", "1", "--vm-bytes", "150M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
+---
+# Namespace-level settings: every workload here deploys recommendations automatically.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments
+  annotations:
+    resourcerer.io/auto-deploy: Enabled
+    resourcerer.io/memory.optimization-goal: Reliability
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: payments
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: checkout }
+  template:
+    metadata:
+      labels: { app: checkout }
+    spec:
+      containers:
+        - name: checkout
+          image: ghcr.io/colinianking/stress-ng:latest
+          args: ["--cpu", "1", "--cpu-load", "12", "--vm", "1", "--vm-bytes", "80M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
+          resources:
+            requests: { cpu: 400m, memory: 512Mi }
+            limits: { cpu: "1", memory: 768Mi }
+---
+# Leaks memory until the 320Mi limit kills it, then starts over. Auto-deploy is turned off for this one workload.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger
+  namespace: payments
+  annotations:
+    resourcerer.io/auto-deploy: Disabled
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ledger }
+  template:
+    metadata:
+      labels: { app: ledger }
+    spec:
+      containers:
+        - name: ledger
+          image: ghcr.io/colinianking/stress-ng:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              n=150
+              while true; do
+                stress-ng --vm 1 --vm-bytes ${n}M --vm-keep --vm-hang 0 --timeout 30s --quiet
+                n=$((n + 20))
+              done
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 320Mi }

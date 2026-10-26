@@ -1,49 +1,113 @@
-/** Types mirror internal/server/types.go. */
-export type Mode = "Off" | "Auto" | "Disabled";
-export type Status = "Pending" | "Ready" | "LowConfidence" | "Conflict" | "Error" | "None";
-export type ResourceName = "cpu" | "memory";
+/** Types mirror internal/server/types.go. CPU is in cores and memory in bytes. */
+export type Resource = "cpu" | "memory";
+export type Resources = Partial<Record<Resource, number>>;
+export type Phase = "Pending" | "Learning" | "Ready" | "Warning" | "Unsupported" | "Error";
 
-export interface Resources {
-  cpu?: string;
-  memory?: string;
+export interface SettingInfo {
+  key: string;
+  value: string;
+  source: "cluster" | "namespace" | "workload";
+  annotation: string;
+  options?: string[];
 }
 
-export interface Container {
-  name: string;
-  requests: Resources;
-  limits: Resources;
-  target?: Resources;
-  lowerBound?: Resources;
-  upperBound?: Resources;
-  uncappedTarget?: Resources;
-}
-
-export interface Workload {
-  namespace: string;
-  kind: string;
-  name: string;
-  replicas: number;
-  mode: Mode;
-  status: Status;
-  message?: string;
-  vpa?: string;
-  modeSource: string;
-  containers: Container[];
-}
-
-export interface WorkloadDetail extends Workload {
-  pods: { name: string; containers: Container[] }[];
-  events: { type: string; reason: string; message: string; time: string }[];
+export interface PrometheusStatus {
+  url: string;
+  connected: boolean;
+  error?: string;
+  version?: string;
+  retention?: string;
+  oldest?: string;
+  checks: { name: string; metric: string; ok: boolean }[] | null;
+  missing?: string[];
 }
 
 export interface Info {
   version: string;
-  selection: "all" | "label";
-  defaultMode: Mode;
+  cluster: string;
+  auth: string;
   readOnly: boolean;
+  selection: "all" | "label";
+  excludedNamespaces: string[];
+  defaults: SettingInfo[];
+  cost: { cpuCoreHour: number; memoryGiBHour: number };
+  prometheus: PrometheusStatus;
 }
 
-export interface WorkloadRef {
+export interface Totals {
+  cpu: number;
+  memory: number;
+  monthlyCost: number;
+}
+
+export interface Summary {
+  namespace: string;
+  kind: string;
+  name: string;
+  replicas: number;
+  avgReplicas: number;
+  phase: Phase;
+  message?: string;
+  score?: { overall: number; cpu: number; memory: number };
+  current: Totals;
+  recommended: Totals;
+  pending: boolean;
+  autoDeploy: boolean;
+  oomKills: number;
+  noRequests: boolean;
+  under: boolean;
+  hpa?: string[];
+  generatedAt?: string;
+  lastAppliedAt?: string;
+  hash?: string;
+  namespaceAnnotated: boolean;
+}
+
+export interface Container {
+  name: string;
+  skipped: boolean;
+  currentRequests: Resources;
+  currentLimits: Resources;
+  recommendedRequests: Resources;
+  recommendedLimits: Resources;
+  basis?: Partial<Record<Resource, string>>;
+}
+
+export interface Change {
+  name: string;
+  fromRequests: Resources;
+  toRequests: Resources;
+  fromLimits: Resources;
+  toLimits: Resources;
+}
+
+export interface Detail extends Summary {
+  nextScheduleAt?: string;
+  containers: Container[] | null;
+  hpaRecommendation?: { name: string; current: number; recommended: number; clamped: boolean };
+  settings: SettingInfo[] | null;
+  warnings?: string[];
+  history: { time: string; action: "Apply" | "Revert"; by: string; hash?: string; containers: Change[] | null }[];
+  events: { type: string; reason: string; message: string; time: string }[];
+  lastApplyResult?: { time: string; result: "Succeeded" | "Failed" | "Rejected"; message?: string };
+  applyMethod: string;
+}
+
+export interface Point {
+  t: number;
+  v: number;
+}
+
+export interface Series {
+  from: number;
+  to: number;
+  bands: { t: number; p50: number; p75: number; p95: number }[];
+  lines: Record<string, Point[]>;
+}
+
+export type Range = "1h" | "1d" | "1w" | "2w" | "1m";
+
+export interface Ref {
   namespace: string;
   kind: string;
   name: string;
@@ -69,12 +133,25 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data as T;
 }
 
-export const workloadPath = (w: WorkloadRef) =>
-  `/workloads/${encodeURIComponent(w.namespace)}/${w.kind}/${encodeURIComponent(w.name)}`;
+export const refKey = (w: Ref) => `${w.namespace}/${w.kind}/${w.name}`;
+const path = (w: Ref) => `/workloads/${encodeURIComponent(w.namespace)}/${w.kind}/${encodeURIComponent(w.name)}`;
 
 export const api = {
   info: () => call<Info>("GET", "/info"),
-  list: () => call<Workload[]>("GET", "/workloads"),
-  get: (w: WorkloadRef) => call<WorkloadDetail>("GET", workloadPath(w)),
-  setMode: (w: WorkloadRef, mode: Mode) => call<WorkloadDetail>("PUT", `${workloadPath(w)}/mode`, { mode }),
+  list: () => call<Summary[]>("GET", "/workloads"),
+  get: (w: Ref) => call<Detail>("GET", path(w)),
+  series: (w: Ref, container: string, resource: Resource, range: Range) =>
+    call<Series>(
+      "GET",
+      `${path(w)}/series?container=${encodeURIComponent(container)}&resource=${resource}&range=${range}`,
+    ),
+  impact: (w: Ref, resource: Resource, range: Range) =>
+    call<Series>("GET", `${path(w)}/impact?resource=${resource}&range=${range}`),
+  apply: (w: Ref, hash: string) => call<unknown>("POST", `${path(w)}/apply`, { hash }),
+  revert: (w: Ref) => call<unknown>("POST", `${path(w)}/revert`),
+  regenerate: (w: Ref) => call<unknown>("POST", `${path(w)}/regenerate`),
+  setWorkloadSetting: (w: Ref, key: string, value: string | null) =>
+    call<unknown>("PUT", `${path(w)}/settings`, { key, value }),
+  setNamespaceSetting: (ns: string, key: string, value: string | null) =>
+    call<unknown>("PUT", `/namespaces/${encodeURIComponent(ns)}/settings`, { key, value }),
 };

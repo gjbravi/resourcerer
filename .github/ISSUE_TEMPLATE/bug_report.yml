@@ -28,8 +28,8 @@ body:
   - type: input
     id: k8s
     attributes:
-      label: Kubernetes and VPA versions
-      placeholder: Kubernetes 1.35, VPA 1.8.1
+      label: Kubernetes and Prometheus versions
+      placeholder: Kubernetes 1.35, Prometheus 3.x
   - type: textarea
     id: logs
     attributes:

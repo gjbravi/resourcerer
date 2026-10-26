@@ -1,59 +1,101 @@
 package server
 
-// Mode as shown in the UI; Disabled means no VPA.
-type Mode string
+import "github.com/gjbravi/resourcerer/internal/prom"
 
-const (
-	ModeOff      Mode = "Off"
-	ModeAuto     Mode = "Auto"
-	ModeDisabled Mode = "Disabled"
-)
+// Resources are cores for CPU and bytes for memory; absent keys are unset.
+type Resources map[string]float64
 
-// Status summarizes the VPA state for display.
-type Status string
+type Info struct {
+	Version            string        `json:"version"`
+	Cluster            string        `json:"cluster"`
+	Auth               string        `json:"auth"`
+	ReadOnly           bool          `json:"readOnly"`
+	Selection          string        `json:"selection"`
+	ExcludedNamespaces []string      `json:"excludedNamespaces"`
+	Defaults           []SettingInfo `json:"defaults"`
+	Cost               Cost          `json:"cost"`
+	Prometheus         prom.Status   `json:"prometheus"`
+}
 
-const (
-	StatusPending       Status = "Pending"
-	StatusReady         Status = "Ready"
-	StatusLowConfidence Status = "LowConfidence"
-	StatusConflict      Status = "Conflict"
-	StatusError         Status = "Error"
-	StatusNone          Status = "None"
-)
+type Cost struct {
+	CPUCoreHour   float64 `json:"cpuCoreHour"`
+	MemoryGiBHour float64 `json:"memoryGiBHour"`
+}
 
-type Resources struct {
-	CPU    string `json:"cpu,omitempty"`
-	Memory string `json:"memory,omitempty"`
+type SettingInfo struct {
+	Key        string   `json:"key"`
+	Value      string   `json:"value"`
+	Source     string   `json:"source"`
+	Annotation string   `json:"annotation"`
+	Options    []string `json:"options,omitempty"`
+}
+
+type Totals struct {
+	CPU         float64 `json:"cpu"`
+	Memory      float64 `json:"memory"`
+	MonthlyCost float64 `json:"monthlyCost"`
+}
+
+type Score struct {
+	Overall int32 `json:"overall"`
+	CPU     int32 `json:"cpu"`
+	Memory  int32 `json:"memory"`
+}
+
+type Summary struct {
+	Namespace    string   `json:"namespace"`
+	Kind         string   `json:"kind"`
+	Name         string   `json:"name"`
+	Replicas     int32    `json:"replicas"`
+	AvgReplicas  float64  `json:"avgReplicas"`
+	Phase        string   `json:"phase"`
+	Message      string   `json:"message,omitempty"`
+	Score        *Score   `json:"score,omitempty"`
+	Current      Totals   `json:"current"`
+	Recommended  Totals   `json:"recommended"`
+	Pending      bool     `json:"pending"`
+	AutoDeploy   bool     `json:"autoDeploy"`
+	OOMKills     int32    `json:"oomKills"`
+	NoRequests   bool     `json:"noRequests"`
+	Under        bool     `json:"under"`
+	HPA          []string `json:"hpa,omitempty"`
+	GeneratedAt  string   `json:"generatedAt,omitempty"`
+	LastApplied  string   `json:"lastAppliedAt,omitempty"`
+	Hash         string   `json:"hash,omitempty"`
+	NamespaceSet bool     `json:"namespaceAnnotated"`
 }
 
 type Container struct {
-	Name     string    `json:"name"`
-	Requests Resources `json:"requests"`
-	Limits   Resources `json:"limits"`
-	// Recommendation fields come from VPA status and are empty until VPA has data.
-	Target     *Resources `json:"target,omitempty"`
-	LowerBound *Resources `json:"lowerBound,omitempty"`
-	UpperBound *Resources `json:"upperBound,omitempty"`
-	Uncapped   *Resources `json:"uncappedTarget,omitempty"`
+	Name               string            `json:"name"`
+	Skipped            bool              `json:"skipped"`
+	CurrentRequests    Resources         `json:"currentRequests"`
+	CurrentLimits      Resources         `json:"currentLimits"`
+	RecommendedRequest Resources         `json:"recommendedRequests"`
+	RecommendedLimits  Resources         `json:"recommendedLimits"`
+	Basis              map[string]string `json:"basis,omitempty"`
 }
 
-type Workload struct {
-	Namespace  string      `json:"namespace"`
-	Kind       string      `json:"kind"`
-	Name       string      `json:"name"`
-	Replicas   int32       `json:"replicas"`
-	Mode       Mode        `json:"mode"`
-	Status     Status      `json:"status"`
-	Message    string      `json:"message,omitempty"`
-	VPA        string      `json:"vpa,omitempty"`
-	Containers []Container `json:"containers"`
-	// ModeSource says whether the mode comes from the workload, the namespace or the default.
-	ModeSource string `json:"modeSource"`
+type HPA struct {
+	Name        string `json:"name"`
+	Current     int32  `json:"current"`
+	Recommended int32  `json:"recommended"`
+	Clamped     bool   `json:"clamped"`
 }
 
-type Pod struct {
-	Name       string      `json:"name"`
-	Containers []Container `json:"containers"`
+type Change struct {
+	Name         string    `json:"name"`
+	FromRequests Resources `json:"fromRequests"`
+	ToRequests   Resources `json:"toRequests"`
+	FromLimits   Resources `json:"fromLimits"`
+	ToLimits     Resources `json:"toLimits"`
+}
+
+type History struct {
+	Time       string   `json:"time"`
+	Action     string   `json:"action"`
+	By         string   `json:"by"`
+	Hash       string   `json:"hash,omitempty"`
+	Containers []Change `json:"containers"`
 }
 
 type Event struct {
@@ -63,19 +105,35 @@ type Event struct {
 	Time    string `json:"time"`
 }
 
-type WorkloadDetail struct {
-	Workload
-	Pods   []Pod   `json:"pods"`
-	Events []Event `json:"events"`
+type ApplyResult struct {
+	Time    string `json:"time"`
+	Result  string `json:"result"`
+	Message string `json:"message,omitempty"`
 }
 
-type ModeRequest struct {
-	Mode Mode `json:"mode"`
+type Detail struct {
+	Summary
+	NextScheduleAt  string        `json:"nextScheduleAt,omitempty"`
+	Containers      []Container   `json:"containers"`
+	HPARec          *HPA          `json:"hpaRecommendation,omitempty"`
+	Settings        []SettingInfo `json:"settings"`
+	Warnings        []string      `json:"warnings,omitempty"`
+	History         []History     `json:"history"`
+	Events          []Event       `json:"events"`
+	LastApplyResult *ApplyResult  `json:"lastApplyResult,omitempty"`
+	ApplyMethod     string        `json:"applyMethod"`
 }
 
-type Info struct {
-	Version     string `json:"version"`
-	Selection   string `json:"selection"`
-	DefaultMode string `json:"defaultMode"`
-	ReadOnly    bool   `json:"readOnly"`
+type Band struct {
+	T   float64 `json:"t"`
+	P50 float64 `json:"p50"`
+	P75 float64 `json:"p75"`
+	P95 float64 `json:"p95"`
+}
+
+type Series struct {
+	From  float64                 `json:"from"`
+	To    float64                 `json:"to"`
+	Bands []Band                  `json:"bands"`
+	Lines map[string][]prom.Point `json:"lines"`
 }

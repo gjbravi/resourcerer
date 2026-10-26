@@ -1,86 +1,60 @@
-import type { Container, ResourceName, Workload } from "./api";
+import type { Resource, Resources } from "./api";
 
-const binary: Record<string, number> = { Ki: 2 ** 10, Mi: 2 ** 20, Gi: 2 ** 30, Ti: 2 ** 40 };
-const decimal: Record<string, number> = { n: 1e-9, u: 1e-6, m: 1e-3, k: 1e3, M: 1e6, G: 1e9, T: 1e12 };
+export const Mi = 2 ** 20;
+export const Gi = 2 ** 30;
 
-/** Parses a Kubernetes quantity into base units: cores for CPU, bytes for memory. */
-export function parseQuantity(q?: string): number | undefined {
-  if (!q) return undefined;
-  const m = /^([+-]?[0-9.]+(?:[eE][+-]?[0-9]+)?)([A-Za-z]*)$/.exec(q.trim());
-  if (!m) return undefined;
-  const n = parseFloat(m[1]);
-  const suffix = m[2];
-  if (!suffix) return n;
-  if (suffix in binary) return n * binary[suffix];
-  if (suffix in decimal) return n * decimal[suffix];
-  return undefined;
+export function fmtCpu(c?: number): string {
+  if (c == null) return "–";
+  if (c === 0) return "0";
+  return `${Math.max(1, Math.round(c * 1000))}m`;
 }
 
-/** CPU always in millicores and memory in Mi/Gi, so columns compare at a glance. */
-export function format(resource: ResourceName, q?: string): string {
-  const v = parseQuantity(q);
-  if (v === undefined) return "–";
-  if (resource === "cpu") return `${Math.round(v * 1000)}m`;
-  if (Math.abs(v) >= 2 ** 30) {
-    const gi = v / 2 ** 30;
-    return `${Number.isInteger(gi) ? gi : gi.toFixed(1)}Gi`;
-  }
-  return `${Math.ceil(v / 2 ** 20)}Mi`;
+export const fmtCores = (c: number) => `${c.toFixed(c >= 10 ? 1 : 3)} Cores`;
+
+export function fmtMem(b?: number): string {
+  if (b == null) return "–";
+  if (b === 0) return "0";
+  if (b >= Gi) return `${(b / Gi).toFixed(2)}GiB`;
+  return `${Math.max(1, Math.round(b / Mi))}MiB`;
 }
 
-/** Relative change from current request to VPA target, rounded to whole percent. */
-export function change(current?: string, target?: string): number | undefined {
-  const c = parseQuantity(current);
-  const t = parseQuantity(target);
-  if (c === undefined || t === undefined || c === 0) return undefined;
-  return Math.round(((t - c) / c) * 100);
-}
+export const fmt = (r: Resource, v?: number) => (r === "cpu" ? fmtCpu(v) : fmtMem(v));
 
-export type Sizing = "over" | "under" | "fit" | "unset" | "unknown";
+export const fmtMoney = (v: number) =>
+  `${v < 0 ? "-" : ""}$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-/** Within ±10% of the VPA target counts as right-sized. */
-const TOLERANCE = 10;
+export const fmtDate = (iso?: string | number) =>
+  iso == null
+    ? "–"
+    : new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-export function containerSizing(c: Container): Sizing {
-  if (!c.target) return "unknown";
-  if (!c.requests.cpu && !c.requests.memory) return "unset";
-  let over = false;
-  let under = false;
-  for (const r of ["cpu", "memory"] as const) {
-    if (!c.target[r]) continue;
-    if (!c.requests[r]) {
-      under = true;
-      continue;
-    }
-    const pct = change(c.requests[r], c.target[r])!;
-    if (pct < -TOLERANCE) over = true;
-    if (pct > TOLERANCE) under = true;
-  }
-  // Under-provisioning risks throttling or OOM kills, so it wins over savings.
-  if (under) return "under";
-  if (over) return "over";
-  return "fit";
-}
-
-export function sizing(w: Workload): Sizing {
-  const s = w.containers.map(containerSizing).filter((x) => x !== "unknown");
-  if (s.length === 0) return "unknown";
-  if (s.includes("under")) return "under";
-  if (s.includes("over")) return "over";
-  if (s.includes("unset")) return "unset";
-  return "fit";
-}
-
-export function relativeTime(iso: string, now = Date.now()): string {
+export function ago(iso?: string, now = Date.now()): string {
+  if (!iso) return "–";
   const s = Math.round((now - new Date(iso).getTime()) / 1000);
-  const abs = Math.abs(s);
-  const [n, u] =
-    abs < 60
-      ? [abs, "s"]
-      : abs < 3600
-        ? [Math.round(abs / 60), "m"]
-        : abs < 86400
-          ? [Math.round(abs / 3600), "h"]
-          : [Math.round(abs / 86400), "d"];
-  return s >= 0 ? `${n}${u} ago` : `in ${n}${u}`;
+  const a = Math.abs(s);
+  const v =
+    a < 60
+      ? `${a}s`
+      : a < 3600
+        ? `${Math.round(a / 60)}m`
+        : a < 86400
+          ? `${Math.round(a / 3600)}h`
+          : `${Math.round(a / 86400)}d`;
+  return s >= 0 ? `${v} ago` : `in ${v}`;
+}
+
+/** Kubernetes quantity in the units people write in manifests. */
+export function quantity(r: Resource, v?: number): string | undefined {
+  if (v == null) return undefined;
+  return r === "cpu" ? `${Math.round(v * 1000)}m` : `${Math.ceil(v / Mi)}Mi`;
+}
+
+export function changed(a: Resources, b: Resources): boolean {
+  return (["cpu", "memory"] as const).some((r) => a[r] !== b[r]);
+}
+
+/** Percent change from a to b, rounded; null when a is unset or zero. */
+export function pct(a?: number, b?: number): number | null {
+  if (!a || b == null) return null;
+  return Math.round(((b - a) / a) * 100);
 }

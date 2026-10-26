@@ -1,6 +1,6 @@
 apiVersion: v2
 name: resourcerer
-description: Creates and manages Vertical Pod Autoscalers for your workloads, with a UI to review recommendations.
+description: Recommends and applies CPU and memory requests for your workloads from Prometheus usage history, with a UI to review them.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
@@ -9,8 +9,8 @@ home: https://github.com/gjbravi/resourcerer
 sources:
   - https://github.com/gjbravi/resourcerer
 keywords:
-  - vpa
-  - vertical-pod-autoscaler
+  - prometheus
+  - requests
   - rightsizing
   - resources
 maintainers:

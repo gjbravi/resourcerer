@@ -39,13 +39,19 @@ func ResourceName(kind, name string) string {
 func (w *Workload) Containers() []corev1.Container { return w.Template.Spec.Containers }
 
 func FromObject(obj client.Object) (*Workload, error) {
+	desired := func(p *int32) int32 {
+		if p == nil {
+			return 1
+		}
+		return *p
+	}
 	switch o := obj.(type) {
 	case *appsv1.Deployment:
-		return &Workload{Object: o, Kind: "Deployment", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: o.Status.Replicas}, nil
+		return &Workload{Object: o, Kind: "Deployment", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: desired(o.Spec.Replicas)}, nil
 	case *appsv1.StatefulSet:
-		return &Workload{Object: o, Kind: "StatefulSet", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: o.Status.Replicas}, nil
+		return &Workload{Object: o, Kind: "StatefulSet", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: desired(o.Spec.Replicas)}, nil
 	case *appsv1.DaemonSet:
-		return &Workload{Object: o, Kind: "DaemonSet", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: o.Status.CurrentNumberScheduled}, nil
+		return &Workload{Object: o, Kind: "DaemonSet", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: o.Status.DesiredNumberScheduled}, nil
 	}
 	return nil, fmt.Errorf("unsupported workload type %T", obj)
 }

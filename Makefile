@@ -18,6 +18,12 @@ fmt: ## Format Go and UI code
 	gofmt -w .
 	cd web && npm run format
 
+CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.23.0
+
+.PHONY: generate
+generate: ## Generate deepcopy code and the CRD into the chart
+	$(CONTROLLER_GEN) object paths=./api/... crd paths=./api/... output:crd:artifacts:config=charts/resourcerer/crds
+
 .PHONY: lint
 lint: ## Run linters
 	go vet ./...
@@ -39,8 +45,14 @@ build: web ## Build the binary into bin/
 	go build -trimpath -ldflags="-X main.version=$(VERSION)" -o bin/resourcerer ./cmd/resourcerer
 
 .PHONY: run
-run: ## Run locally against the current kube context (UI on :8080)
-	go run ./cmd/resourcerer --zap-devel
+run: ## Run all components locally against the current kube context (UI on :8080; needs make prom-forward)
+	go run ./cmd/resourcerer all --zap-devel --cluster-name=$(KUBE_CONTEXT) --prometheus-url=http://localhost:9090 \
+	  --rate-window=1m --min-step=15s --defaults-configmap=resourcerer/resourcerer-defaults \
+	  --excluded-namespaces=kube-system,kube-public,kube-node-lease,local-path-storage,monitoring,resourcerer
+
+.PHONY: prom-forward
+prom-forward: ## Port-forward the kind Prometheus to localhost:9090
+	kubectl --context $(KUBE_CONTEXT) -n monitoring port-forward svc/prometheus-server 9090:80
 
 .PHONY: web-dev
 web-dev: ## Run the UI dev server with /api proxied to :8080
@@ -62,11 +74,11 @@ kind-up: ## Create a kind cluster with metrics-server, VPA and demo workloads
 kind-deploy: image ## Build, load into kind and install the chart
 	CLUSTER_NAME=$(CLUSTER_NAME) ./hack/kind-load.sh $(IMG)
 	helm upgrade --install resourcerer charts/resourcerer \
-	  --kube-context $(KUBE_CONTEXT) --namespace resourcerer --create-namespace \
+	  --kube-context $(KUBE_CONTEXT) --namespace resourcerer --create-namespace -f hack/resourcerer-values.yaml \
 	  --set image.repository=$(firstword $(subst :, ,$(IMG))) --set image.tag=$(lastword $(subst :, ,$(IMG))) \
 	  --set image.pullPolicy=Never --wait
-	kubectl --context $(KUBE_CONTEXT) -n resourcerer rollout restart deploy/resourcerer
-	kubectl --context $(KUBE_CONTEXT) -n resourcerer rollout status deploy/resourcerer --timeout 120s
+	kubectl --context $(KUBE_CONTEXT) -n resourcerer rollout restart deploy -l app.kubernetes.io/instance=resourcerer
+	kubectl --context $(KUBE_CONTEXT) -n resourcerer rollout status deploy -l app.kubernetes.io/instance=resourcerer --timeout 120s
 	@echo "UI: kubectl --context $(KUBE_CONTEXT) -n resourcerer port-forward svc/resourcerer 8080:80"
 
 .PHONY: kind-down

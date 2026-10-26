@@ -1,81 +1,111 @@
-{{- if .Values.serviceAccount.create }}
+{{- if .Values.rbac.create }}
+{{- $fullname := include "resourcerer.fullname" . }}
+{{- $components := list "controller" "server" }}
+{{- if .Values.applier.enabled }}{{ $components = append $components "applier" }}{{ end }}
+{{- range $components }}
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "resourcerer.serviceAccountName" . }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ $fullname }}-{{ . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "resourcerer.labels" . | nindent 4 }}
-  {{- with .Values.serviceAccount.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-{{- end }}
-{{- if .Values.rbac.create }}
+    {{- include "resourcerer.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ . }}
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullname }}-{{ . }}
+  labels:
+    {{- include "resourcerer.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullname }}-{{ . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}-{{ . }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+---
+# Reads the cluster and Prometheus; writes only Recommendations and Events.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "resourcerer.fullname" . }}
+  name: {{ $fullname }}-controller
   labels:
     {{- include "resourcerer.labels" . | nindent 4 }}
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets", "daemonsets"]
-    # patch is used by the UI to set the resourcerer.io/enabled label and mode annotation.
-    verbs: ["get", "list", "watch"{{ if not .Values.ui.readOnly }}, "patch"{{ end }}]
-  - apiGroups: [""]
-    resources: ["namespaces", "pods"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["autoscaling.k8s.io"]
-    resources: ["verticalpodautoscalers"]
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["resourcerer.io"]
+    resources: ["recommendations"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["resourcerer.io"]
+    resources: ["recommendations/status"]
+    verbs: ["get", "update", "patch"]
   - apiGroups: ["events.k8s.io", ""]
     resources: ["events"]
-    verbs: ["get", "list", "watch", "create", "patch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: {{ include "resourcerer.fullname" . }}
-  labels:
-    {{- include "resourcerer.labels" . | nindent 4 }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: {{ include "resourcerer.fullname" . }}
-subjects:
-  - kind: ServiceAccount
-    name: {{ include "resourcerer.serviceAccountName" . }}
-    namespace: {{ .Release.Namespace }}
-{{- if gt (int .Values.replicaCount) 1 }}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: {{ include "resourcerer.fullname" . }}-leader-election
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "resourcerer.labels" . | nindent 4 }}
-rules:
+    verbs: ["create", "patch"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
+# Reads for the UI; writes apply requests on Recommendations and resourcerer.io/* annotations.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRole
 metadata:
-  name: {{ include "resourcerer.fullname" . }}-leader-election
-  namespace: {{ .Release.Namespace }}
+  name: {{ $fullname }}-server
   labels:
     {{- include "resourcerer.labels" . | nindent 4 }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: {{ include "resourcerer.fullname" . }}-leader-election
-subjects:
-  - kind: ServiceAccount
-    name: {{ include "resourcerer.serviceAccountName" . }}
-    namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"{{ if not .Values.readOnly }}, "patch"{{ end }}]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"{{ if not .Values.readOnly }}, "patch"{{ end }}]
+  - apiGroups: [""]
+    resources: ["configmaps", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["resourcerer.io"]
+    resources: ["recommendations"]
+    verbs: ["get", "list", "watch"{{ if not .Values.readOnly }}, "patch"{{ end }}]
+{{- if .Values.applier.enabled }}
+---
+# The only role that changes workload resources and HPA targets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullname }}-applier
+  labels:
+    {{- include "resourcerer.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["resourcerer.io"]
+    resources: ["recommendations"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["resourcerer.io"]
+    resources: ["recommendations/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["events.k8s.io", ""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 {{- end }}
 {{- end }}

@@ -1,6 +1,3 @@
-# -- Number of replicas. Leader election is enabled automatically above 1.
-replicaCount: 1
-
 image:
   repository: ghcr.io/gjbravi/resourcerer
   # -- Defaults to the chart appVersion.
@@ -11,15 +8,14 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# -- Which workloads get a VPA.
+# -- Cluster name shown in the UI.
+clusterName: kubernetes
+
+# -- Which workloads get a recommendation.
 # `all`: every Deployment, StatefulSet and DaemonSet outside excludedNamespaces;
 # opt out with the `resourcerer.io/enabled=false` label on the workload or namespace.
 # `label`: only workloads with `resourcerer.io/enabled=true` on the workload or its namespace.
 selection: all
-
-# -- VPA mode when a workload has no `resourcerer.io/mode` annotation.
-# `Off`: recommendations only. `Auto`: VPA updates pods (InPlaceOrRecreate).
-defaultMode: "Off"
 
 # -- Namespaces that are never managed. The release namespace is always added.
 excludedNamespaces:
@@ -27,48 +23,89 @@ excludedNamespaces:
   - kube-public
   - kube-node-lease
 
-ui:
-  # -- Serve the embedded UI. The API is served either way.
+prometheus:
+  # -- Prometheus-compatible API (Prometheus, Thanos, Mimir, VictoriaMetrics) with cAdvisor and
+  # kube-state-metrics data. Retention should cover the longest learning period.
+  url: http://prometheus-server.monitoring.svc
+  # -- rate() window for CPU usage; at least 4× the scrape interval.
+  rateWindow: 5m
+  # -- Finest query resolution, about the scrape interval.
+  minStep: 30s
+
+# -- Cluster defaults for optimization settings, keyed by annotation name without the
+# `resourcerer.io/` prefix. Namespaces and workloads override them with annotations.
+# Unset keys use the built-in defaults shown in the UI.
+defaults: {}
+  # cpu.optimization-goal: Balanced
+  # memory.optimization-goal: Balanced
+  # learning-period: P7D
+  # schedule: "@daily"
+  # auto-deploy: Disabled
+
+# -- Rates for monthly cost estimates, in USD.
+cost:
+  cpuCoreHour: 0.0316
+  memoryGiBHour: 0.0042
+
+auth:
+  # -- Only `anonymous` for now: anyone who reaches the UI can use it, with the server's
+  # ServiceAccount. Keep the Service internal or put an authenticating proxy in front.
+  strategy: anonymous
+
+# -- Refuse every change from the UI and API.
+readOnly: false
+
+controller:
+  # -- Above 1, replicas use leader election; only one recommends at a time.
+  replicas: 1
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { memory: 256Mi }
+  extraArgs: []
+
+applier:
+  # -- The applier is the only component that writes to workloads. Disable it for a recommend-only install.
   enabled: true
-  # -- Disallow mode changes from the UI and API.
-  readOnly: false
+  replicas: 1
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits: { memory: 128Mi }
+  extraArgs: []
 
-serviceAccount:
-  create: true
-  annotations: {}
-  # -- Defaults to the fullname.
-  name: ""
-
-rbac:
-  # -- Create the ClusterRole and ClusterRoleBinding.
-  create: true
-
-service:
-  type: ClusterIP
-  port: 80
-
-ingress:
-  enabled: false
-  className: ""
-  annotations: {}
-  hosts:
-    - host: resourcerer.local
-      paths:
-        - path: /
-          pathType: Prefix
-  tls: []
+server:
+  replicas: 1
+  # -- Serve the embedded UI; the API is served either way.
+  ui: true
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits: { memory: 192Mi }
+  extraArgs: []
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: resourcerer.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
 
 metrics:
-  # -- Expose controller-runtime metrics on a separate port.
-  enabled: true
+  # -- Add prometheus.io/scrape annotations to the controller metrics Service. The UI charts
+  # recommendation history from the resourcerer_recommendation metric, so Prometheus must scrape it.
+  scrapeAnnotations: true
   serviceMonitor:
-    # -- Create a Prometheus Operator ServiceMonitor.
+    # -- Create a Prometheus Operator ServiceMonitor instead.
     enabled: false
     interval: 30s
     labels: {}
 
-# -- Extra command-line flags, e.g. ["--zap-log-level=debug"].
-extraArgs: []
+rbac:
+  create: true
 
 podAnnotations: {}
 podLabels: {}
@@ -83,13 +120,6 @@ securityContext:
   readOnlyRootFilesystem: true
   capabilities:
     drop: ["ALL"]
-
-resources:
-  requests:
-    cpu: 10m
-    memory: 64Mi
-  limits:
-    memory: 256Mi
 
 nodeSelector: {}
 tolerations: []

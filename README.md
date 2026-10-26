@@ -3,129 +3,143 @@
 [![CI](https://github.com/gjbravi/resourcerer/actions/workflows/ci.yaml/badge.svg)](https://github.com/gjbravi/resourcerer/actions/workflows/ci.yaml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-resourcerer creates and manages [Vertical Pod Autoscalers](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler)
-for your workloads and gives you a UI to review their recommendations and choose, per workload, whether VPA only
-recommends or also applies.
+resourcerer recommends CPU and memory requests and limits for your Kubernetes workloads from their usage history
+in Prometheus, shows the projected impact in a UI, and applies recommendations on request or automatically.
 
-It is in the spirit of [Goldilocks](https://github.com/FairwindsOps/goldilocks): one VPA per workload, no
-configuration needed to get started.
+It runs entirely in your cluster. There is no machine learning: every recommendation is a documented percentile
+of usage plus headroom, so you can see exactly why a value was chosen.
+
+> Status: proof of concept. APIs, annotations and the CRD may change.
 
 ## Features
 
-- One VPA per Deployment, StatefulSet and DaemonSet, owned by the workload and deleted with it.
-- Two selection modes: **all** workloads (opt out with a label) or only **labeled** workloads and namespaces.
-- Per-workload mode: **Recommend** (VPA `Off`), **Auto** (VPA `InPlaceOrRecreate`) or **Disabled**.
-- Web UI: list with filters (under/over-provisioned, learning), recommendation detail with VPA bounds,
-  live pod resources and events, light and dark theme.
-- Everything is driven by labels and annotations, so it works with GitOps; the UI writes the same keys.
-- Never touches VPAs it did not create.
+- A recommendation per Deployment, StatefulSet and DaemonSet, regenerated on a schedule spread across workloads.
+- Optimization goals per resource (Savings, Balanced, Reliability), limit policies, minimums, skipped sidecars.
+- Reliability response: after an OOM kill, memory is raised above the limit that killed the container.
+- HPA-aware: when the HPA scales on CPU utilization, its target is adjusted with the requests to keep the scale point.
+- Settings cascade: Helm defaults → namespace annotations → workload annotations, all GitOps-friendly.
+- UI: cluster overview, workload list with bulk apply, per-workload impact, usage percentile charts with current and
+  recommended requests over time, Kustomize/Helm/kubectl patches, and effective settings with their source.
+- Apply Now, Revert and auto-deploy with thresholds, through server-side apply with field manager `resourcerer`.
+- No database: state lives in a `Recommendation` CRD, history in Prometheus.
+
+## Architecture
+
+One image, three components, each with its own ServiceAccount:
+
+| Component | Does | Writes |
+|---|---|---|
+| `controller` | Discovers workloads, resolves settings, queries Prometheus, computes recommendations, exports them as metrics | `Recommendation` objects, Events |
+| `applier` | Applies or reverts on request, and auto-deploys | Workload resources, HPA targets |
+| `server` | REST API and UI | Apply requests on `Recommendation`, `resourcerer.io/*` annotations |
+
+The applier is the only component that changes workloads; disable it (`applier.enabled=false`) for a recommend-only
+install, or set `readOnly=true` to make the UI read-only.
+
+Authentication is `anonymous` for now, like Kiali's anonymous strategy: anyone who reaches the UI can use it. Keep the
+Service internal (port-forward) or put an authenticating proxy in front.
 
 ## Requirements
 
-- Kubernetes 1.33+ (in-place pod resize)
-- [Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) 1.4+:
-  the recommender for recommendations, plus the updater and admission controller for Auto mode.
+- Kubernetes 1.33+
+- A Prometheus-compatible API (Prometheus, Thanos, Mimir, VictoriaMetrics) with cAdvisor and kube-state-metrics,
+  retaining at least the longest learning period (7 days by default), and scraping the controller's metrics Service
+  (annotated with `prometheus.io/scrape` by default) for recommendation history.
 
 ## Install
 
 ```bash
-helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer \
-  --namespace resourcerer --create-namespace
+helm install resourcerer ./charts/resourcerer -n resourcerer --create-namespace \
+  --set prometheus.url=http://prometheus-server.monitoring.svc
 kubectl -n resourcerer port-forward svc/resourcerer 8080:80
 ```
 
-Or from a checkout: `helm install resourcerer ./charts/resourcerer -n resourcerer --create-namespace`.
-
 See [charts/resourcerer/values.yaml](charts/resourcerer/values.yaml) for all options.
 
-## Configuration
+## How recommendations are computed
 
-### Which workloads get a VPA
+For each container, over the learning period, using the busiest pod at each sample:
 
-| `selection` | Behavior |
-|---|---|
-| `all` (default) | Every workload outside `excludedNamespaces` gets a VPA. Opt out with `resourcerer.io/enabled=false`. |
-| `label` | Only workloads with `resourcerer.io/enabled=true` on the workload or its namespace. |
-
-The label is read from the workload first, then from its namespace, so a workload can override its namespace in
-either direction:
-
-```bash
-# selection=label: enable a whole namespace, except one workload
-kubectl label namespace shop resourcerer.io/enabled=true
-kubectl -n shop label deployment legacy resourcerer.io/enabled=false
-
-# selection=all: disable a namespace
-kubectl label namespace batch resourcerer.io/enabled=false
-```
-
-### VPA mode
-
-| Mode | VPA `updateMode` | Effect |
+| Goal | CPU request | Memory request |
 |---|---|---|
-| `Off` (default) | `Off` | VPA only computes recommendations. |
-| `Auto` | `InPlaceOrRecreate` | VPA updates pod requests, in place when possible, otherwise by recreating pods. |
+| Savings | p85 + 5% | p99 + 10% |
+| Balanced (default) | p95 + 10% | max + 15% |
+| Reliability | p99 + 20% | max + 30% |
 
-Set it with the `resourcerer.io/mode` annotation on the workload or, as a default, on the namespace. The chart's
-`defaultMode` applies when neither is set.
+Then the minimum is applied and values are rounded (CPU to 1m below 100m and 5m above, memory to 1Mi). Limits
+follow the limits policy:
+
+| Policy | Limits |
+|---|---|
+| `RequestsRaiseLimitsIfNeeded` (default) | Kept, unless the new request exceeds them: then request × ratio |
+| `RequestsOnly` | Kept |
+| `RequestsAndLimits` | request × ratio |
+| `DoNotOptimize` | Requests and limits kept |
+
+Phases: **Pending** (collecting history), **Learning** (preliminary, learning period not covered), **Ready**,
+**Warning** (e.g. scaled to zero), **Unsupported** (HPA scales on CPU and memory utilization), **Error** (metrics
+unavailable). Auto-deploy only applies Ready recommendations.
+
+The score (0–100) is how closely current requests match the recommendation, weighted by cost; net impact is requests
+× average replicas, priced with `cost.cpuCoreHour` and `cost.memoryGiBHour`.
+
+## Settings
+
+Set cluster defaults in the Helm values under `defaults`; override them per namespace or workload with annotations:
 
 ```bash
-kubectl -n shop annotate deployment api resourcerer.io/mode=Auto
+kubectl annotate namespace payments resourcerer.io/auto-deploy=Enabled
+kubectl -n payments annotate deployment ledger resourcerer.io/memory.optimization-goal=Reliability
 ```
 
-### Managed VPAs
+| Annotation (`resourcerer.io/…`) | Default | Values |
+|---|---|---|
+| `cpu.optimization-goal`, `memory.optimization-goal` | `Balanced` | `Savings`, `Balanced`, `Reliability` |
+| `learning-period` | `P7D` | ISO 8601 duration, e.g. `PT1H`, `P1D`, `P14D` |
+| `schedule` | `@daily` | `@hourly`, `@daily`, `@weekly`, `@every <duration>` |
+| `auto-deploy` | `Disabled` | `Enabled`, `Disabled` |
+| `auto-deploy.threshold` | `10%` | Minimum relative change (also at least 10m CPU or 16Mi memory) |
+| `apply-method` | `PatchImmediateRollout` | `PatchImmediateRollout` |
+| `cpu.limits-policy`, `memory.limits-policy` | `RequestsRaiseLimitsIfNeeded` | See above |
+| `cpu.limit-request-ratio`, `memory.limit-request-ratio` | `2.0`, `1.5` | Number ≥ 1 |
+| `cpu.requests.min`, `memory.requests.min` | `10m`, `16Mi` | Quantity |
+| `containers.skip` | `istio-proxy,linkerd-proxy` | Comma-separated names, or `none` |
+| `hpa.preserve-scale-point` | `true` | `true`, `false` |
 
-resourcerer names each VPA `<kind>-<name>` (for example `deployment-api`), labels it `resourcerer.io/managed=true`
-and sets the workload as its owner. It reconciles only `targetRef` and `updatePolicy.updateMode`, so other fields
-you set on the VPA by hand (for example `resourcePolicy`) are kept.
+Which workloads get a recommendation: `selection: all` (default; opt out with the label
+`resourcerer.io/enabled=false` on the workload or namespace) or `selection: label` (opt in with
+`resourcerer.io/enabled=true`).
 
-If a VPA with the same name already exists without the managed label, resourcerer leaves it alone and emits a
-`VPAConflict` event on the workload.
+### GitOps
 
-### Running alongside Goldilocks
+Applied values are owned by the field manager `resourcerer`. With Argo CD, ignore them so they are not reverted:
 
-Both tools create one VPA per workload. Two VPAs on the same pods conflict, so do not let them manage the same
-namespaces: use `selection: label` here, or exclude namespaces in one of the two.
+```yaml
+ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    managedFieldsManagers: [resourcerer]
+```
+
+Or copy the patch from the workload's **Patches** tab into Git instead of applying from the UI.
 
 ## Development
 
-Requirements: Go 1.26, Node 24, Docker, kind, kubectl, Helm.
-
 ```bash
-make help          # all targets
-make test          # Go and UI unit tests
-make lint          # go vet, golangci-lint, eslint, tsc, helm lint
-make kind-up       # kind cluster with metrics-server, VPA and demo workloads
-make kind-deploy   # build the image, load it into kind and install the chart
-make e2e           # end-to-end checks against the kind cluster
-make run           # run locally against the current kube context, UI on :8080
-make web-dev       # Vite dev server with /api proxied to :8080
+make kind-up        # kind cluster with Prometheus, kube-state-metrics, metrics-server and demo workloads
+make kind-deploy    # build the image, load it, install the chart with hack/resourcerer-values.yaml
+make e2e            # end-to-end checks
+kubectl --context kind-resourcerer -n resourcerer port-forward svc/resourcerer 8080:80
 ```
 
-Behind a TLS-intercepting proxy, pass its root CA to the kind nodes: `EXTRA_CA_CERT=/path/ca.pem make kind-up`.
+The kind values use a 15-minute learning period and a 2-minute schedule, so recommendations show up within minutes.
+Behind a TLS-intercepting proxy, pass its root CA: `EXTRA_CA_CERT=/path/ca.pem make kind-up`.
 
-### Layout
+To run the components locally against the kind cluster: `make prom-forward` in one terminal, `make run` in another,
+and `make web-dev` for the UI with hot reload.
 
-```
-cmd/resourcerer/     entrypoint and flags
-internal/config/     selection and mode rules (labels, annotations, flags)
-internal/controller/ reconcilers, one per workload kind
-internal/vpa/        build, create, update and delete managed VPAs
-internal/server/     HTTP API and embedded UI
-internal/workload/   uniform view over Deployment, StatefulSet and DaemonSet
-web/                 React + MUI UI, embedded with go:embed
-charts/resourcerer/  Helm chart
-hack/                kind setup and demo workloads
-test/e2e/            end-to-end checks
-```
-
-## Roadmap
-
-- Apply a recommendation to the workload spec on demand, with revert.
-- Optimization goals (savings, balanced, reliability) via multiple VPA recommenders.
-- Usage charts from Prometheus.
-- Argo Rollouts and CronJob support.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[Apache 2.0](LICENSE)
+[Apache-2.0](LICENSE)

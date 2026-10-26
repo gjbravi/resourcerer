@@ -2,17 +2,31 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "replicaCount": { "type": "integer", "minimum": 1 },
+    "clusterName": { "type": "string" },
     "selection": { "type": "string", "enum": ["all", "label"] },
-    "defaultMode": { "type": "string", "enum": ["Off", "Auto"] },
     "excludedNamespaces": { "type": "array", "items": { "type": "string" } },
-    "ui": {
+    "prometheus": {
       "type": "object",
+      "required": ["url"],
       "properties": {
-        "enabled": { "type": "boolean" },
-        "readOnly": { "type": "boolean" }
+        "url": { "type": "string", "pattern": "^https?://" },
+        "rateWindow": { "type": "string" },
+        "minStep": { "type": "string" }
       }
     },
+    "defaults": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } },
+    "cost": {
+      "type": "object",
+      "properties": {
+        "cpuCoreHour": { "type": "number", "minimum": 0 },
+        "memoryGiBHour": { "type": "number", "minimum": 0 }
+      }
+    },
+    "auth": { "type": "object", "properties": { "strategy": { "type": "string", "enum": ["anonymous"] } } },
+    "readOnly": { "type": "boolean" },
+    "controller": { "$ref": "#/definitions/component" },
+    "applier": { "$ref": "#/definitions/component" },
+    "server": { "$ref": "#/definitions/component" },
     "image": {
       "type": "object",
       "properties": {
@@ -20,7 +34,16 @@
         "tag": { "type": "string" },
         "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
       }
-    },
-    "extraArgs": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "definitions": {
+    "component": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicas": { "type": "integer", "minimum": 1 },
+        "extraArgs": { "type": "array", "items": { "type": "string" } }
+      }
+    }
   }
 }

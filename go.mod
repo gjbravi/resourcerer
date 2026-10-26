@@ -3,9 +3,10 @@ module github.com/gjbravi/resourcerer
 go 1.26.0
 
 require (
+	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/common v0.70.1
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
-	k8s.io/autoscaler/vertical-pod-autoscaler v1.8.1
 	k8s.io/client-go v0.37.1
 	sigs.k8s.io/controller-runtime v0.25.2
 )
@@ -142,6 +143,7 @@ require (
 	github.com/karamaru-alpha/copyloopvar v1.2.2 // indirect
 	github.com/kisielk/errcheck v1.30.0 // indirect
 	github.com/kkHAIKE/contextcheck v1.1.6 // indirect
+	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/kulti/thelper v0.7.1 // indirect
 	github.com/kunwardeep/paralleltest v1.0.16 // indirect
 	github.com/ldez/exptostd v0.4.5 // indirect
@@ -177,9 +179,7 @@ require (
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_golang v1.24.1 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
-	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/quasilyte/go-ruleguard v0.4.5 // indirect
 	github.com/quasilyte/go-ruleguard/dsl v0.3.23 // indirect
