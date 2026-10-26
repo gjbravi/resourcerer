@@ -57,10 +57,10 @@ api_cpu() { k -n demo get deploy api -o jsonpath='{.spec.template.spec.container
 wait_for "creates a Recommendation per workload" 60 k -n demo get rec deployment-api deployment-worker statefulset-cache daemonset-log-agent deployment-web deployment-indexer
 wait_for "recommendations leave Pending once history exists" 360 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.phase}') =~ ^(Learning|Ready)$ ]]"
-[[ "$(rec_field demo deployment-api '{.status.containers[?(@.name=="istio-proxy")].skipped}')" == "true" ]] \
-  && pass "istio-proxy is not optimized" || fail "istio-proxy is not optimized"
-[[ -n "$(rec_field demo deployment-web '{.status.hpa.recommended}')" ]] \
-  && pass "HPA target is recommended for web" || fail "HPA target is recommended for web"
+wait_for "istio-proxy is not optimized" 60 bash -c \
+  "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.containers[?(@.name==\"istio-proxy\")].skipped}') == true ]]"
+wait_for "HPA target is recommended for web" 360 bash -c \
+  "[[ -n \$(kubectl --context $CTX -n demo get rec deployment-web -o jsonpath='{.status.hpa.recommended}') ]]"
 
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/api/apply" -d '{"hash":"stale"}')
 [[ "$code" == 409 ]] && pass "apply with a stale hash is refused" || fail "apply with a stale hash is refused (got $code)"
@@ -70,8 +70,9 @@ hash=$(rec_field demo deployment-api '{.status.hash}')
 want=$(rec_field demo deployment-api '{.status.containers[?(@.name=="api")].recommended.requests.cpu}')
 curl -fs -X POST "$API/workloads/demo/Deployment/api/apply" -d "{\"hash\":\"$hash\"}" >/dev/null
 wait_for "Apply patches the workload with the recommendation ($before → $want)" 60 bash -c "[[ \$(kubectl --context $CTX -n demo get deploy api -o jsonpath='{.spec.template.spec.containers[?(@.name==\"api\")].resources.requests.cpu}') == '$want' ]]"
-[[ "$(rec_field demo deployment-api '{.status.history[0].action}')" == "Apply" ]] \
-  && pass "apply is recorded in history" || fail "apply is recorded in history"
+# The applier patches the workload first and records history right after.
+wait_for "apply is recorded in history" 30 bash -c \
+  "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.history[0].action}') == Apply ]]"
 [[ "$(k -n demo get deploy api -o json --show-managed-fields | jq -r '[.metadata.managedFields[] | select(.manager=="resourcerer")] | length')" -ge 1 ]] \
   && pass "field manager is resourcerer" || fail "field manager is resourcerer"
 
