@@ -53,6 +53,9 @@ function App() {
       <aside className="rz-side">
         <a className="rz-logo" href="#/overview">
           <HatLogo /> <span>resourcerer</span>
+          <span className="rz-beta" title="Beta: APIs, annotations and the CRD may change">
+            Beta
+          </span>
         </a>
         <div className="rz-cluster">
           <Server size={14} />

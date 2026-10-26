@@ -1,7 +1,14 @@
-# resourcerer
+<p align="center">
+  <img src="docs/logo.svg" alt="resourcerer logo" width="112" height="112">
+</p>
 
-[![CI](https://github.com/gjbravi/resourcerer/actions/workflows/ci.yaml/badge.svg)](https://github.com/gjbravi/resourcerer/actions/workflows/ci.yaml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+<h1 align="center">resourcerer</h1>
+
+<p align="center">
+  <a href="https://github.com/gjbravi/resourcerer/actions/workflows/ci.yaml"><img src="https://github.com/gjbravi/resourcerer/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"></a>
+  <img src="https://img.shields.io/badge/status-beta-7c5cff.svg" alt="Status: beta">
+</p>
 
 resourcerer recommends CPU and memory requests and limits for your Kubernetes workloads from their usage history
 in Prometheus, shows the projected impact in a UI, and applies recommendations on request or automatically.
@@ -9,7 +16,7 @@ in Prometheus, shows the projected impact in a UI, and applies recommendations o
 It runs entirely in your cluster. There is no machine learning: every recommendation is a documented percentile
 of usage plus headroom, so you can see exactly why a value was chosen.
 
-> Status: proof of concept. APIs, annotations and the CRD may change.
+> Status: beta. APIs, annotations and the CRD may change.
 
 ## Features
 
