@@ -395,8 +395,7 @@ function ContainerChart({
       <TimeChart
         title={
           <>
-            Average {resource === "cpu" ? "CPU" : "Memory"} Usage, Requests, and Limits for{" "}
-            <span className="t-accent">{container}</span>
+            {resource === "cpu" ? "CPU" : "Memory"} · <span className="t-accent">{container}</span>
           </>
         }
         unit={resource === "cpu" ? "Millicores" : "MiB"}
