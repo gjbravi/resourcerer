@@ -1,8 +1,8 @@
 import { Activity, Boxes, Cpu, Flame, Info, MemoryStick, PiggyBank, ShieldCheck, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Summary } from "../api";
-import { Art, Gauge } from "../art";
-import { Delta, Money, PHASE_NAMES, phaseTone, Ring, StatusBadge, WlCell } from "../components";
+import { Art, NoteArt } from "../art";
+import { Delta, Metric, Money, PHASE_NAMES, phaseTone, Ring, StatusBadge, WlCell } from "../components";
 import { fmtCores, fmtMem, fmtMoney } from "../format";
 import { navigate, workloadHash } from "../hooks";
 import { applicable } from "./Workloads";
@@ -93,35 +93,56 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
         </div>
       </div>
 
-      <section className="rz-card rz-hero">
-        <Art kind="potion" />
-        <div className="rz-herobody">
-          <h3>
-            Reclaimable from over-provisioned workloads{" "}
-            <Info size={14} aria-label="Sum of savings where requests are above the recommendation" />
-          </h3>
+      <div className="rz-pillbar">
+        <a className="rz-btn primary" href="#/workloads?view=pending">
+          Review {ready} ready to apply
+        </a>
+        <a className="rz-btn ghost" href="#/workloads?view=reliability">
+          <ShieldCheck size={15} /> {risks.length} reliability risks
+        </a>
+        <a className="rz-btn ghost" href="#/workloads?view=savings">
+          <PiggyBank size={15} /> {savings.length} savings
+        </a>
+      </div>
+
+      <section className="rz-metrics">
+        <Metric
+          label={
+            <>
+              Reclaimable <Info size={15} aria-label="Sum of savings where requests are above the recommendation" />
+            </>
+          }
+          art={<NoteArt />}
+          trend={
+            <>
+              <Delta from={cur.cost} to={rec.cost} money />{" "}
+              <span className="rz-dim">
+                cluster total · {fmtMoney(cur.cost)} → {fmtMoney(rec.cost)}
+              </span>
+            </>
+          }
+        >
           <Money value={reclaim} />
-          <div className="rz-heromsg">
-            Cluster total <Delta from={cur.cost} to={rec.cost} money />{" "}
+        </Metric>
+        <Metric
+          label={
+            <>
+              Fit score{" "}
+              <Info size={15} aria-label="How closely current requests match the recommendations, weighted by cost" />
+            </>
+          }
+          art={<Art kind="orb" size={128} />}
+          trend={
             <span className="rz-dim">
-              · {fmtMoney(cur.cost)} → {fmtMoney(rec.cost)} per month
+              {scored.length} of {rows.length} workloads scored
             </span>
+          }
+        >
+          <div className="rz-money">
+            {score == null ? "–" : Math.round(score)}
+            <span className="dec">/100</span>
           </div>
-          <div className="rz-recactions">
-            <a className="rz-btn primary" href="#/workloads?view=pending">
-              Review {ready} ready to apply
-            </a>
-            <a className="rz-btn ghost" href="#/workloads?view=reliability">
-              <ShieldCheck size={15} /> {risks.length} reliability risks
-            </a>
-          </div>
-        </div>
-        <div className="rz-heroside">
-          <Gauge value={score} />
-          <span className="rz-dim rz-xs">
-            Fit score · {scored.length} of {rows.length} scored
-          </span>
-        </div>
+        </Metric>
       </section>
 
       <section className="rz-card rz-kpis">

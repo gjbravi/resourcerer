@@ -19,9 +19,20 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { api, type Detail, type Range, type Ref, type Resource, type SettingInfo } from "../api";
-import { Art, Gauge } from "../art";
+import { Art, NoteArt } from "../art";
 import { TimeChart } from "../chart";
-import { Change, CopyButton, Delta, ErrorBox, Modal, Money, SourceTag, StatusBadge, phaseTone } from "../components";
+import {
+  Change,
+  CopyButton,
+  Delta,
+  ErrorBox,
+  Metric,
+  Modal,
+  Money,
+  SourceTag,
+  StatusBadge,
+  phaseTone,
+} from "../components";
 import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
 import { toast, useAction, useImpact, useSeries, useWorkload, workloadHash } from "../hooks";
 import { meta } from "../settings";
@@ -89,82 +100,90 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
         </div>
       </div>
 
-      <section className="rz-card rz-hero">
-        <Art
-          kind={
-            d.phase === "Pending" || d.phase === "Learning"
-              ? "orb"
-              : net < -0.005 || d.oomKills > 0
-                ? "shield"
-                : "potion"
+      <section className="rz-metrics">
+        <Metric
+          label={
+            <>
+              {net >= 0 ? "Estimated savings" : "Extra capacity needed"}{" "}
+              <Info size={15} aria-label="Requests × average replicas, priced with the cost rates in Settings" />
+            </>
           }
-        />
-        <div className="rz-herobody">
-          <h3>
-            {net >= 0 ? "Estimated savings" : "Extra capacity needed"}{" "}
-            <Info size={14} aria-label="Requests × average replicas, priced with the cost rates in Settings" />
-          </h3>
-          <Money value={Math.abs(net)} />
-          <div className="rz-heromsg">
-            <Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />{" "}
-            <span className="rz-dim">
-              · {fmtMoney(d.current.monthlyCost)} → {fmtMoney(d.recommended.monthlyCost)} per month
-            </span>
-          </div>
-          <div className="rz-recmeta">
-            <StatusBadge phase={d.phase} title={d.message} />
-            <span>
-              Generated <b>{ago(d.generatedAt)}</b>
-            </span>
-            <span>
-              Next <b>{ago(d.nextScheduleAt)}</b>
-            </span>
-            <span>
-              {d.autoDeploy ? <Zap size={12} className="t-accent" /> : <ZapOff size={12} />} Auto-deploy{" "}
-              <b>{d.autoDeploy ? "on" : "off"}</b>
-            </span>
-            {lastApply && (
-              <span>
-                Applied <b>{ago(lastApply.time)}</b> by {lastApply.by}
+          art={d.oomKills > 0 || net < -0.005 ? <Art kind="shield" size={128} /> : <NoteArt />}
+          trend={
+            <>
+              <Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />{" "}
+              <span className="rz-dim">
+                {fmtMoney(d.current.monthlyCost)} → {fmtMoney(d.recommended.monthlyCost)} per month
               </span>
-            )}
+            </>
+          }
+        >
+          <Money value={Math.abs(net)} />
+        </Metric>
+        <Metric
+          label="Fit score"
+          art={<Art kind="orb" size={128} />}
+          trend={
+            <span className="rz-dim">
+              {d.score ? `CPU ${d.score.cpu}% · Memory ${d.score.memory}%` : "not scored yet"}
+            </span>
+          }
+        >
+          <div className="rz-money">
+            {d.score ? d.score.overall : "–"}
+            <span className="dec">/100</span>
           </div>
-          <div className="rz-recactions">
-            <button
-              className="rz-btn primary"
-              disabled={!canApply}
-              onClick={() => setConfirm(true)}
-              title={
-                readOnly ? "Read-only" : !d.pending ? "Current requests already match the recommendation" : d.message
-              }
-            >
-              <Sparkles size={15} /> Apply recommendation
-            </button>
-            <button
-              className="rz-btn ghost"
-              disabled={readOnly || d.phase === "Unsupported" || regenerate.isPending}
-              onClick={() =>
-                regenerate.mutate(undefined, {
-                  onSuccess: () =>
-                    toast({
-                      kind: "info",
-                      title: "Regeneration requested",
-                      body: "The controller recomputes from the latest history.",
-                    }),
-                })
-              }
-            >
-              <RefreshCw size={14} /> Regenerate
-            </button>
-          </div>
-        </div>
-        <div className="rz-heroside">
-          <Gauge value={d.score?.overall} />
-          <span className="rz-dim rz-xs">
-            {d.score ? `Fit score · CPU ${d.score.cpu}% · Memory ${d.score.memory}%` : "Fit score"}
-          </span>
-        </div>
+        </Metric>
       </section>
+
+      <div className="rz-actionsrow">
+        <div className="rz-recactions" style={{ marginTop: 0 }}>
+          <button
+            className="rz-btn primary"
+            disabled={!canApply}
+            onClick={() => setConfirm(true)}
+            title={
+              readOnly ? "Read-only" : !d.pending ? "Current requests already match the recommendation" : d.message
+            }
+          >
+            <Sparkles size={15} /> Apply recommendation
+          </button>
+          <button
+            className="rz-btn ghost"
+            disabled={readOnly || d.phase === "Unsupported" || regenerate.isPending}
+            onClick={() =>
+              regenerate.mutate(undefined, {
+                onSuccess: () =>
+                  toast({
+                    kind: "info",
+                    title: "Regeneration requested",
+                    body: "The controller recomputes from the latest history.",
+                  }),
+              })
+            }
+          >
+            <RefreshCw size={14} /> Regenerate
+          </button>
+        </div>
+        <div className="rz-recmeta" style={{ marginTop: 0 }}>
+          <StatusBadge phase={d.phase} title={d.message} />
+          <span>
+            Generated <b>{ago(d.generatedAt)}</b>
+          </span>
+          <span>
+            Next <b>{ago(d.nextScheduleAt)}</b>
+          </span>
+          <span>
+            {d.autoDeploy ? <Zap size={12} className="t-accent" /> : <ZapOff size={12} />} Auto-deploy{" "}
+            <b>{d.autoDeploy ? "on" : "off"}</b>
+          </span>
+          {lastApply && (
+            <span>
+              Applied <b>{ago(lastApply.time)}</b> by {lastApply.by}
+            </span>
+          )}
+        </div>
+      </div>
 
       <section className="rz-card rz-kpis">
         <div className="rz-kpi">

@@ -1,7 +1,70 @@
 import { useId } from "react";
 
 /** Soft "clay" illustrations: a light platform with a glowing object on top. */
-export type ArtKind = "orb" | "potion" | "shield" | "scroll";
+export type ArtKind = "orb" | "potion" | "shield" | "scroll" | "note";
+
+/** A floating stack of enchanted banknotes over a glowing platform. */
+export function NoteArt({ size = 132 }: { size?: number }) {
+  const id = useId().replace(/:/g, "");
+  const g = (n: string) => `${id}-${n}`;
+  // One banknote in isometric projection; dy lifts it above the one below.
+  // One banknote in isometric projection: top face A(18,44) B(62,26) C(96,40) D(52,58); dy lifts it.
+  const note = (dy: number, top = false) => (
+    <g transform={`translate(0 ${dy})`}>
+      <path d="M18 44 L52 58 L52 61.5 L18 47.5Z" fill="var(--art-deep)" opacity=".7" />
+      <path d="M52 58 L96 40 L96 43.5 L52 61.5Z" fill="var(--art-deep)" opacity=".45" />
+      <path d="M18 44 L62 26 L96 40 L52 58Z" fill={`url(#${g("paper")})`} />
+      <path d="M24 44 L62 28.6 L90 40 L52 55.4Z" fill="none" stroke="#fff" strokeOpacity=".6" strokeWidth=".9" />
+      {top && (
+        <>
+          <ellipse cx="69" cy="37.5" rx="6.5" ry="3.6" fill="#fff" opacity=".9" transform="rotate(-22 69 37.5)" />
+          <path d="M69 35 l.9 1.7 1.9.6 -1.9.7 -.9 1.7 -.8 -1.7 -1.9 -.7 1.9 -.6z" fill="var(--art-deep)" />
+          <ellipse cx="45" cy="47" rx="3.2" ry="1.8" fill="#fff" opacity=".55" transform="rotate(-22 45 47)" />
+        </>
+      )}
+    </g>
+  );
+  return (
+    <svg width={size} height={size * 0.9} viewBox="0 0 114 102" aria-hidden className="rz-art rz-note">
+      <defs>
+        <linearGradient id={g("paper")} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="var(--art-light)" />
+          <stop offset="1" stopColor="var(--art-deep)" />
+        </linearGradient>
+        <linearGradient id={g("plat")} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--art-plat-top)" />
+          <stop offset="1" stopColor="var(--art-plat-bottom)" />
+        </linearGradient>
+        <radialGradient id={g("beam")} cx=".5" cy="1" r=".9">
+          <stop offset="0" stopColor="var(--art-deep)" stopOpacity=".35" />
+          <stop offset="1" stopColor="var(--art-deep)" stopOpacity="0" />
+        </radialGradient>
+        <filter id={g("glow")} x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="6" />
+        </filter>
+      </defs>
+      <ellipse className="rz-note-shadow" cx="57" cy="92" rx="40" ry="8" fill="var(--art-shadow)" />
+      <path d="M17 82 L57 96 L97 82 L97 75 L57 89 L17 75Z" fill="var(--art-plat-bottom)" />
+      <path d="M17 75 L57 61 L97 75 L57 89Z" fill={`url(#${g("plat")})`} />
+      <ellipse cx="57" cy="75" rx="24" ry="8" fill="var(--art-deep)" opacity=".35" filter={`url(#${g("glow")})`} />
+      <path d="M33 75 L33 30 Q57 18 81 30 L81 75 Q57 86 33 75Z" fill={`url(#${g("beam")})`} />
+      <g className="rz-note-float">
+        {note(10)}
+        {note(3)}
+        {note(-4, true)}
+        {/* Paper band across the stack, parallel to the short edges. */}
+        <path d="M36.5 32.2 L43.5 29.3 L77.5 43.3 L70.5 46.2Z" fill="#fff" opacity=".95" />
+        <path d="M70.5 46.2 L77.5 43.3 L77.5 57.8 L70.5 60.7Z" fill="#fff" opacity=".7" />
+        <path d="M36.5 32.2 L36.5 35 L70.5 49 L70.5 46.2Z" fill="var(--art-deep)" opacity=".15" />
+      </g>
+      <g className="rz-sparkles" fill="var(--art-light)">
+        <path d="M22 22 l1.2 2.6 2.6 1.2 -2.6 1.2 -1.2 2.6 -1.2 -2.6 -2.6 -1.2 2.6 -1.2z" />
+        <path d="M96 16 l.9 2 2 .9 -2 .9 -.9 2 -.9 -2 -2 -.9 2 -.9z" />
+        <circle cx="90" cy="58" r="1.6" />
+      </g>
+    </svg>
+  );
+}
 
 export function Art({ kind, size = 104 }: { kind: ArtKind; size?: number }) {
   const id = useId().replace(/:/g, "");
@@ -31,12 +94,12 @@ export function Art({ kind, size = 104 }: { kind: ArtKind; size?: number }) {
       <path d="M12 61 L50 49 L88 61 L50 73Z" fill={`url(#${g("plat")})`} />
       <ellipse cx="50" cy="44" rx="24" ry="16" fill="var(--art-deep)" filter={`url(#${g("glow")})`} opacity=".45" />
       {kind === "orb" && (
-        <>
+        <g className="rz-orb-float">
           <ellipse cx="50" cy="60" rx="15" ry="4.5" fill="var(--art-deep)" opacity=".55" />
           <circle cx="50" cy="38" r="21" fill={`url(#${g("orb")})`} />
           <ellipse cx="42" cy="29" rx="7" ry="4" fill="#fff" opacity=".7" transform="rotate(-30 42 29)" />
           <path d="M56 40 l1.8 4.4 4.4 1.8 -4.4 1.8 -1.8 4.4 -1.8 -4.4 -4.4 -1.8 4.4 -1.8z" fill="#fff" opacity=".9" />
-        </>
+        </g>
       )}
       {kind === "potion" && (
         <>

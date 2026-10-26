@@ -236,3 +236,27 @@ export const WlCell = ({ w }: { w: Summary }) => (
     </span>
   </a>
 );
+
+/** A headline figure on the page surface: label, big value, trend line, floating illustration. */
+export function Metric({
+  label,
+  children,
+  trend,
+  art,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  trend?: ReactNode;
+  art?: ReactNode;
+}) {
+  return (
+    <div className="rz-metric">
+      <div className="rz-metric-body">
+        <h3>{label}</h3>
+        {children}
+        {trend && <div className="rz-metric-trend">{trend}</div>}
+      </div>
+      {art && <div className="rz-metric-art">{art}</div>}
+    </div>
+  );
+}

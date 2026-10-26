@@ -1349,3 +1349,104 @@
     transition: none !important;
   }
 }
+
+/* Headline metrics sit on the surface, not in a card. */
+.rz-pillbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.rz-pillbar .rz-btn {
+  padding: 9px 18px;
+}
+.rz-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 8px 0 6px;
+}
+@media (max-width: 1000px) {
+  .rz-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+.rz-metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 6px 36px 6px 4px;
+  min-width: 0;
+}
+.rz-metric + .rz-metric {
+  border-left: 1px solid var(--border);
+  padding-left: 36px;
+}
+@media (max-width: 1000px) {
+  .rz-metric + .rz-metric {
+    border-left: 0;
+    padding-left: 4px;
+  }
+}
+.rz-metric h3 {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--ink2);
+  margin: 0 0 6px;
+}
+.rz-metric .rz-money {
+  font-size: 3.4rem;
+  margin: 0;
+}
+.rz-metric .rz-money .dec {
+  font-size: 1rem;
+}
+.rz-metric-trend {
+  margin-top: 16px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rz-metric-art {
+  flex: none;
+}
+.rz-actionsrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.rz-note-float,
+.rz-orb-float {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rzfloat 4.2s ease-in-out infinite;
+}
+.rz-note-shadow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rzshadow 4.2s ease-in-out infinite;
+}
+.rz-sparkles {
+  animation: rztwinkle 2.8s ease-in-out infinite;
+}
+@keyframes rzfloat {
+  50% {
+    transform: translateY(-6px) rotate(-1.5deg);
+  }
+}
+@keyframes rzshadow {
+  50% {
+    transform: scale(0.86);
+    opacity: 0.6;
+  }
+}
+@keyframes rztwinkle {
+  50% {
+    opacity: 0.35;
+  }
+}
