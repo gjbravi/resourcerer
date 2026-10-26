@@ -1,3 +1,13 @@
+html,
+body {
+  margin: 0;
+  background: #f6f4fb;
+  color-scheme: light;
+}
+body:has(.rz.dark) {
+  background: #120f24;
+  color-scheme: dark;
+}
 /* Arcane lavender: light, soft and rounded, one violet accent. */
 .rz {
   --bg: #f6f4fb;
