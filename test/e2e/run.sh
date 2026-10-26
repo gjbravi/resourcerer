@@ -6,7 +6,20 @@ CTX="${KUBE_CONTEXT:-kind-resourcerer}"
 PORT="${E2E_PORT:-18080}"
 k() { kubectl --context "$CTX" "$@"; }
 pass() { printf '\033[32mPASS\033[0m %s\n' "$*"; }
-fail() { printf '\033[31mFAIL\033[0m %s\n' "$*"; exit 1; }
+fail() {
+  printf '\033[31mFAIL\033[0m %s\n' "$*"
+  echo "--- recommendations"
+  k get recs -A -o wide || true
+  for r in payments/deployment-checkout demo/deployment-api; do
+    echo "--- $r status"
+    k -n "${r%%/*}" get rec "${r##*/}" -o json | jq '.status | del(.containers[]?.basis)' || true
+  done
+  for c in controller applier; do
+    echo "--- $c logs"
+    k -n resourcerer logs "deploy/resourcerer-$c" --tail=40 || true
+  done
+  exit 1
+}
 
 # wait_for <description> <seconds> <command...>
 wait_for() {
