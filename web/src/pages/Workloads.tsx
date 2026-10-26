@@ -2,10 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowRight, ArrowUp, Flame, Search, Zap, ZapOff } from "lucide-react";
 import { useState } from "react";
 import { api, refKey, type Phase, type Resource, type Summary } from "../api";
-import { Delta, Modal, PHASE_NAMES, Ring, StatusBadge } from "../components";
+import { Delta, Modal, PHASE_NAMES, Ring, StatusBadge, WlCell } from "../components";
 import { fmt } from "../format";
 import { navigate, toast, workloadHash } from "../hooks";
-import { WlCell } from "./Overview";
 
 const net = (w: Summary) => w.current.monthlyCost - w.recommended.monthlyCost;
 

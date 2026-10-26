@@ -1,52 +1,11 @@
-import { Flame, Info, PiggyBank, ShieldCheck, Zap } from "lucide-react";
+import { Activity, Boxes, Cpu, Flame, Info, MemoryStick, PiggyBank, ShieldCheck, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Summary } from "../api";
-import { Delta, PHASE_NAMES, phaseTone, Ring, StatusBadge } from "../components";
+import { Art, Gauge } from "../art";
+import { Delta, Money, PHASE_NAMES, phaseTone, Ring, StatusBadge, WlCell } from "../components";
 import { fmtCores, fmtMem, fmtMoney } from "../format";
 import { navigate, workloadHash } from "../hooks";
-import { ArrowRight } from "lucide-react";
-
-export function SummaryGrid({
-  cur,
-  rec,
-}: {
-  cur: { cost: number; cpu: number; memory: number };
-  rec: { cost: number; cpu: number; memory: number };
-}) {
-  return (
-    <div className="rz-sumgrid">
-      <span className="h">Current Requests</span>
-      <span />
-      <span className="h">Recommended</span>
-      <span className="h">Net Impact</span>
-      <b>
-        {fmtMoney(cur.cost)} <small>/mo.</small>
-      </b>
-      <ArrowRight size={14} className="rz-dim" />
-      <b>
-        {fmtMoney(rec.cost)} <small>/mo.</small>
-      </b>
-      <Delta from={cur.cost} to={rec.cost} money />
-      <b>{fmtCores(cur.cpu)}</b>
-      <ArrowRight size={14} className="rz-dim" />
-      <b>{fmtCores(rec.cpu)}</b>
-      <Delta from={cur.cpu} to={rec.cpu} r="cpu" />
-      <b>{fmtMem(cur.memory)}</b>
-      <ArrowRight size={14} className="rz-dim" />
-      <b>{fmtMem(rec.memory)}</b>
-      <Delta from={cur.memory} to={rec.memory} r="memory" />
-    </div>
-  );
-}
-
-export const WlCell = ({ w }: { w: Summary }) => (
-  <a className="rz-wl" href={workloadHash(w)} onClick={(e) => e.stopPropagation()}>
-    <b>{w.name}</b>
-    <span className="rz-dim rz-xs">
-      {w.namespace} · {w.kind}
-    </span>
-  </a>
-);
+import { applicable } from "./Workloads";
 
 const net = (w: Summary) => w.current.monthlyCost - w.recommended.monthlyCost;
 
@@ -89,6 +48,17 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
   const score = scored.length
     ? scored.reduce((a, w) => a + w.score!.overall * w.recommended.monthlyCost, 0) / (weight || 1)
     : undefined;
+  const cur = {
+    cost: sum((w) => w.current.monthlyCost),
+    cpu: sum((w) => w.current.cpu),
+    memory: sum((w) => w.current.memory),
+  };
+  const rec = {
+    cost: sum((w) => w.recommended.monthlyCost),
+    cpu: sum((w) => w.recommended.cpu),
+    memory: sum((w) => w.recommended.memory),
+  };
+  const reclaim = sum((w) => Math.max(0, net(w)));
   const savings = rows
     .filter((w) => net(w) > 0.5)
     .sort((a, b) => net(b) - net(a))
@@ -97,6 +67,7 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
     .filter((w) => w.under || w.oomKills > 0 || w.noRequests)
     .sort((a, b) => b.oomKills - a.oomKills || net(a) - net(b))
     .slice(0, 5);
+  const ready = rows.filter((w) => applicable(w) && !w.autoDeploy).length;
   const namespaces = [...new Set(rows.map((w) => w.namespace))]
     .map((ns) => {
       const r = rows.filter((w) => w.namespace === ns);
@@ -117,76 +88,88 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
         <div>
           <h1>Overview</h1>
           <p className="rz-dim">
-            Requests across {rows.length} workloads in {cluster}, compared with what their usage history recommends.
+            {rows.length} workloads in {cluster}, compared with what their usage history recommends.
           </p>
         </div>
       </div>
-      <div className="rz-hero">
-        <div className="rz-herocell score">
+
+      <section className="rz-card rz-hero">
+        <Art kind="potion" />
+        <div className="rz-herobody">
           <h3>
-            Optimization Score{" "}
-            <Info
-              size={14}
-              className="rz-dim"
-              aria-label="How well current requests match recommendations, weighted by cost"
-            />
+            Reclaimable from over-provisioned workloads{" "}
+            <Info size={14} aria-label="Sum of savings where requests are above the recommendation" />
           </h3>
-          <div className="rz-scorerow">
-            <Ring value={score} size={96} stroke={9} />
-            <div className="rz-dim">
-              {scored.length} scored
-              <br />
-              {rows.length - scored.length} without score
-            </div>
+          <Money value={reclaim} />
+          <div className="rz-heromsg">
+            Cluster total <Delta from={cur.cost} to={rec.cost} money />{" "}
+            <span className="rz-dim">
+              · {fmtMoney(cur.cost)} → {fmtMoney(rec.cost)} per month
+            </span>
+          </div>
+          <div className="rz-recactions">
+            <a className="rz-btn primary" href="#/workloads?view=pending">
+              Review {ready} ready to apply
+            </a>
+            <a className="rz-btn ghost" href="#/workloads?view=reliability">
+              <ShieldCheck size={15} /> {risks.length} reliability risks
+            </a>
           </div>
         </div>
-        <div className="rz-herocell summary">
-          <h3>Recommendation Summary</h3>
-          <SummaryGrid
-            cur={{
-              cost: sum((w) => w.current.monthlyCost),
-              cpu: sum((w) => w.current.cpu),
-              memory: sum((w) => w.current.memory),
-            }}
-            rec={{
-              cost: sum((w) => w.recommended.monthlyCost),
-              cpu: sum((w) => w.recommended.cpu),
-              memory: sum((w) => w.recommended.memory),
-            }}
-          />
+        <div className="rz-heroside">
+          <Gauge value={score} />
+          <span className="rz-dim rz-xs">
+            Fit score · {scored.length} of {rows.length} scored
+          </span>
         </div>
-        <div className="rz-herocell">
-          <h3>Workloads</h3>
-          <div className="rz-statusbars">
-            {PHASE_NAMES.filter((p) => rows.some((w) => w.phase === p) || ["Ready", "Learning"].includes(p)).map(
-              (p) => {
-                const n = rows.filter((w) => w.phase === p).length;
-                return (
-                  <a key={p} href={`#/workloads?status=${p}`} className="rz-statusbar">
-                    <StatusBadge phase={p} />
-                    <span className="bar">
-                      <span
-                        className={`fill t-${phaseTone(p)}`}
-                        style={{ width: `${rows.length ? (n / rows.length) * 100 : 0}%` }}
-                      />
-                    </span>
-                    <b>{n}</b>
-                  </a>
-                );
-              },
-            )}
-          </div>
-          <p className="rz-dim rz-xs" style={{ marginTop: 10 }}>
-            <Zap size={12} /> Automatic deployment on {rows.filter((w) => w.autoDeploy).length} of {rows.length}
-          </p>
+      </section>
+
+      <section className="rz-card rz-kpis">
+        <div className="rz-kpi">
+          <span>
+            <Cpu size={15} /> CPU requested
+          </span>
+          <b>
+            {fmtCores(rec.cpu)} <Delta from={cur.cpu} to={rec.cpu} r="cpu" />
+          </b>
+          <span className="rz-dim rz-xs">from {fmtCores(cur.cpu)}</span>
         </div>
-      </div>
+        <div className="rz-kpi">
+          <span>
+            <MemoryStick size={15} /> Memory requested
+          </span>
+          <b>
+            {fmtMem(rec.memory)} <Delta from={cur.memory} to={rec.memory} r="memory" />
+          </b>
+          <span className="rz-dim rz-xs">from {fmtMem(cur.memory)}</span>
+        </div>
+        <div className="rz-kpi">
+          <span>
+            <Boxes size={15} /> Workloads
+          </span>
+          <b>{rows.length}</b>
+          <span className="rz-dim rz-xs">
+            {rows.filter((w) => w.phase === "Ready").length} ready · {rows.filter((w) => w.phase === "Learning").length}{" "}
+            learning
+          </span>
+        </div>
+        <div className="rz-kpi">
+          <span>
+            <Zap size={15} /> Auto-deploy
+          </span>
+          <b>
+            {rows.filter((w) => w.autoDeploy).length}
+            <span className="rz-dim rz-xs">of {rows.length}</span>
+          </b>
+          <span className="rz-dim rz-xs">applied without review</span>
+        </div>
+      </section>
 
       <div className="rz-grid2">
         <section className="rz-card">
           <div className="rz-cardhd">
             <h2>
-              <PiggyBank size={16} /> Top savings opportunities
+              <PiggyBank size={17} className="t-accent" /> Top savings
             </h2>
             <a className="rz-link" href="#/workloads?view=savings">
               View all
@@ -197,15 +180,15 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
             empty="Nothing to reclaim."
             cols={[
               ["Workload", (w) => <WlCell w={w} />],
-              ["Score", (w) => <Ring value={w.score?.overall} size={30} stroke={3.5} />],
-              ["Net impact", (w) => <Delta from={w.current.monthlyCost} to={w.recommended.monthlyCost} money />],
+              ["Fit", (w) => <Ring value={w.score?.overall} size={30} stroke={3.5} />],
+              ["Per month", (w) => <Delta from={w.current.monthlyCost} to={w.recommended.monthlyCost} money />],
             ]}
           />
         </section>
         <section className="rz-card">
           <div className="rz-cardhd">
             <h2>
-              <ShieldCheck size={16} /> Reliability risks
+              <ShieldCheck size={17} className="t-accent" /> Reliability risks
             </h2>
             <a className="rz-link" href="#/workloads?view=reliability">
               View all
@@ -232,50 +215,78 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
                   </span>
                 ),
               ],
-              ["Net impact", (w) => <Delta from={w.current.monthlyCost} to={w.recommended.monthlyCost} money />],
+              ["Per month", (w) => <Delta from={w.current.monthlyCost} to={w.recommended.monthlyCost} money />],
             ]}
           />
         </section>
       </div>
 
-      <section className="rz-card">
-        <div className="rz-cardhd">
-          <h2>Namespaces</h2>
-        </div>
-        <table className="rz-table">
-          <thead>
-            <tr>
-              <th>Namespace</th>
-              <th className="num">Workloads</th>
-              <th className="num">Current cost</th>
-              <th className="num">Net impact</th>
-              <th className="num">Auto-deploy</th>
-            </tr>
-          </thead>
-          <tbody>
-            {namespaces.map((n) => (
-              <tr key={n.ns} className="rz-click" onClick={() => navigate(`#/workloads?ns=${n.ns}`)}>
-                <td>
-                  <b>{n.ns}</b>
-                  {n.annotated && (
-                    <span className="rz-src s-namespace" title="The namespace has resourcerer.io annotations">
-                      annotated
+      <div className="rz-grid2">
+        <section className="rz-card">
+          <div className="rz-cardhd">
+            <h2>
+              <Activity size={17} className="t-accent" /> Recommendation status
+            </h2>
+          </div>
+          <div className="rz-statusbars">
+            {PHASE_NAMES.filter((p) => rows.some((w) => w.phase === p) || ["Ready", "Learning"].includes(p)).map(
+              (p) => {
+                const n = rows.filter((w) => w.phase === p).length;
+                return (
+                  <a key={p} href={`#/workloads?status=${p}`} className="rz-statusbar">
+                    <StatusBadge phase={p} />
+                    <span className="bar">
+                      <span
+                        className={`fill t-${phaseTone(p)}`}
+                        style={{ width: `${rows.length ? (n / rows.length) * 100 : 0}%` }}
+                      />
                     </span>
-                  )}
-                </td>
-                <td className="num">{n.n}</td>
-                <td className="num">{fmtMoney(n.cur)}/mo</td>
-                <td className="num">
-                  <Delta from={n.cur} to={n.rec} money />
-                </td>
-                <td className="num">
-                  {n.auto}/{n.n}
-                </td>
+                    <b>{n}</b>
+                  </a>
+                );
+              },
+            )}
+          </div>
+        </section>
+        <section className="rz-card">
+          <div className="rz-cardhd">
+            <h2>Namespaces</h2>
+          </div>
+          <table className="rz-table">
+            <thead>
+              <tr>
+                <th>Namespace</th>
+                <th className="num">Workloads</th>
+                <th className="num">Cost / mo</th>
+                <th className="num">Change</th>
+                <th className="num">Auto</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+            </thead>
+            <tbody>
+              {namespaces.map((n) => (
+                <tr key={n.ns} className="rz-click" onClick={() => navigate(`#/workloads?ns=${n.ns}`)}>
+                  <td>
+                    <b>{n.ns}</b>
+                    {n.annotated && (
+                      <span className="rz-src s-namespace" title="The namespace has resourcerer.io annotations">
+                        annotated
+                      </span>
+                    )}
+                  </td>
+                  <td className="num">{n.n}</td>
+                  <td className="num">{fmtMoney(n.cur)}</td>
+                  <td className="num">
+                    <Delta from={n.cur} to={n.rec} money />
+                  </td>
+                  <td className="num">
+                    {n.auto}/{n.n}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      </div>
     </div>
   );
 }

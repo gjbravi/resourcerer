@@ -2,24 +2,29 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
+  Boxes,
   ChevronLeft,
+  Cpu,
   Hourglass,
   Info,
+  MemoryStick,
   Pencil,
   RefreshCw,
   RotateCcw,
+  ShieldCheck,
+  Sparkles,
   TriangleAlert,
   Zap,
   ZapOff,
 } from "lucide-react";
 import { useState } from "react";
 import { api, type Detail, type Range, type Ref, type Resource, type SettingInfo } from "../api";
+import { Art, Gauge } from "../art";
 import { TimeChart } from "../chart";
-import { Change, CopyButton, ErrorBox, Modal, Ring, SourceTag, StatusBadge, phaseTone } from "../components";
-import { ago, fmt, fmtCores, fmtDate, fmtMem, Gi, Mi, quantity } from "../format";
+import { Change, CopyButton, Delta, ErrorBox, Modal, Money, SourceTag, StatusBadge, phaseTone } from "../components";
+import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
 import { toast, useAction, useImpact, useSeries, useWorkload, workloadHash } from "../hooks";
 import { meta } from "../settings";
-import { SummaryGrid } from "./Overview";
 
 const TABS = [
   ["impact", "Impact"],
@@ -52,6 +57,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
   const containers = d.containers ?? [];
   const canApply = !readOnly && !!d.hash && d.pending && (d.phase === "Ready" || d.phase === "Learning");
   const lastApply = d.history.find((h) => h.action === "Apply");
+  const net = d.current.monthlyCost - d.recommended.monthlyCost;
   const doRevert = () =>
     revert.mutate(undefined, {
       onSuccess: () =>
@@ -71,68 +77,58 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
       <div className="rz-titlerow">
         <h1>{d.name}</h1>
         <span className="rz-dim">
-          {d.namespace} · {d.kind} · {d.replicas} {d.replicas === 1 ? "replica" : "replicas"} now ·{" "}
-          {d.avgReplicas.toFixed(1)} avg
+          {d.namespace} · {d.kind}
         </span>
-        {d.hpaRecommendation && (
-          <span className="rz-src s-namespace">
-            HPA {d.hpaRecommendation.name} cpu {d.hpaRecommendation.current}%
-          </span>
-        )}
+        <span className="rz-grow" />
+        <div className="rz-tabs" role="tablist">
+          {TABS.map(([id, label]) => (
+            <a key={id} role="tab" aria-selected={tab === id} href={workloadHash(d, id)}>
+              {label}
+            </a>
+          ))}
+        </div>
       </div>
 
-      <div className="rz-hero">
-        <div className="rz-herocell score">
+      <section className="rz-card rz-hero">
+        <Art
+          kind={
+            d.phase === "Pending" || d.phase === "Learning"
+              ? "orb"
+              : net < -0.005 || d.oomKills > 0
+                ? "shield"
+                : "potion"
+          }
+        />
+        <div className="rz-herobody">
           <h3>
-            Optimization Score{" "}
-            <Info size={14} className="rz-dim" aria-label="How closely current requests match the recommendation" />
+            {net >= 0 ? "Estimated savings" : "Extra capacity needed"}{" "}
+            <Info size={14} aria-label="Requests × average replicas, priced with the cost rates in Settings" />
           </h3>
-          <div className="rz-scorerow">
-            <Ring value={d.score?.overall} size={92} stroke={9} />
-            <div className="rz-scoreparts">
-              <span>CPU:</span>
-              <b>{d.score ? `${d.score.cpu}%` : "–"}</b>
-              <span>MEM:</span>
-              <b>{d.score ? `${d.score.memory}%` : "–"}</b>
-            </div>
+          <Money value={Math.abs(net)} />
+          <div className="rz-heromsg">
+            <Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />{" "}
+            <span className="rz-dim">
+              · {fmtMoney(d.current.monthlyCost)} → {fmtMoney(d.recommended.monthlyCost)} per month
+            </span>
           </div>
-        </div>
-        <div className="rz-herocell summary">
-          <h3>Recommendation Summary</h3>
-          <SummaryGrid
-            cur={{ cost: d.current.monthlyCost, cpu: d.current.cpu, memory: d.current.memory }}
-            rec={{ cost: d.recommended.monthlyCost, cpu: d.recommended.cpu, memory: d.recommended.memory }}
-          />
-        </div>
-        <div className="rz-herocell rec">
-          <h3>Recommendation</h3>
-          <StatusBadge phase={d.phase} title={d.message} />
-          <dl className="rz-recmeta">
-            <dt>Generated:</dt>
-            <dd>{fmtDate(d.generatedAt)}</dd>
-            <dt>Next scheduled:</dt>
-            <dd>{fmtDate(d.nextScheduleAt)}</dd>
-            <dt>Automatic deployment:</dt>
-            <dd>
-              {d.autoDeploy ? (
-                <span className="t-accent">
-                  <Zap size={13} /> On
-                </span>
-              ) : (
-                <span className="rz-dim">
-                  <ZapOff size={13} /> Off
-                </span>
-              )}
-            </dd>
+          <div className="rz-recmeta">
+            <StatusBadge phase={d.phase} title={d.message} />
+            <span>
+              Generated <b>{ago(d.generatedAt)}</b>
+            </span>
+            <span>
+              Next <b>{ago(d.nextScheduleAt)}</b>
+            </span>
+            <span>
+              {d.autoDeploy ? <Zap size={12} className="t-accent" /> : <ZapOff size={12} />} Auto-deploy{" "}
+              <b>{d.autoDeploy ? "on" : "off"}</b>
+            </span>
             {lastApply && (
-              <>
-                <dt>Last applied:</dt>
-                <dd title={lastApply.by}>
-                  {ago(lastApply.time)} by {lastApply.by}
-                </dd>
-              </>
+              <span>
+                Applied <b>{ago(lastApply.time)}</b> by {lastApply.by}
+              </span>
             )}
-          </dl>
+          </div>
           <div className="rz-recactions">
             <button
               className="rz-btn primary"
@@ -142,7 +138,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
                 readOnly ? "Read-only" : !d.pending ? "Current requests already match the recommendation" : d.message
               }
             >
-              Apply Now
+              <Sparkles size={15} /> Apply recommendation
             </button>
             <button
               className="rz-btn ghost"
@@ -162,7 +158,55 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
             </button>
           </div>
         </div>
-      </div>
+        <div className="rz-heroside">
+          <Gauge value={d.score?.overall} />
+          <span className="rz-dim rz-xs">
+            {d.score ? `Fit score · CPU ${d.score.cpu}% · Memory ${d.score.memory}%` : "Fit score"}
+          </span>
+        </div>
+      </section>
+
+      <section className="rz-card rz-kpis">
+        <div className="rz-kpi">
+          <span>
+            <Cpu size={15} /> CPU requested
+          </span>
+          <b>
+            {fmtCores(d.recommended.cpu)} <Delta from={d.current.cpu} to={d.recommended.cpu} r="cpu" />
+          </b>
+          <span className="rz-dim rz-xs">from {fmtCores(d.current.cpu)}</span>
+        </div>
+        <div className="rz-kpi">
+          <span>
+            <MemoryStick size={15} /> Memory requested
+          </span>
+          <b>
+            {fmtMem(d.recommended.memory)} <Delta from={d.current.memory} to={d.recommended.memory} r="memory" />
+          </b>
+          <span className="rz-dim rz-xs">from {fmtMem(d.current.memory)}</span>
+        </div>
+        <div className="rz-kpi">
+          <span>
+            <ShieldCheck size={15} /> Reliability
+          </span>
+          <b className={d.oomKills ? "t-bad" : ""}>{d.oomKills ? `${d.oomKills} OOM kills` : "Healthy"}</b>
+          <span className="rz-dim rz-xs">
+            {d.oomKills ? "memory is raised above the limit that killed it" : "no OOM kills in the learning period"}
+          </span>
+        </div>
+        <div className="rz-kpi">
+          <span>
+            <Boxes size={15} /> Replicas
+          </span>
+          <b>
+            {d.replicas}
+            <span className="rz-dim rz-xs">now · {d.avgReplicas.toFixed(1)} avg</span>
+          </b>
+          <span className="rz-dim rz-xs">
+            {d.hpaRecommendation ? `HPA ${d.hpaRecommendation.name} at ${d.hpaRecommendation.current}% CPU` : "no HPA"}
+          </span>
+        </div>
+      </section>
 
       {d.phase !== "Ready" && d.message && (
         <div className={`rz-alert t-${phaseTone(d.phase)}`}>
@@ -189,14 +233,6 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
           {w}
         </div>
       ))}
-
-      <div className="rz-tabs" role="tablist">
-        {TABS.map(([id, label]) => (
-          <a key={id} role="tab" aria-selected={tab === id} href={workloadHash(d, id)}>
-            {label}
-          </a>
-        ))}
-      </div>
 
       {tab === "impact" && <ImpactTab d={d} />}
       {tab === "recommendation" && <RecommendationTab d={d} />}
@@ -391,7 +427,7 @@ function RecommendationTab({ d }: { d: Detail }) {
   return (
     <>
       <div className="rz-sechd">
-        <h2>Container Values</h2>
+        <h2>Containers</h2>
         <Zoom value={range} onChange={setRange} />
       </div>
       <div className="rz-recgrid">
@@ -401,7 +437,7 @@ function RecommendationTab({ d }: { d: Detail }) {
               <div className="rz-conthd">
                 <b>{c.name}</b>
                 <button className={`rz-btn small ${i === ci ? "primary" : "ghost"}`} onClick={() => setCi(i)}>
-                  View <ArrowRight size={13} />
+                  {i === ci ? "Shown" : "Show"} <ArrowRight size={13} />
                 </button>
               </div>
               {c.skipped ? (
@@ -587,7 +623,9 @@ function PatchesTab({ d }: { d: Detail }) {
     <section className="rz-card">
       <div className="rz-cardhd">
         <div>
-          <h2>Patches</h2>
+          <h2>
+            <Art kind="scroll" size={44} /> Patches
+          </h2>
           <p className="rz-dim rz-xs">
             Put the recommendation in Git instead of letting the applier patch the cluster. Generated{" "}
             {fmtDate(d.generatedAt)}.

@@ -15,9 +15,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import type { Phase, Resource } from "./api";
+import type { Phase, Resource, Summary } from "./api";
 import { fmt, fmtCores, fmtMem, fmtMoney, Mi } from "./format";
-import { dismiss, useToasts } from "./hooks";
+import { dismiss, useToasts, workloadHash } from "./hooks";
 
 const PHASES: Record<Phase, { tone: string; icon: LucideIcon; help: string }> = {
   Ready: { tone: "ok", icon: ThumbsUp, help: "Based on the full learning period." },
@@ -91,6 +91,24 @@ export function Delta({ from, to, r, money }: { from: number; to: number; r?: Re
       {val}
       {p != null && <> {Math.round(p)}%</>} {saving ? <ArrowDown size={12} /> : <ArrowUp size={12} />}
     </span>
+  );
+}
+
+/** Large currency figure: faded symbol, bold dollars, small cents and unit. */
+export function Money({ value, unit = "/mo" }: { value: number; unit?: string }) {
+  const abs = Math.abs(value);
+  const dollars = Math.floor(abs).toLocaleString();
+  const cents = (abs % 1).toFixed(2).slice(1);
+  return (
+    <div className="rz-money">
+      {value < 0 && "−"}
+      <span className="pre">$</span>
+      {dollars}
+      <span className="dec">
+        {cents}
+        {unit}
+      </span>
+    </div>
   );
 }
 
@@ -209,3 +227,12 @@ export function Toasts() {
     </div>
   );
 }
+
+export const WlCell = ({ w }: { w: Summary }) => (
+  <a className="rz-wl" href={workloadHash(w)} onClick={(e) => e.stopPropagation()}>
+    <b>{w.name}</b>
+    <span className="rz-dim rz-xs">
+      {w.namespace} · {w.kind}
+    </span>
+  </a>
+);

@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Boxes, LayoutDashboard, Moon, Server, Settings as SettingsIcon, Sun, Unlock } from "lucide-react";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ErrorBox, Logo, Toasts } from "./components";
+import { HatLogo } from "./art";
+import { ErrorBox, Toasts } from "./components";
 import { useHash, useInfo, useWorkloads } from "./hooks";
 import { Details } from "./pages/Details";
 import { Overview } from "./pages/Overview";
@@ -13,7 +14,7 @@ import "./styles.css";
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, retry: 1 } } });
 
 function App() {
-  const [dark, setDark] = useState(() => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true);
+  const [dark, setDark] = useState(() => localStorage.getItem("resourcerer.theme") === "dark");
   const hash = useHash();
   const info = useInfo();
   const workloads = useWorkloads();
@@ -51,7 +52,7 @@ function App() {
     <div className={`rz${dark ? " dark" : ""}`}>
       <aside className="rz-side">
         <a className="rz-logo" href="#/overview">
-          <Logo /> <span>resourcerer</span>
+          <HatLogo /> <span>resourcerer</span>
         </a>
         <div className="rz-cluster">
           <Server size={14} />
@@ -73,42 +74,44 @@ function App() {
         </div>
       </aside>
       <div className="rz-main">
-        <header className="rz-top">
-          <div className="rz-crumbs rz-dim">
-            {cluster} <span>/</span>
-            {parts[0] === "w" ? (
-              <>
-                <a href="#/workloads">Workloads</a> <span>/</span>{" "}
-                <b>
-                  {parts[1]}/{parts[3]}
-                </b>
-              </>
-            ) : (
-              <b>{page[0].toUpperCase() + page.slice(1)}</b>
-            )}
-          </div>
-          <div className="rz-topright">
-            <span
-              className="rz-anon"
-              title="Authentication strategy: anonymous. Anyone who reaches this page can use it."
-            >
-              <Unlock size={12} /> anonymous{readOnly ? " · read-only" : ""}
-            </span>
-            <button
-              className="rz-icon"
-              onClick={() => setDark((x) => !x)}
-              aria-label={dark ? "Light theme" : "Dark theme"}
-            >
-              {dark ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
-          </div>
-        </header>
-        {(info.error || workloads.error) && (
-          <div className="rz-page" style={{ paddingBottom: 0 }}>
-            <ErrorBox error={info.error ?? workloads.error} />
-          </div>
-        )}
-        {body}
+        <div className="rz-surface">
+          <header className="rz-top">
+            <div className="rz-crumbs rz-dim">
+              {cluster} <span>/</span>
+              {parts[0] === "w" ? (
+                <>
+                  <a href="#/workloads">Workloads</a> <span>/</span>{" "}
+                  <b>
+                    {parts[1]}/{parts[3]}
+                  </b>
+                </>
+              ) : (
+                <b>{page[0].toUpperCase() + page.slice(1)}</b>
+              )}
+            </div>
+            <div className="rz-topright">
+              <span
+                className="rz-anon"
+                title="Authentication strategy: anonymous. Anyone who reaches this page can use it."
+              >
+                <Unlock size={12} /> anonymous{readOnly ? " · read-only" : ""}
+              </span>
+              <button
+                className="rz-icon"
+                onClick={() => setDark((x) => (localStorage.setItem("resourcerer.theme", x ? "light" : "dark"), !x))}
+                aria-label={dark ? "Light theme" : "Dark theme"}
+              >
+                {dark ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+            </div>
+          </header>
+          {(info.error || workloads.error) && (
+            <div className="rz-page" style={{ paddingBottom: 0 }}>
+              <ErrorBox error={info.error ?? workloads.error} />
+            </div>
+          )}
+          {body}
+        </div>
       </div>
       <Toasts />
     </div>
