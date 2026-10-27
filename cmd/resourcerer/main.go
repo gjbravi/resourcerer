@@ -18,8 +18,10 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -93,8 +95,17 @@ func main() {
 		fail(err, "create Prometheus client")
 	}
 
+	// Only the defaults ConfigMap is ever read; caching every ConfigMap in a large cluster costs
+	// hundreds of MiB.
+	cacheOpts := cache.Options{DefaultTransform: cache.TransformStripManagedFields()}
+	if ns := cfg.DefaultsConfigMap.Namespace; ns != "" {
+		cacheOpts.ByObject = map[client.Object]cache.ByObject{
+			&corev1.ConfigMap{}: {Namespaces: map[string]cache.Config{ns: {}}},
+		}
+	}
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme.New(),
+		Cache:  cacheOpts,
 		// Argo Rollouts are read as unstructured; cache them like typed objects instead of hitting the API server.
 		Client:                 client.Options{Cache: &client.CacheOptions{Unstructured: true}},
 		Metrics:                metricsserver.Options{BindAddress: *metricsAddr},
