@@ -70,13 +70,13 @@ spec:
     metadata:
       annotations:
         checksum/defaults: {{ include (print $root.Template.BasePath "/configmap.yaml") $root | sha256sum | trunc 16 }}
-        {{- with $root.Values.podAnnotations }}
+        {{- with merge (deepCopy (.values.podAnnotations | default dict)) $root.Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
         {{- include "resourcerer.labels" $root | nindent 8 }}
         app.kubernetes.io/component: {{ .component }}
-        {{- with $root.Values.podLabels }}
+        {{- with merge (deepCopy (.values.podLabels | default dict)) $root.Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
