@@ -57,10 +57,15 @@ Service internal (port-forward) or put an authenticating proxy in front.
 ## Install
 
 ```bash
-helm install resourcerer ./charts/resourcerer -n resourcerer --create-namespace \
+helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> \
+  -n resourcerer --create-namespace \
   --set prometheus.url=http://prometheus-server.monitoring.svc
 kubectl -n resourcerer port-forward svc/resourcerer 8080:80
 ```
+
+Versions are listed on the [releases page](https://github.com/gjbravi/resourcerer/releases). Images and charts are
+signed with cosign; see [SECURITY.md](SECURITY.md#verifying-releases). From a checkout:
+`helm install resourcerer ./charts/resourcerer -n resourcerer --create-namespace`.
 
 See [charts/resourcerer/values.yaml](charts/resourcerer/values.yaml) for all options.
 

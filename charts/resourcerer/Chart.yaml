@@ -6,6 +6,7 @@ version: 0.1.0
 appVersion: "0.1.0"
 kubeVersion: ">=1.33.0-0"
 home: https://github.com/gjbravi/resourcerer
+icon: https://raw.githubusercontent.com/gjbravi/resourcerer/main/docs/logo.svg
 sources:
   - https://github.com/gjbravi/resourcerer
 keywords:
@@ -13,6 +14,8 @@ keywords:
   - requests
   - rightsizing
   - resources
+  - kubernetes
+  - argo-rollouts
 maintainers:
   - name: gjbravi
     url: https://github.com/gjbravi

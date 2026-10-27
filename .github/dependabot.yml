@@ -7,19 +7,26 @@ updates:
     groups:
       kubernetes:
         patterns: ["k8s.io/*", "sigs.k8s.io/*"]
+      prometheus:
+        patterns: ["github.com/prometheus/*"]
   - package-ecosystem: npm
     directory: /web
     schedule:
       interval: weekly
     groups:
-      mui:
-        patterns: ["@mui/*", "@emotion/*"]
       dev:
         dependency-type: development
+    ignore:
+      # typescript-eslint and the tooling do not support TypeScript 7 yet.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: docker
     directory: /
     schedule:

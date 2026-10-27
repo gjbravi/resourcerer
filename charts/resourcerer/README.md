@@ -6,7 +6,7 @@ history, applied on request or automatically, with a UI.
 Requires a Prometheus-compatible API with cAdvisor and kube-state-metrics data (`prometheus.url`).
 
 ```bash
-helm install resourcerer ./charts/resourcerer -n resourcerer --create-namespace \
+helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> -n resourcerer --create-namespace \
   --set prometheus.url=http://prometheus-server.monitoring.svc
 ```
 
