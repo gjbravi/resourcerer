@@ -92,6 +92,24 @@ wait_for "auto-deploy applies a Ready recommendation" 300 bash -c \
 [[ -z "$(rec_field payments deployment-ledger '{.status.history}')" ]] \
   && pass "workload annotation turns auto-deploy off for ledger" || fail "workload annotation turns auto-deploy off for ledger"
 
+# Argo Rollouts: one with its own template, one taking it from a Deployment via spec.workloadRef.
+wait_for "creates Recommendations for Rollouts" 60 k -n demo get rec rollout-storefront rollout-billing
+wait_for "a workloadRef Deployment gets no Recommendation of its own" 30 bash -c "! kubectl --context $CTX -n demo get rec deployment-billing-template"
+[[ "$(rec_field demo rollout-billing '{.status.templateRef.name}')" == "billing-template" ]] \
+  && pass "workloadRef is recorded as the template to patch" || fail "workloadRef is recorded as the template to patch"
+apply_and_check() { # <recommendation> <jsonpath to the patched cpu request> <resource to read it from>
+  local rec="$1" path="$2" obj="$3" hash want
+  wait_for "$rec leaves Pending" 360 bash -c \
+    "[[ \$(kubectl --context $CTX -n demo get rec $rec -o jsonpath='{.status.phase}') =~ ^(Learning|Ready)$ ]]"
+  hash=$(rec_field demo "$rec" '{.status.hash}')
+  want=$(rec_field demo "$rec" '{.status.containers[0].recommended.requests.cpu}')
+  curl -fs -X POST "$API/workloads/demo/Rollout/${rec#rollout-}/apply" -d "{\"hash\":\"$hash\"}" >/dev/null
+  wait_for "Apply on $rec patches $obj ($want)" 60 bash -c \
+    "[[ \$(kubectl --context $CTX -n demo get $obj -o jsonpath='$path') == '$want' ]]"
+}
+apply_and_check rollout-storefront '{.spec.template.spec.containers[0].resources.requests.cpu}' rollout/storefront
+apply_and_check rollout-billing '{.spec.template.spec.containers[0].resources.requests.cpu}' deploy/billing-template
+
 k -n demo label deploy worker resourcerer.io/enabled=false --overwrite >/dev/null
 wait_for "opt-out deletes the Recommendation" 60 bash -c "! kubectl --context $CTX -n demo get rec deployment-worker"
 k -n demo label deploy worker resourcerer.io/enabled- >/dev/null

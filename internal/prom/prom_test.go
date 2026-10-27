@@ -27,3 +27,10 @@ func TestStepStaysUnderPointLimit(t *testing.T) {
 		t.Errorf("short windows use the minimum step, got %v", s)
 	}
 }
+
+func TestRolloutOwnerUsesReplicaSets(t *testing.T) {
+	q := owner(Ref{Namespace: "demo", Kind: "Rollout", Name: "shop"})
+	if !strings.Contains(q, `kube_replicaset_owner{namespace="demo", owner_kind="Rollout", owner_name="shop"}`) {
+		t.Errorf("rollout owner query:\n%s", q)
+	}
+}

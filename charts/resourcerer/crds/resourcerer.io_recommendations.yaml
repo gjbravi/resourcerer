@@ -553,6 +553,22 @@ spec:
                   - value
                   type: object
                 type: object
+              templateRef:
+                description: |-
+                  TemplateRef is the object whose pod template is changed on apply, when it is not the target
+                  itself: the Deployment an Argo Rollout references with spec.workloadRef.
+                properties:
+                  apiVersion:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                - name
+                type: object
               warnings:
                 items:
                   type: string

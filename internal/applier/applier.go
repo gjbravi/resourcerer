@@ -170,14 +170,7 @@ func (r *Reconciler) revert(ctx context.Context, rec *v1alpha1.Recommendation, a
 
 // liveResources reads container resources from the API server, not the cache, so history records what was really replaced.
 func (r *Reconciler) liveResources(ctx context.Context, rec *v1alpha1.Recommendation) (map[string]corev1.ResourceRequirements, error) {
-	obj, err := workload.NewObject(rec.Spec.TargetRef.Kind)
-	if err != nil {
-		return nil, err
-	}
-	if err := r.APIReader.Get(ctx, client.ObjectKey{Namespace: rec.Namespace, Name: rec.Spec.TargetRef.Name}, obj); err != nil {
-		return nil, err
-	}
-	w, err := workload.FromObject(obj)
+	w, err := workload.Get(ctx, r.APIReader, rec.Spec.TargetRef.Kind, client.ObjectKey{Namespace: rec.Namespace, Name: rec.Spec.TargetRef.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +183,11 @@ func (r *Reconciler) liveResources(ctx context.Context, rec *v1alpha1.Recommenda
 
 // patchWorkload server-side applies only the resources of the listed containers; other fields keep their owners.
 func (r *Reconciler) patchWorkload(ctx context.Context, rec *v1alpha1.Recommendation, changes []v1alpha1.ContainerChange) error {
+	// A Rollout with spec.workloadRef takes its template from a Deployment; changing it starts a new rollout.
 	t := rec.Spec.TargetRef
+	if rec.Status.TemplateRef != nil {
+		t = *rec.Status.TemplateRef
+	}
 	containers := make([]map[string]any, 0, len(changes))
 	for _, c := range changes {
 		res := map[string]any{}

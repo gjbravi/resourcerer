@@ -122,6 +122,9 @@ type Detail struct {
 	Events          []Event       `json:"events"`
 	LastApplyResult *ApplyResult  `json:"lastApplyResult,omitempty"`
 	ApplyMethod     string        `json:"applyMethod"`
+	// TemplateKind and TemplateName name where resources are applied, when not the workload itself.
+	TemplateKind string `json:"templateKind,omitempty"`
+	TemplateName string `json:"templateName,omitempty"`
 }
 
 type Band struct {

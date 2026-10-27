@@ -221,7 +221,7 @@ func totals(t v1alpha1.Totals) Totals {
 
 func (s *Server) get(w http.ResponseWriter, r *http.Request) (*v1alpha1.Recommendation, bool) {
 	kind := r.PathValue("kind")
-	if !slices.Contains(workload.Kinds, kind) {
+	if !slices.Contains(workload.AllKinds, kind) {
 		writeError(w, http.StatusBadRequest, "unsupported kind "+kind)
 		return nil, false
 	}
@@ -246,6 +246,9 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 	st := rec.Status
 	d := Detail{Summary: summarize(rec, s.replicas(r.Context(), rec)), Warnings: st.Warnings, History: []History{}, Events: []Event{}}
 	d.ApplyMethod = st.Settings[settings.ApplyMethod].Value
+	if t := st.TemplateRef; t != nil {
+		d.TemplateKind, d.TemplateName = t.Kind, t.Name
+	}
 	var ns corev1.Namespace
 	if s.Client.Get(r.Context(), client.ObjectKey{Name: rec.Namespace}, &ns) == nil {
 		d.NamespaceSet = hasSettings(ns.Annotations)

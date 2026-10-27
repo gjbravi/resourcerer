@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -34,6 +35,8 @@ import (
 
 type Reconciler struct {
 	client.Client
+	// Rollouts is true when the Argo Rollouts CRD is installed.
+	Rollouts bool
 	// emitted remembers the last announced hash per workload; the cache can lag behind status patches.
 	emitted  sync.Map
 	Kind     string
@@ -44,9 +47,21 @@ type Reconciler struct {
 	Now      func() time.Time
 }
 
+// RolloutsInstalled reports whether the API server serves Argo Rollouts.
+func RolloutsInstalled(mgr ctrl.Manager) bool {
+	_, err := mgr.GetRESTMapper().RESTMapping(workload.RolloutGVK.GroupKind(), workload.RolloutGVK.Version)
+	return err == nil
+}
+
 func Setup(mgr ctrl.Manager, cfg cluster.Config, p *prom.Client, minStep time.Duration) error {
-	for _, kind := range workload.Kinds {
-		r := &Reconciler{Client: mgr.GetClient(), Kind: kind, Cluster: cfg, Prom: p, MinStep: minStep,
+	rollouts := RolloutsInstalled(mgr)
+	kinds := workload.Kinds
+	if rollouts {
+		kinds = workload.AllKinds
+	}
+	log.Log.WithName("recommender").Info("watching workload kinds", "kinds", kinds, "argoRollouts", rollouts)
+	for _, kind := range kinds {
+		r := &Reconciler{Client: mgr.GetClient(), Kind: kind, Cluster: cfg, Prom: p, MinStep: minStep, Rollouts: rollouts,
 			Recorder: mgr.GetEventRecorder("resourcerer"), Now: time.Now}
 		if err := r.setup(mgr); err != nil {
 			return err
@@ -58,7 +73,28 @@ func Setup(mgr ctrl.Manager, cfg cluster.Config, p *prom.Client, minStep time.Du
 func (r *Reconciler) setup(mgr ctrl.Manager) error {
 	obj, _ := workload.NewObject(r.Kind)
 	notExcluded := predicate.NewPredicateFuncs(func(o client.Object) bool { return !r.Cluster.Excluded(o.GetNamespace()) })
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr)
+	switch {
+	case r.Kind == workload.Rollout:
+		// A Rollout's template can live in a referenced Deployment; changes there change the Rollout's current values.
+		b = b.Watches(&appsv1.Deployment{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, d client.Object) []reconcile.Request {
+			if name, ok := workload.ReferencedDeployments(ctx, r.Client, d.GetNamespace())[d.GetName()]; ok {
+				return []reconcile.Request{{NamespacedName: client.ObjectKey{Namespace: d.GetNamespace(), Name: name}}}
+			}
+			return nil
+		}), builder.WithPredicates(notExcluded, predicate.GenerationChangedPredicate{}))
+	case r.Kind == "Deployment" && r.Rollouts:
+		// Deployments used as a Rollout's workloadRef are optimized through the Rollout.
+		rollout, _ := workload.NewObject(workload.Rollout)
+		b = b.Watches(rollout, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, o client.Object) []reconcile.Request {
+			w, err := workload.FromObject(o)
+			if err != nil || w.TemplateRef == nil {
+				return nil
+			}
+			return []reconcile.Request{{NamespacedName: client.ObjectKey{Namespace: o.GetNamespace(), Name: w.TemplateRef.Name}}}
+		}), builder.WithPredicates(notExcluded))
+	}
+	return b.
 		Named("recommender-"+r.Kind).
 		For(obj, builder.WithPredicates(notExcluded, predicate.Or(
 			predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{}, predicate.AnnotationChangedPredicate{},
@@ -108,7 +144,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	w, _ := workload.FromObject(obj)
+	w, err := workload.FromObject(obj)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := workload.Resolve(ctx, r.Client, w); err != nil {
+		return ctrl.Result{}, err
+	}
 	var ns corev1.Namespace
 	if err := r.Get(ctx, client.ObjectKey{Name: w.Namespace()}, &ns); err != nil {
 		return ctrl.Result{}, err
@@ -116,13 +158,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	rec := &v1alpha1.Recommendation{}
 	key := client.ObjectKey{Namespace: w.Namespace(), Name: w.ResourceName()}
-	err := r.Get(ctx, key, rec)
+	err = r.Get(ctx, key, rec)
 	exists := err == nil
 	if err != nil && !apierrors.IsNotFound(err) {
 		return ctrl.Result{}, err
 	}
 
-	if !r.Cluster.Managed(&ns, obj.GetLabels()) || !obj.GetDeletionTimestamp().IsZero() {
+	rolloutTemplate := false
+	if r.Kind == "Deployment" && r.Rollouts {
+		_, rolloutTemplate = workload.ReferencedDeployments(ctx, r.Client, w.Namespace())[w.Name()]
+	}
+	if !r.Cluster.Managed(&ns, obj.GetLabels()) || !obj.GetDeletionTimestamp().IsZero() || rolloutTemplate {
 		forget(w.Namespace(), w.Kind, w.Name())
 		if exists {
 			return ctrl.Result{}, client.IgnoreNotFound(r.Delete(ctx, rec))
@@ -132,7 +178,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if !exists {
 		rec = &v1alpha1.Recommendation{
 			ObjectMeta: metav1.ObjectMeta{Namespace: key.Namespace, Name: key.Name, OwnerReferences: []metav1.OwnerReference{w.OwnerReference()}},
-			Spec:       v1alpha1.RecommendationSpec{TargetRef: v1alpha1.TargetRef{APIVersion: "apps/v1", Kind: w.Kind, Name: w.Name()}},
+			Spec:       v1alpha1.RecommendationSpec{TargetRef: v1alpha1.TargetRef{APIVersion: w.APIVersion, Kind: w.Kind, Name: w.Name()}},
 		}
 		if err := r.Create(ctx, rec); err != nil {
 			return ctrl.Result{}, err
@@ -175,6 +221,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if out.Phase == "Pending" {
 		// Retry soon instead of waiting a full period for the first usable history.
 		next = now.Add(min(period, time.Minute))
+	}
+	rec.Status.TemplateRef = nil
+	if t := w.TemplateRef; t != nil {
+		rec.Status.TemplateRef = &v1alpha1.TargetRef{APIVersion: t.APIVersion, Kind: t.Kind, Name: t.Name}
 	}
 	rec.Status.Phase = v1alpha1.Phase(out.Phase)
 	rec.Status.Message = out.Message

@@ -319,7 +319,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
             </>
           }
         >
-          <p>Server-side apply on the {d.kind} with field manager resourcerer, followed by a rolling update.</p>
+          <p>{applyDescription(d)}</p>
           <table className="rz-table compact">
             <thead>
               <tr>
@@ -375,6 +375,17 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
       )}
     </div>
   );
+}
+
+/** Where an apply lands and what it triggers, in the words of the workload kind. */
+export function applyDescription(d: Pick<Detail, "kind" | "name" | "templateKind" | "templateName">): string {
+  if (d.kind === "Rollout") {
+    const where = d.templateName
+      ? `the ${d.templateKind} ${d.templateName} it references (spec.workloadRef)`
+      : "the Rollout's pod template";
+    return `Server-side apply on ${where} with field manager resourcerer. Argo Rollouts then starts a progressive rollout following the Rollout's strategy (canary or blue-green), not an immediate restart.`;
+  }
+  return `Server-side apply on the ${d.kind} with field manager resourcerer, followed by a rolling update.`;
 }
 
 function Zoom({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
@@ -618,12 +629,16 @@ function PatchesTab({ d }: { d: Detail }) {
     if (r.limits) lines.push(`${ind}  limits:`, ...Object.entries(r.limits).map(([k, v]) => `${ind}    ${k}: ${v}`));
     return lines.join("\n");
   };
+  // A Rollout with spec.workloadRef keeps its template in a Deployment; that is what to patch.
+  const target = d.templateName
+    ? { apiVersion: "apps/v1", kind: d.templateKind ?? "Deployment", name: d.templateName }
+    : { apiVersion: d.kind === "Rollout" ? "argoproj.io/v1alpha1" : "apps/v1", kind: d.kind, name: d.name };
   const text = {
     kustomize: [
-      "apiVersion: apps/v1",
-      `kind: ${d.kind}`,
+      `apiVersion: ${target.apiVersion}`,
+      `kind: ${target.kind}`,
       "metadata:",
-      `  name: ${d.name}`,
+      `  name: ${target.name}`,
       `  namespace: ${d.namespace}`,
       "spec:",
       "  template:",
@@ -635,9 +650,23 @@ function PatchesTab({ d }: { d: Detail }) {
       recs.length === 1
         ? `# values.yaml\n${yaml(recs[0], "")}`
         : recs.map((c) => `# values.yaml — ${c.name}\n${c.name}:\n${yaml(c, "  ")}`).join("\n\n"),
-    kubectl: `kubectl -n ${d.namespace} patch ${d.kind.toLowerCase()} ${d.name} --type=strategic -p '${JSON.stringify({
-      spec: { template: { spec: { containers: recs.map((c) => ({ name: c.name, resources: resources(c) })) } } },
-    })}'`,
+    kubectl:
+      target.kind === "Rollout"
+        ? // CRDs do not support strategic merge; a JSON patch per container index keeps the rest of the template.
+          `kubectl -n ${d.namespace} patch rollout ${target.name} --type=json -p '${JSON.stringify(
+            recs.map((c) => ({
+              op: "replace",
+              path: `/spec/template/spec/containers/${(d.containers ?? []).findIndex((x) => x.name === c.name)}/resources`,
+              value: resources(c),
+            })),
+          )}'`
+        : `kubectl -n ${d.namespace} patch ${target.kind.toLowerCase()} ${target.name} --type=strategic -p '${JSON.stringify(
+            {
+              spec: {
+                template: { spec: { containers: recs.map((c) => ({ name: c.name, resources: resources(c) })) } },
+              },
+            },
+          )}'`,
   }[format];
   return (
     <section className="rz-card">

@@ -20,7 +20,8 @@ of usage plus headroom, so you can see exactly why a value was chosen.
 
 ## Features
 
-- A recommendation per Deployment, StatefulSet and DaemonSet, regenerated on a schedule spread across workloads.
+- A recommendation per Deployment, StatefulSet, DaemonSet and [Argo Rollout](https://argoproj.github.io/rollouts/),
+  regenerated on a schedule spread across workloads.
 - Optimization goals per resource (Savings, Balanced, Reliability), limit policies, minimums, skipped sidecars.
 - Reliability response: after an OOM kill, memory is raised above the limit that killed the container.
 - HPA-aware: when the HPA scales on CPU utilization, its target is adjusted with the requests to keep the scale point.
@@ -117,6 +118,17 @@ Which workloads get a recommendation: `selection: all` (default; opt out with th
 `resourcerer.io/enabled=false` on the workload or namespace) or `selection: label` (opt in with
 `resourcerer.io/enabled=true`).
 
+### Argo Rollouts
+
+Rollouts are picked up automatically when the `rollouts.argoproj.io` CRD is installed; resourcerer reads them as
+unstructured objects and does not depend on the Argo Rollouts Go module.
+
+- A Rollout with its own `spec.template` is patched like a Deployment. Applying starts a progressive rollout that
+  follows the Rollout's strategy (canary or blue-green), not an immediate restart.
+- A Rollout with `spec.workloadRef` gets the recommendation; the referenced Deployment does not get one of its own.
+  Applying patches the referenced Deployment's template, which Argo Rollouts then rolls out.
+- An HPA targeting a Rollout is handled like one targeting a Deployment.
+
 ### GitOps
 
 Applied values are owned by the field manager `resourcerer`. With Argo CD, ignore them so they are not reverted:
@@ -133,7 +145,7 @@ Or copy the patch from the workload's **Patches** tab into Git instead of applyi
 ## Development
 
 ```bash
-make kind-up        # kind cluster with Prometheus, kube-state-metrics, metrics-server and demo workloads
+make kind-up        # kind cluster with Prometheus, kube-state-metrics, metrics-server, Argo Rollouts and demo workloads
 make kind-deploy    # build the image, load it, install the chart with hack/resourcerer-values.yaml
 make e2e            # end-to-end checks
 kubectl --context kind-resourcerer -n resourcerer port-forward svc/resourcerer 8080:80

@@ -13,3 +13,4 @@ excludedNamespaces:
   - kube-node-lease
   - local-path-storage
   - monitoring
+  - argo-rollouts

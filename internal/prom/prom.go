@@ -47,12 +47,13 @@ func quote(s string) string { return strings.ReplaceAll(s, `"`, `\"`) }
 func owner(r Ref) string {
 	ns := quote(r.Namespace)
 	name := quote(r.Name)
-	if r.Kind == "Deployment" {
+	// Deployments and Argo Rollouts both own their pods through ReplicaSets.
+	if r.Kind == "Deployment" || r.Kind == "Rollout" {
 		return fmt.Sprintf(`max by (namespace, pod) (
   label_replace(kube_pod_owner{namespace="%s", owner_kind="ReplicaSet"}, "replicaset", "$1", "owner_name", "(.*)")
   * on (namespace, replicaset) group_left ()
-  max by (namespace, replicaset) (kube_replicaset_owner{namespace="%s", owner_kind="Deployment", owner_name="%s"})
-)`, ns, ns, name)
+  max by (namespace, replicaset) (kube_replicaset_owner{namespace="%s", owner_kind="%s", owner_name="%s"})
+)`, ns, ns, r.Kind, name)
 	}
 	return fmt.Sprintf(`max by (namespace, pod) (kube_pod_owner{namespace="%s", owner_kind="%s", owner_name="%s"})`, ns, quote(r.Kind), name)
 }

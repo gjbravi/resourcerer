@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CTX="kind-$CLUSTER_NAME"
 PROMETHEUS_CHART_VERSION="${PROMETHEUS_CHART_VERSION:-29.37.2}"
 METRICS_SERVER_CHART_VERSION="${METRICS_SERVER_CHART_VERSION:-3.14.0}"
+ARGO_ROLLOUTS_CHART_VERSION="${ARGO_ROLLOUTS_CHART_VERSION:-2.43.8}"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 
@@ -28,7 +29,8 @@ fi
 log "helm repositories"
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update >/dev/null
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ --force-update >/dev/null
-helm repo update prometheus-community metrics-server >/dev/null
+helm repo add argo https://argoproj.github.io/argo-helm --force-update >/dev/null
+helm repo update prometheus-community metrics-server argo >/dev/null
 
 log "metrics-server (for the demo HPA)"
 helm upgrade --install metrics-server metrics-server/metrics-server \
@@ -40,11 +42,17 @@ helm upgrade --install prometheus prometheus-community/prometheus \
   --kube-context "$CTX" --namespace monitoring --create-namespace --version "$PROMETHEUS_CHART_VERSION" \
   -f "$ROOT/hack/prometheus-values.yaml" --wait --timeout 5m
 
+log "argo rollouts"
+helm upgrade --install argo-rollouts argo/argo-rollouts \
+  --kube-context "$CTX" --namespace argo-rollouts --create-namespace --version "$ARGO_ROLLOUTS_CHART_VERSION" \
+  --set controller.resources.requests.cpu=20m --set controller.resources.requests.memory=64Mi --wait
+
 log "demo workloads"
 kubectl --context "$CTX" apply -f "$ROOT/hack/demo.yaml"
 # Fail here, with the reason, if the demo does not fit on the nodes.
 if ! kubectl --context "$CTX" -n demo wait deploy --all --for=condition=Available --timeout=180s ||
-  ! kubectl --context "$CTX" -n payments wait deploy/checkout --for=condition=Available --timeout=120s; then
+  ! kubectl --context "$CTX" -n payments wait deploy/checkout --for=condition=Available --timeout=120s ||
+  ! kubectl --context "$CTX" -n demo wait rollout --all --for=condition=Available --timeout=180s; then
   kubectl --context "$CTX" get pods -n demo -n payments -o wide
   kubectl --context "$CTX" get events -A --field-selector reason=FailedScheduling | tail -20
   exit 1

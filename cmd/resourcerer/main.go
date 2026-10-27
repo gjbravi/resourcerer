@@ -20,6 +20,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -93,7 +94,9 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme.New(),
+		Scheme: scheme.New(),
+		// Argo Rollouts are read as unstructured; cache them like typed objects instead of hitting the API server.
+		Client:                 client.Options{Cache: &client.CacheOptions{Unstructured: true}},
 		Metrics:                metricsserver.Options{BindAddress: *metricsAddr},
 		HealthProbeBindAddress: *probeAddr,
 		LeaderElection:         *leaderElect && (run["controller"] || run["applier"]),

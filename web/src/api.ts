@@ -91,6 +91,8 @@ export interface Detail extends Summary {
   events: { type: string; reason: string; message: string; time: string }[];
   lastApplyResult?: { time: string; result: "Succeeded" | "Failed" | "Rejected"; message?: string };
   applyMethod: string;
+  templateKind?: string;
+  templateName?: string;
 }
 
 export interface Point {

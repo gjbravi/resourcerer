@@ -35,3 +35,20 @@ describe("workload views", () => {
     expect(rows.filter(VIEWS.pending[1])).toHaveLength(2);
   });
 });
+
+import { applyDescription } from "./Details";
+
+describe("apply description", () => {
+  it("explains progressive rollouts and workloadRef targets", () => {
+    expect(applyDescription({ kind: "Deployment", name: "api" })).toMatch(/rolling update/);
+    expect(applyDescription({ kind: "Rollout", name: "shop" })).toMatch(/progressive rollout/);
+    expect(
+      applyDescription({
+        kind: "Rollout",
+        name: "billing",
+        templateKind: "Deployment",
+        templateName: "billing-template",
+      }),
+    ).toMatch(/Deployment billing-template/);
+  });
+});

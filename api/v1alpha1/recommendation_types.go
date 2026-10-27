@@ -131,6 +131,10 @@ type ApplyResult struct {
 type RecommendationStatus struct {
 	// +optional
 	Phase Phase `json:"phase,omitempty"`
+	// TemplateRef is the object whose pod template is changed on apply, when it is not the target
+	// itself: the Deployment an Argo Rollout references with spec.workloadRef.
+	// +optional
+	TemplateRef *TargetRef `json:"templateRef,omitempty"`
 	// +optional
 	Message string `json:"message,omitempty"`
 	// +optional

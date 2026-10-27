@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -31,6 +32,15 @@ func List(ctx context.Context, c client.Reader, kind string, opts ...client.List
 	case "DaemonSet":
 		var l appsv1.DaemonSetList
 		if err := c.List(ctx, &l, opts...); err != nil {
+			return nil, err
+		}
+		for i := range l.Items {
+			out = append(out, &l.Items[i])
+		}
+	case Rollout:
+		l := &unstructured.UnstructuredList{}
+		l.SetGroupVersionKind(RolloutGVK.GroupVersion().WithKind("RolloutList"))
+		if err := c.List(ctx, l, opts...); err != nil {
 			return nil, err
 		}
 		for i := range l.Items {
