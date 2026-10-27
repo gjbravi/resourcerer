@@ -54,7 +54,7 @@ jobs:
           provenance: mode=max
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
       - name: Sign image
         env:
           IMAGE: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
@@ -72,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: azure/setup-helm@v5
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
       - name: Package, push and sign chart
         id: push
         env:
