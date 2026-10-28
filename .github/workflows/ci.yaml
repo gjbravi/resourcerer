@@ -16,8 +16,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # A push to main whose tree already passed CI, in the pull request that was squash-merged, is not
-  # tested again: the ruleset requires pull requests to be up to date, so the tree is the same.
+  # Decides whether the change needs testing at all:
+  # - a change that only touches docs or repository metadata does not change the binary, image or chart;
+  # - a push to main whose tree already passed CI in the pull request that was squash-merged is not tested
+  #   again: the ruleset requires pull requests to be up to date, so the tree is the same.
+  # Skipped jobs count as passed for the required checks.
   gate:
     runs-on: ubuntu-latest
     permissions:
@@ -25,26 +28,46 @@ jobs:
       actions: read
     outputs:
       tree: ${{ steps.check.outputs.tree }}
-      tested: ${{ steps.check.outputs.tested }}
+      skip: ${{ steps.check.outputs.skip }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
         run: |
           tree=$(git rev-parse 'HEAD^{tree}')
-          tested=false
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          case "$GITHUB_EVENT_NAME" in
+            # The checkout of a pull request is its merge commit; the first parent is the base.
+            pull_request) base='HEAD^1' ;;
+            push) base="$BEFORE" ;;
+            *) base= ;;
+          esac
+          if [ -n "$base" ] && git cat-file -e "$base" 2>/dev/null; then
+            git diff --name-only "$base" HEAD > changed.txt
+            echo "changed files:"; cat changed.txt
+            if [ -s changed.txt ] && ! grep -qvE '(\.md$|^docs/|^LICENSE$|^\.github/CODEOWNERS$|^\.github/ISSUE_TEMPLATE/|^\.github/pull_request_template\.md$)' changed.txt; then
+              echo "only docs and metadata changed"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             n=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=ci-passed-$tree" -q '[.artifacts[] | select(.expired | not)] | length')
-            [ "$n" -gt 0 ] && tested=true
+            if [ "$n" -gt 0 ]; then
+              echo "tree $tree already passed CI"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
-          echo "tree=$tree" >> "$GITHUB_OUTPUT"
-          echo "tested=$tested" >> "$GITHUB_OUTPUT"
-          echo "tree $tree tested before: $tested"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
 
   go:
     needs: gate
-    if: needs.gate.outputs.tested != 'true'
+    if: needs.gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -59,7 +82,7 @@ jobs:
 
   web:
     needs: gate
-    if: needs.gate.outputs.tested != 'true'
+    if: needs.gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -79,7 +102,7 @@ jobs:
 
   chart:
     needs: gate
-    if: needs.gate.outputs.tested != 'true'
+    if: needs.gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -90,7 +113,7 @@ jobs:
 
   e2e:
     needs: gate
-    if: needs.gate.outputs.tested != 'true'
+    if: needs.gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
