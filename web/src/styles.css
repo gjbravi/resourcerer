@@ -766,7 +766,7 @@ body:has(.rz.dark) {
   font-size: 0.8rem;
   pointer-events: none;
 }
-.recharts-tooltip-wrapper .rz-tt {
+.rz-tt {
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--border);
@@ -847,20 +847,6 @@ body:has(.rz.dark) {
 .g-cross {
   stroke: var(--dim);
   stroke-dasharray: 3 3;
-}
-.rz-tt {
-  position: absolute;
-  top: 10px;
-  z-index: 5;
-  background: var(--tt-bg);
-  color: var(--tt-ink);
-  border-radius: 14px;
-  box-shadow: var(--shadow-lg);
-  padding: 10px 14px;
-  font-size: 0.8rem;
-  pointer-events: none;
-  min-width: 210px;
-  font-variant-numeric: tabular-nums;
 }
 .tt-h {
   color: var(--dim);
