@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { CompareBars, Figure } from "./components";
+import { PiggyBank } from "lucide-react";
+import { CompareBars, Figure, ImpactTile } from "./components";
 import { fmtCores } from "./format";
 
 const fills = (c: HTMLElement) => Array.from(c.querySelectorAll<HTMLElement>(".rz-cmp-fill"));
@@ -34,5 +35,22 @@ describe("Figure", () => {
     const { container } = render(<Figure text="0.675 Cores" />);
     expect(container.querySelector(".unit")).toHaveTextContent("Cores");
     expect(container.textContent).toBe("0.675Cores");
+  });
+});
+
+describe("ImpactTile", () => {
+  it("applies the tone to the icon chip", () => {
+    const { container, rerender } = render(
+      <ImpactTile icon={PiggyBank} label="Monthly cost">
+        $1
+      </ImpactTile>,
+    );
+    expect(container.querySelector(".rz-chip")).toHaveClass("t-save");
+    rerender(
+      <ImpactTile icon={PiggyBank} label="Monthly cost" tone="bad">
+        $2
+      </ImpactTile>,
+    );
+    expect(container.querySelector(".rz-chip")).toHaveClass("t-bad");
   });
 });

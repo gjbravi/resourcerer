@@ -571,7 +571,11 @@ function ImpactTab({ d }: { d: Detail }) {
         <Zoom value={range} onChange={setRange} />
       </div>
       <div className="rz-itiles">
-        <ImpactTile icon={PiggyBank} label="Monthly cost">
+        <ImpactTile
+          icon={PiggyBank}
+          label="Monthly cost"
+          tone={d.recommended.monthlyCost > d.current.monthlyCost ? "bad" : "save"}
+        >
           <Money value={d.recommended.monthlyCost} />
           <Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />
           <span className="rz-dim rz-xs">
