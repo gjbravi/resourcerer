@@ -1072,14 +1072,38 @@ body:has(.rz.dark) {
 .rz-toolbar {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   flex-wrap: wrap;
   padding: 16px 18px 12px;
 }
+.rz-toolbar .rz-tabs {
+  flex: none;
+  gap: 4px;
+}
+.rz-toolbar .rz-tabs button {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+/* Grows into the space the view tabs leave and wraps below them only when it cannot fit. */
 .rz-tools {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex: 1 1 360px;
+  min-width: 0;
+}
+.rz-tools .rz-input {
+  flex: 1 1 120px;
+  min-width: 120px;
+}
+.rz-tools .rz-input input {
+  width: 100%;
+  min-width: 0;
+}
+.rz-tools .rz-select {
+  flex: none;
+  max-width: 150px;
+  text-overflow: ellipsis;
 }
 .rz-input {
   display: inline-flex;
@@ -1100,11 +1124,17 @@ body:has(.rz.dark) {
   width: 190px;
 }
 .rz-select {
+  appearance: none;
   border: 1px solid var(--border);
   border-radius: 99px;
-  padding: 8px 13px;
-  background: var(--panel);
+  padding: 8px 34px 8px 14px;
   color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  background: var(--panel)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239a90c2' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 13px center / 14px;
+  cursor: pointer;
 }
 .rz-input:focus-within,
 .rz-select:focus {

@@ -13,8 +13,8 @@ export const VIEWS: Record<string, [string, (w: Summary) => boolean]> = {
   all: ["All", () => true],
   savings: ["Savings", (w) => net(w) > 0.5],
   reliability: ["Reliability", (w) => atRisk(w)],
-  pending: ["Ready to apply", (w) => applicable(w) && !w.autoDeploy],
-  auto: ["Auto-deploy on", (w) => w.autoDeploy],
+  pending: ["To apply", (w) => applicable(w) && !w.autoDeploy],
+  auto: ["Auto-deploy", (w) => w.autoDeploy],
 };
 
 export const atRisk = (w: Summary) => w.under || w.noRequests || signals(w).length > 0;
@@ -136,14 +136,14 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
             <label className="rz-input">
               <Search size={14} />
               <input
-                placeholder="Search workloads"
+                placeholder="Search"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 aria-label="Search workloads"
               />
             </label>
             <select className="rz-select" value={ns} onChange={(e) => setNs(e.target.value)} aria-label="Namespace">
-              <option value="">All namespaces</option>
+              <option value="">Namespace</option>
               {namespaces.map((n) => (
                 <option key={n}>{n}</option>
               ))}
@@ -154,7 +154,7 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
               onChange={(e) => setStatus(e.target.value as Phase)}
               aria-label="Status"
             >
-              <option value="">All statuses</option>
+              <option value="">Status</option>
               {PHASE_NAMES.map((s) => (
                 <option key={s}>{s}</option>
               ))}
