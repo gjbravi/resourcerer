@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowRight, ArrowUp, Flame, Search, Zap, ZapOff } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, ChevronLeft, ChevronRight, Flame, Search, Zap, ZapOff } from "lucide-react";
 import { useState } from "react";
 import { api, refKey, type Phase, type Resource, type Summary } from "../api";
 import { Delta, Modal, PHASE_NAMES, Ring, StatusBadge, WlCell } from "../components";
@@ -45,6 +45,69 @@ function ReqDiff({ r, a, b, noReq }: { r: Resource; a: number; b: number; noReq:
   );
 }
 
+const PAGE_SIZES = [25, 50, 100];
+
+/** Page numbers around the current one, with the first and last always shown; 0 marks a gap. */
+export function pageList(page: number, pages: number): number[] {
+  const out: number[] = [];
+  for (let p = 1; p <= pages; p++) {
+    if (p === 1 || p === pages || Math.abs(p - page) <= 1) out.push(p);
+    else if (out[out.length - 1] !== 0) out.push(0);
+  }
+  return out;
+}
+
+function Pager({
+  page,
+  pages,
+  size,
+  total,
+  onPage,
+  onSize,
+}: {
+  page: number;
+  pages: number;
+  size: number;
+  total: number;
+  onPage: (p: number) => void;
+  onSize: (n: number) => void;
+}) {
+  if (total <= PAGE_SIZES[0]) return null;
+  return (
+    <nav className="rz-pager" aria-label="Pages">
+      <span className="rz-dim">
+        {(page - 1) * size + 1}–{Math.min(page * size, total)} of {total}
+      </span>
+      <label className="rz-dim">
+        Rows
+        <select className="rz-select small" value={size} onChange={(e) => onSize(Number(e.target.value))}>
+          {PAGE_SIZES.map((n) => (
+            <option key={n}>{n}</option>
+          ))}
+        </select>
+      </label>
+      <span className="rz-grow" />
+      <button aria-label="Previous page" disabled={page === 1} onClick={() => onPage(page - 1)}>
+        <ChevronLeft size={15} />
+      </button>
+      {pageList(page, pages).map((p, i) =>
+        p ? (
+          <button key={p} aria-current={p === page ? "page" : undefined} onClick={() => onPage(p)}>
+            {p}
+          </button>
+        ) : (
+          <span key={`gap${i}`} className="rz-dim">
+            …
+          </span>
+        ),
+      )}
+      <button aria-label="Next page" disabled={page === pages} onClick={() => onPage(page + 1)}>
+        <ChevronRight size={15} />
+      </button>
+    </nav>
+  );
+}
+
 export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: string; readOnly: boolean }) {
   const params = new URLSearchParams(query);
   const qc = useQueryClient();
@@ -53,6 +116,15 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
   const [status, setStatus] = useState(params.get("status") ?? "");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ col: "net", dir: -1 });
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(() => Number(localStorage.getItem("resourcerer.pageSize")) || 25);
+  // Any change to what is listed starts over at the first page.
+  const reset =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      set(v);
+      setPage(1);
+    };
   const [sel, setSel] = useState<Set<string>>(() => new Set());
   const [bulk, setBulk] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,6 +141,9 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
     const y = COLS[sort.col](b);
     return (typeof x === "string" ? x.localeCompare(y as string) : x - (y as number)) * sort.dir;
   });
+  const pages = Math.max(1, Math.ceil(shown.length / size));
+  const at = Math.min(page, pages);
+  const pageRows = shown.slice((at - 1) * size, at * size);
   const selected = shown.filter((w) => sel.has(refKey(w)));
   const toApply = selected.filter(applicable);
   const toggle = (k: string) =>
@@ -85,7 +160,10 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
     >
       <button
         className="rz-sort"
-        onClick={() => setSort((s) => ({ col, dir: s.col === col ? -s.dir : col === "name" ? 1 : -1 }))}
+        onClick={() => {
+          setSort((s) => ({ col, dir: s.col === col ? -s.dir : col === "name" ? 1 : -1 }));
+          setPage(1);
+        }}
       >
         {label} {sort.col === col && (sort.dir > 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
       </button>
@@ -127,7 +205,7 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
         <div className="rz-toolbar">
           <div className="rz-tabs small" role="tablist">
             {Object.entries(VIEWS).map(([id, [label, f]]) => (
-              <button key={id} role="tab" aria-selected={view === id} onClick={() => setView(id)}>
+              <button key={id} role="tab" aria-selected={view === id} onClick={() => reset(setView)(id)}>
                 {label} <span className="n">{scoped.filter(f).length}</span>
               </button>
             ))}
@@ -138,11 +216,16 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
               <input
                 placeholder="Search"
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => reset(setQ)(e.target.value)}
                 aria-label="Search workloads"
               />
             </label>
-            <select className="rz-select" value={ns} onChange={(e) => setNs(e.target.value)} aria-label="Namespace">
+            <select
+              className="rz-select"
+              value={ns}
+              onChange={(e) => reset(setNs)(e.target.value)}
+              aria-label="Namespace"
+            >
               <option value="">Namespace</option>
               {namespaces.map((n) => (
                 <option key={n}>{n}</option>
@@ -151,7 +234,7 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
             <select
               className="rz-select"
               value={status}
-              onChange={(e) => setStatus(e.target.value as Phase)}
+              onChange={(e) => reset(setStatus)(e.target.value as Phase)}
               aria-label="Status"
             >
               <option value="">Status</option>
@@ -209,7 +292,7 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
               </tr>
             </thead>
             <tbody>
-              {shown.map((w) => (
+              {pageRows.map((w) => (
                 <tr
                   key={refKey(w)}
                   className="rz-click"
@@ -274,6 +357,17 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
             </tbody>
           </table>
         </div>
+        <Pager
+          page={at}
+          pages={pages}
+          size={size}
+          total={shown.length}
+          onPage={setPage}
+          onSize={(n) => {
+            localStorage.setItem("resourcerer.pageSize", String(n));
+            reset(setSize)(n);
+          }}
+        />
         <p className="rz-foot rz-dim rz-xs">
           Requests are per-container totals × average replicas. Costs use the rates in Settings.
         </p>

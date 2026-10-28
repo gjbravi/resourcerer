@@ -2019,3 +2019,51 @@ body:has(.rz.dark) {
 .rz-showall:hover {
   background: var(--accent-soft);
 }
+
+/* Pager */
+.rz-pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.rz-pager label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 14px;
+}
+.rz-select.small {
+  padding: 4px 28px 4px 10px;
+  font-size: 0.8rem;
+  background-position: right 9px center;
+}
+.rz-pager button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--ink2);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.rz-pager button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.rz-pager button[aria-current="page"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+.rz-pager button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

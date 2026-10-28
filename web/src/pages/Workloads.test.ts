@@ -1,5 +1,5 @@
 import type { Summary } from "../api";
-import { applicable, VIEWS } from "./Workloads";
+import { applicable, pageList, VIEWS } from "./Workloads";
 
 const base: Summary = {
   namespace: "demo",
@@ -18,6 +18,14 @@ const base: Summary = {
   hash: "abc",
   namespaceAnnotated: false,
 };
+
+describe("pager", () => {
+  it("keeps the first, last and neighbouring pages and marks gaps", () => {
+    expect(pageList(1, 3)).toEqual([1, 2, 3]);
+    expect(pageList(6, 12)).toEqual([1, 0, 5, 6, 7, 0, 12]);
+    expect(pageList(12, 12)).toEqual([1, 0, 11, 12]);
+  });
+});
 
 describe("workload views", () => {
   it("only applies pending Ready or Learning recommendations with a hash", () => {
