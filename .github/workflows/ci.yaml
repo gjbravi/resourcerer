@@ -1,11 +1,12 @@
 name: CI
 
 on:
+  pull_request:
   push:
     branches: [main]
-  pull_request:
-  # The release workflow runs CI first and only publishes when it passes.
-  workflow_call:
+  # The release workflow dispatches CI on release-please's branch: pull requests opened with
+  # GITHUB_TOKEN do not trigger workflows.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,7 +16,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A push to main whose tree already passed CI, in the pull request that was squash-merged, is not
+  # tested again: the ruleset requires pull requests to be up to date, so the tree is the same.
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tree: ${{ steps.check.outputs.tree }}
+      tested: ${{ steps.check.outputs.tested }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          tested=false
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=ci-passed-$tree" -q '[.artifacts[] | select(.expired | not)] | length')
+            [ "$n" -gt 0 ] && tested=true
+          fi
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "tested=$tested" >> "$GITHUB_OUTPUT"
+          echo "tree $tree tested before: $tested"
+
   go:
+    needs: gate
+    if: needs.gate.outputs.tested != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -25,8 +54,12 @@ jobs:
       - run: go vet ./...
       - run: go tool golangci-lint run
       - run: go test -race -coverprofile=coverage.out ./...
+      - run: make verify-generate
+      - run: make lint-workflows
 
   web:
+    needs: gate
+    if: needs.gate.outputs.tested != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -45,6 +78,8 @@ jobs:
       - run: npm run build
 
   chart:
+    needs: gate
+    if: needs.gate.outputs.tested != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -54,15 +89,42 @@ jobs:
       - run: helm template resourcerer charts/resourcerer --set selection=label --set readOnly=true --set applier.enabled=false --set controller.replicas=2 --set server.ingress.enabled=true >/dev/null
 
   e2e:
+    needs: gate
+    if: needs.gate.outputs.tested != 'true'
     runs-on: ubuntu-latest
-    needs: [go, web, chart]
     steps:
       - uses: actions/checkout@v7
+      # Exposes the cache service to the docker build below, which runs outside an action.
+      - uses: crazy-max/ghaction-github-runtime@v4
+      - uses: docker/setup-buildx-action@v4
+      # The image builds while kind starts; together they used to take most of the job one after the other.
+      - name: Build the image in the background
+        run: |
+          (docker buildx build --load -t resourcerer:e2e --build-arg VERSION=e2e \
+            --cache-from type=gha,scope=e2e --cache-to type=gha,mode=max,scope=e2e . \
+            > "$RUNNER_TEMP/build.log" 2>&1; echo $? > "$RUNNER_TEMP/build.rc") &
       - uses: azure/setup-helm@v5
       - uses: helm/kind-action@v1
         with:
           cluster_name: resourcerer
           config: hack/kind-config.yaml
       - run: make kind-up
-      - run: make kind-deploy IMG=resourcerer:e2e
+      - name: Wait for the image
+        run: |
+          while [ ! -f "$RUNNER_TEMP/build.rc" ]; do sleep 2; done
+          cat "$RUNNER_TEMP/build.log"
+          exit "$(cat "$RUNNER_TEMP/build.rc")"
+      - run: make kind-install IMG=resourcerer:e2e
       - run: make e2e
+
+  # Records the tested tree, so the push to main after a squash merge and the release can skip CI.
+  passed:
+    needs: [gate, go, web, chart, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ needs.gate.outputs.tree }}" > tree.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ci-passed-${{ needs.gate.outputs.tree }}
+          path: tree.txt
+          retention-days: 90

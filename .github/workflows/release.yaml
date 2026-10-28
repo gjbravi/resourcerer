@@ -2,18 +2,67 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yaml
+  # Keeps a release pull request with the changelog from Conventional Commits up to date. Merging it
+  # tags the commit and creates the GitHub release; the jobs below then publish the artifacts.
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+      version: ${{ steps.rp.outputs.version }}
+      sha: ${{ steps.rp.outputs.sha }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: rp
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Run CI on the release pull request
+        if: steps.rp.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.rp.outputs.pr }}
+        run: gh workflow run ci.yaml --repo "$GITHUB_REPOSITORY" --ref "$(jq -r .headBranchName <<< "$PR")"
+
+  # Publishes only a tree that passed CI; CI is not run a third time.
+  verify:
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.sha }}
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          n=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=ci-passed-$tree" -q '[.artifacts[] | select(.expired | not)] | length')
+          if [ "$n" -eq 0 ]; then
+            echo "::error::No passing CI run for tree $tree; run CI on ${{ needs.release-please.outputs.sha }} and re-run this workflow."
+            exit 1
+          fi
 
   image:
+    needs: [release-please, verify]
     runs-on: ubuntu-latest
-    needs: ci
     permissions:
       contents: read
       packages: write
@@ -23,6 +72,8 @@ jobs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.sha }}
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
@@ -35,12 +86,28 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.version }}
           labels: |
             org.opencontainers.image.title=resourcerer
             org.opencontainers.image.description=Rightsize Kubernetes requests from Prometheus usage history
             org.opencontainers.image.licenses=Apache-2.0
+      # Carries the Go and npm cache mounts of the Dockerfile across runs; layers alone rebuild Go from scratch.
+      - uses: actions/cache@v5
+        id: cache
+        with:
+          path: buildkit-cache
+          key: buildkit-${{ hashFiles('go.sum', 'web/package-lock.json') }}
+          restore-keys: buildkit-
+      - uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-map: |
+            {
+              "buildkit-cache/go-mod": "/go/pkg/mod",
+              "buildkit-cache/go-build": "/root/.cache/go-build",
+              "buildkit-cache/npm": "/root/.npm"
+            }
+          skip-extraction: ${{ steps.cache.outputs.cache-hit }}
       - uses: docker/build-push-action@v7
         id: build
         with:
@@ -49,7 +116,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ github.ref_name }}
+          build-args: VERSION=${{ needs.release-please.outputs.tag }}
           sbom: true
           provenance: mode=max
           cache-from: type=gha
@@ -61,62 +128,53 @@ jobs:
         run: cosign sign --yes "$IMAGE"
 
   chart:
+    needs: [release-please, image]
     runs-on: ubuntu-latest
-    needs: image
     permissions:
-      contents: read
+      contents: write
       packages: write
       id-token: write
-    outputs:
-      version: ${{ steps.push.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.sha }}
       - uses: azure/setup-helm@v5
       - uses: sigstore/cosign-installer@v4.1.2
       - name: Package, push and sign chart
-        id: push
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ needs.release-please.outputs.version }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
           OWNER: ${{ github.repository_owner }}
         run: |
-          v="${VERSION#v}"
-          helm package charts/resourcerer --version "$v" --app-version "$v" -d dist
+          helm package charts/resourcerer --version "$VERSION" --app-version "$VERSION" -d dist
           echo "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
           echo "$TOKEN" | cosign login ghcr.io -u "$ACTOR" --password-stdin
-          out=$(helm push "dist/resourcerer-$v.tgz" "oci://ghcr.io/$OWNER/charts" 2>&1)
+          out=$(helm push "dist/resourcerer-$VERSION.tgz" "oci://ghcr.io/$OWNER/charts" 2>&1)
           echo "$out"
           digest=$(echo "$out" | awk '/Digest:/ {print $2}')
           cosign sign --yes "ghcr.io/$OWNER/charts/resourcerer@$digest"
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: chart
-          path: dist/*.tgz
+      - name: Attach chart and install notes to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+          DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          gh release upload "$TAG" dist/*.tgz --repo "$GITHUB_REPOSITORY"
+          {
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body
+            cat <<NOTES
 
-  github-release:
-    runs-on: ubuntu-latest
-    needs: [image, chart]
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: chart
-          path: dist
-      - uses: softprops/action-gh-release@v3
-        with:
-          generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: dist/*.tgz
-          body: |
-            ## Install
+          ## Install
 
-            ```bash
-            helm install resourcerer oci://ghcr.io/${{ github.repository_owner }}/charts/resourcerer \
-              --version ${{ needs.chart.outputs.version }} -n resourcerer --create-namespace \
-              --set prometheus.url=http://prometheus-server.monitoring.svc
-            ```
+          \`\`\`bash
+          helm install resourcerer oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/resourcerer \\
+            --version ${VERSION} -n resourcerer --create-namespace \\
+            --set prometheus.url=http://prometheus-server.monitoring.svc
+          \`\`\`
 
-            Image: `ghcr.io/${{ github.repository }}@${{ needs.image.outputs.digest }}`, signed with cosign (keyless).
+          Image: \`ghcr.io/${GITHUB_REPOSITORY}@${DIGEST}\`, signed with cosign (keyless).
+          NOTES
+          } > notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
