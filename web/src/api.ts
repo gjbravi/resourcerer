@@ -54,6 +54,7 @@ export interface Summary {
   pending: boolean;
   autoDeploy: boolean;
   oomKills: number;
+  reliability?: Reliability;
   noRequests: boolean;
   under: boolean;
   hpa?: string[];
@@ -61,6 +62,14 @@ export interface Summary {
   lastAppliedAt?: string;
   hash?: string;
   namespaceAnnotated: boolean;
+}
+
+export interface Reliability {
+  containers?: { name: string; cpuThrottledPercent?: number; memoryPeakPercent?: number }[];
+  restarts?: number;
+  crashLooping?: string[];
+  bestEffortPods?: number;
+  hpaAtMax?: boolean;
 }
 
 export interface Container {

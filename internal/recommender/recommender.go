@@ -6,6 +6,9 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"maps"
+	"math"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -248,7 +251,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		Current:     totals(sum.Current),
 		Recommended: totals(sum.Recommended),
 	}
-	rec.Status.OOMKills = int32(r.oomKills(ctx, w, now.Add(-eff.Duration(settings.LearningPeriod))))
+	since := now.Add(-eff.Duration(settings.LearningPeriod))
+	rec.Status.OOMKills = int32(r.oomKills(ctx, w, since))
+	rec.Status.Reliability = r.reliability(ctx, w, in.Containers, since)
 	if err := r.Status().Patch(ctx, rec, patch); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -290,12 +295,19 @@ func (r *Reconciler) gather(ctx context.Context, w *workload.Workload, eff setti
 		return engine.Input{}, 0, err
 	}
 
+	// Without CFS metrics (no CPU limits, or an older kubelet) throttling just reads as none.
+	throttled, err := r.Prom.Instant(ctx, r.Prom.Throttled(ref, min(learning, 7*24*time.Hour)), "container")
+	if err != nil {
+		log.FromContext(ctx).V(1).Info("query CPU throttling", "error", err.Error())
+	}
+
 	oom := r.oomContainers(ctx, w, start)
 	first := now
 	for i := range cs {
 		cs[i].CPU = prom.Values(cpu[cs[i].Name])
 		cs[i].Memory = prom.Values(mem[cs[i].Name])
 		cs[i].OOMKilled = oom[cs[i].Name]
+		cs[i].CPUThrottled = throttled[cs[i].Name]
 		for _, s := range [][]prom.Point{cpu[cs[i].Name], mem[cs[i].Name]} {
 			if len(s) > 0 && time.Unix(int64(s[0].T), 0).Before(first) {
 				first = time.Unix(int64(s[0].T), 0)
@@ -351,6 +363,44 @@ func (r *Reconciler) oomKills(ctx context.Context, w *workload.Workload, since t
 		}
 	}
 	return n
+}
+
+// reliability collects signals that requests or limits are too tight, beyond OOM kills.
+func (r *Reconciler) reliability(ctx context.Context, w *workload.Workload, cs []engine.ContainerInput, since time.Time) *v1alpha1.Reliability {
+	rel := &v1alpha1.Reliability{}
+	for _, c := range cs {
+		cr := v1alpha1.ContainerReliability{Name: c.Name, CPUThrottledPercent: int32(math.Round(c.CPUThrottled * 100))}
+		if lim := c.Limits[engine.Memory]; lim > 0 && len(c.Memory) > 0 {
+			cr.MemoryPeakPercent = int32(math.Round(slices.Max(c.Memory) / lim * 100))
+		}
+		if cr.CPUThrottledPercent > 0 || cr.MemoryPeakPercent > 0 {
+			rel.Containers = append(rel.Containers, cr)
+		}
+	}
+	crashing := map[string]bool{}
+	for _, p := range r.pods(ctx, w) {
+		if p.Status.QOSClass == corev1.PodQOSBestEffort {
+			rel.BestEffortPods++
+		}
+		for _, s := range p.Status.ContainerStatuses {
+			if s.State.Waiting != nil && s.State.Waiting.Reason == "CrashLoopBackOff" {
+				crashing[s.Name] = true
+			}
+			if t := s.LastTerminationState.Terminated; t != nil && t.Reason != "OOMKilled" && t.Reason != "Completed" && t.FinishedAt.After(since) {
+				rel.Restarts += max(s.RestartCount, 1)
+			}
+		}
+	}
+	rel.CrashLooping = slices.Sorted(maps.Keys(crashing))
+	var hpas autoscalingv2.HorizontalPodAutoscalerList
+	if err := r.List(ctx, &hpas, client.InNamespace(w.Namespace())); err == nil {
+		for _, h := range hpas.Items {
+			if h.Spec.ScaleTargetRef.Kind == w.Kind && h.Spec.ScaleTargetRef.Name == w.Name() {
+				rel.HPAAtMax = h.Status.CurrentReplicas >= h.Spec.MaxReplicas
+			}
+		}
+	}
+	return rel
 }
 
 func (r *Reconciler) hpa(ctx context.Context, w *workload.Workload) *engine.HPA {

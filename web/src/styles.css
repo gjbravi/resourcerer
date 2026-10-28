@@ -1874,8 +1874,35 @@ body:has(.rz.dark) {
   background: color-mix(in srgb, var(--bad) 14%, transparent);
   color: var(--bad);
 }
-.rz-impactcard.rel.bad b {
+.rz-impactcard.rel.bad .rel-body b {
   color: var(--bad);
+}
+.rz-impactcard.rel.warn .rel-icon {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+.rz-signals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.rz-signals li {
+  display: grid;
+  gap: 1px;
+  padding-left: 12px;
+  border-left: 3px solid var(--warn);
+  font-size: 0.78rem;
+}
+.rz-signals li.bad {
+  border-left-color: var(--bad);
+}
+.rz-signals li b {
+  font-weight: 650;
+}
+.rz-signals li span {
+  color: var(--dim);
 }
 
 /* Namespaces card */

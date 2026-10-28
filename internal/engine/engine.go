@@ -53,7 +53,12 @@ type ContainerInput struct {
 	Memory []float64
 	// OOMKilled within the learning period: memory usage was capped by the limit.
 	OOMKilled bool
+	// CPUThrottled is the share of CFS periods throttled by the CPU limit over the learning period.
+	CPUThrottled float64
 }
+
+// ThrottledShare is the share of throttled CFS periods from which the CPU limit counts as too tight.
+const ThrottledShare = 0.25
 
 type HPA struct {
 	Name string
@@ -202,6 +207,9 @@ func Recommend(in Input) Output {
 					}
 				}
 			}
+			if hasLim && policy != "RequestsOnly" {
+				raiseLimit(&o, c, r, cur)
+			}
 		}
 		out.Containers = append(out.Containers, o)
 	}
@@ -220,6 +228,16 @@ func Recommend(in Input) Output {
 		}
 	}
 	return out
+}
+
+// raiseLimit lifts a CPU limit that throttles the container. Throttling happens in 100ms periods, so it shows
+// up even when sampled usage stays below the limit and the request rule would leave the limit alone.
+func raiseLimit(o *ContainerOutput, c ContainerInput, r string, cur float64) {
+	if r != CPU || c.CPUThrottled < ThrottledShare {
+		return
+	}
+	o.Limits[CPU] = max(o.Limits[CPU], round(CPU, cur*1.5))
+	o.Basis[CPU] += fmt.Sprintf(" · limit raised: throttled %d%% of the time", int(math.Round(c.CPUThrottled*100)))
 }
 
 func keep(c ContainerInput, why string) ContainerOutput {

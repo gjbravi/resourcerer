@@ -34,6 +34,15 @@ describe("workload views", () => {
     expect(rows.filter(VIEWS.reliability[1]).map((w) => w.name)).toEqual(["ledger"]);
     expect(rows.filter(VIEWS.pending[1])).toHaveLength(2);
   });
+
+  it("counts throttling, crash loops and memory near its limit as reliability risks", () => {
+    const at = (reliability: Summary["reliability"]) => VIEWS.reliability[1]({ ...base, reliability });
+    expect(at({ containers: [{ name: "api", cpuThrottledPercent: 5 }] })).toBe(false);
+    expect(at({ containers: [{ name: "api", cpuThrottledPercent: 40 }] })).toBe(true);
+    expect(at({ containers: [{ name: "api", memoryPeakPercent: 95 }] })).toBe(true);
+    expect(at({ crashLooping: ["api"] })).toBe(true);
+    expect(at({ hpaAtMax: true })).toBe(true);
+  });
 });
 
 import { applyDescription } from "./Details";

@@ -519,6 +519,49 @@ spec:
                 - Unsupported
                 - Error
                 type: string
+              reliability:
+                description: Reliability holds signals from the learning period that
+                  requests and limits may be too tight.
+                properties:
+                  bestEffortPods:
+                    description: Pods with no requests or limits at all, the first
+                      evicted under node pressure.
+                    format: int32
+                    type: integer
+                  containers:
+                    items:
+                      properties:
+                        cpuThrottledPercent:
+                          description: Share of CFS periods throttled by the CPU limit,
+                            in percent.
+                          format: int32
+                          type: integer
+                        memoryPeakPercent:
+                          description: Peak memory of the busiest pod, in percent
+                            of the memory limit.
+                          format: int32
+                          type: integer
+                        name:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  crashLooping:
+                    description: Containers in CrashLoopBackOff now.
+                    items:
+                      type: string
+                    type: array
+                  hpaAtMax:
+                    description: The HPA runs at its maximum replicas, so it cannot
+                      absorb more load.
+                    type: boolean
+                  restarts:
+                    description: Restarts other than OOM kills, approximated like
+                      OOMKills.
+                    format: int32
+                    type: integer
+                type: object
               score:
                 properties:
                   cpu:

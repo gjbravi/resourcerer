@@ -19,7 +19,8 @@ import { Delta, FitBar, Metric, Money, PHASE_NAMES, phaseTone, Ring, StatusBadge
 import { fmtCores, fmtMem, fmtMoney } from "../format";
 import { navigate, workloadHash } from "../hooks";
 import { ClusterTimeline } from "./ClusterTimeline";
-import { applicable } from "./Workloads";
+import { signals } from "../reliability";
+import { applicable, atRisk } from "./Workloads";
 
 const net = (w: Summary) => w.current.monthlyCost - w.recommended.monthlyCost;
 
@@ -156,8 +157,8 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
     .sort((a, b) => net(b) - net(a))
     .slice(0, 5);
   const risks = rows
-    .filter((w) => w.under || w.oomKills > 0 || w.noRequests)
-    .sort((a, b) => b.oomKills - a.oomKills || net(a) - net(b))
+    .filter(atRisk)
+    .sort((a, b) => b.oomKills - a.oomKills || signals(b).length - signals(a).length || net(a) - net(b))
     .slice(0, 5);
   const ready = rows.filter((w) => applicable(w) && !w.autoDeploy).length;
   const namespaces = [...new Set(rows.map((w) => w.namespace))]
@@ -319,9 +320,9 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
                 "Why",
                 (w) => (
                   <span className="rz-xs">
-                    {w.oomKills > 0 ? (
-                      <span className="t-bad">
-                        <Flame size={12} /> {w.oomKills} OOM kills
+                    {signals(w)[0] ? (
+                      <span className={`t-${signals(w)[0].tone}`}>
+                        <Flame size={12} /> {signals(w)[0].title}
                       </span>
                     ) : w.noRequests ? (
                       "No requests set"

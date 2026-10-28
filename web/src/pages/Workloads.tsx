@@ -5,16 +5,19 @@ import { api, refKey, type Phase, type Resource, type Summary } from "../api";
 import { Delta, Modal, PHASE_NAMES, Ring, StatusBadge, WlCell } from "../components";
 import { fmt } from "../format";
 import { navigate, toast, workloadHash } from "../hooks";
+import { signals } from "../reliability";
 
 const net = (w: Summary) => w.current.monthlyCost - w.recommended.monthlyCost;
 
 export const VIEWS: Record<string, [string, (w: Summary) => boolean]> = {
   all: ["All", () => true],
   savings: ["Savings", (w) => net(w) > 0.5],
-  reliability: ["Reliability", (w) => w.under || w.oomKills > 0 || w.noRequests],
+  reliability: ["Reliability", (w) => atRisk(w)],
   pending: ["Ready to apply", (w) => applicable(w) && !w.autoDeploy],
   auto: ["Auto-deploy on", (w) => w.autoDeploy],
 };
+
+export const atRisk = (w: Summary) => w.under || w.noRequests || signals(w).length > 0;
 
 export const applicable = (w: Summary) => !!w.hash && w.pending && (w.phase === "Ready" || w.phase === "Learning");
 

@@ -38,6 +38,7 @@ import {
 } from "../components";
 import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
 import { toast, useAction, useImpact, useSeries, useWorkload, workloadHash } from "../hooks";
+import { signals } from "../reliability";
 import { meta } from "../settings";
 
 const TABS = [
@@ -72,6 +73,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
   const canApply = !readOnly && !!d.hash && d.pending && (d.phase === "Ready" || d.phase === "Learning");
   const lastApply = d.history.find((h) => h.action === "Apply");
   const net = d.current.monthlyCost - d.recommended.monthlyCost;
+  const sig = signals(d);
   const doRevert = () =>
     revert.mutate(undefined, {
       onSuccess: () =>
@@ -103,7 +105,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
               <Info size={15} aria-label="Requests × average replicas, priced with the cost rates in Settings" />
             </>
           }
-          art={d.oomKills > 0 || net < -0.005 ? <Art kind="shield" size={128} /> : <NoteArt />}
+          art={sig.length > 0 || net < -0.005 ? <Art kind="shield" size={128} /> : <NoteArt />}
           trend={
             <>
               <Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />{" "}
@@ -204,9 +206,13 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
           <span>
             <ShieldCheck size={15} /> Reliability
           </span>
-          <b className={d.oomKills ? "t-bad" : ""}>{d.oomKills ? `${d.oomKills} OOM kills` : "Healthy"}</b>
+          <b className={sig.length ? `t-${sig[0].tone}` : ""}>{sig.length ? sig[0].title : "Healthy"}</b>
           <span className="rz-dim rz-xs">
-            {d.oomKills ? "memory is raised above the limit that killed it" : "no OOM kills in the learning period"}
+            {sig.length > 1
+              ? `and ${sig.length - 1} more ${sig.length === 2 ? "signal" : "signals"}`
+              : sig.length
+                ? sig[0].detail
+                : "no throttling, OOM kills or restarts in the learning period"}
           </span>
         </div>
         <div className="rz-kpi">
@@ -569,6 +575,35 @@ function ImpactChart({ d, resource, range }: { d: Detail; resource: Resource; ra
   );
 }
 
+/** Every reliability signal of the learning period, worst first. */
+function ReliabilityCard({ d }: { d: Detail }) {
+  const sig = signals(d);
+  const tone = sig.length ? sig[0].tone : "ok";
+  return (
+    <div className={`rz-impactcard rel ${tone}`}>
+      <span className="lbl">
+        <ShieldCheck size={16} /> Reliability
+      </span>
+      <div className="rel-body">
+        <span className="rel-icon">{tone === "ok" ? <ShieldCheck size={20} /> : <Flame size={20} />}</span>
+        <b>{sig.length ? `${sig.length} ${sig.length === 1 ? "signal" : "signals"}` : "Healthy"}</b>
+      </div>
+      {sig.length ? (
+        <ul className="rz-signals">
+          {sig.map((x) => (
+            <li key={x.title} className={x.tone}>
+              <b>{x.title}</b>
+              <span>{x.detail}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <span className="rz-dim rz-xs">No throttling, OOM kills, restarts or memory close to its limit.</span>
+      )}
+    </div>
+  );
+}
+
 /** One figure before and after the recommendation, with bars on a shared scale. */
 function ImpactCard({
   icon,
@@ -648,20 +683,7 @@ function ImpactTab({ d }: { d: Detail }) {
           fmt={fmtMem}
           delta={<Delta from={d.current.memory} to={d.recommended.memory} r="memory" />}
         />
-        <div className={`rz-impactcard rel ${d.oomKills ? "bad" : "ok"}`}>
-          <span className="lbl">
-            <ShieldCheck size={16} /> Reliability
-          </span>
-          <div className="rel-body">
-            <span className="rel-icon">{d.oomKills ? <Flame size={20} /> : <ShieldCheck size={20} />}</span>
-            <b>{d.oomKills ? `${d.oomKills} OOM kills` : "No OOM kills"}</b>
-          </div>
-          <span className="rz-dim rz-xs">
-            {d.oomKills
-              ? "The memory recommendation is raised above the limit that killed it."
-              : "Usage stayed under limits in the learning period."}
-          </span>
-        </div>
+        <ReliabilityCard d={d} />
       </div>
       <div className="rz-card pad">
         <ImpactChart d={d} resource="cpu" range={range} />

@@ -93,6 +93,35 @@ func (c *Client) Requests(r Ref, kind, resource string) string {
 		kind, quote(r.Namespace), unit, owner(r))
 }
 
+// Throttled is the share of CFS periods each container of the workload spent throttled over window.
+func (c *Client) Throttled(r Ref, window time.Duration) string {
+	ns := quote(r.Namespace)
+	part := func(m string) string {
+		return fmt.Sprintf("sum by (container) (increase(%s{namespace=\"%s\", container!=\"\", container!=\"POD\"}[%s]) * on (namespace, pod) group_left () %s)",
+			m, ns, model.Duration(window), owner(r))
+	}
+	return part("container_cpu_cfs_throttled_periods_total") + "\n/\n" + part("container_cpu_cfs_periods_total")
+}
+
+// Instant runs an instant query and returns one value per value of label.
+func (c *Client) Instant(ctx context.Context, q string, label string) (map[string]float64, error) {
+	v, _, err := c.API.Query(ctx, q, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	vec, ok := v.(model.Vector)
+	if !ok {
+		return nil, fmt.Errorf("unexpected result type %s", v.Type())
+	}
+	out := map[string]float64{}
+	for _, s := range vec {
+		if f := float64(s.Value); !math.IsNaN(f) && !math.IsInf(f, 0) {
+			out[string(s.Metric[model.LabelName(label)])] = f
+		}
+	}
+	return out, nil
+}
+
 // ClusterAllocatable is what the nodes offer to pods, from kube-state-metrics.
 func ClusterAllocatable(resource string) string {
 	return fmt.Sprintf(`sum(kube_node_status_allocatable{resource="%s"})`, resource)

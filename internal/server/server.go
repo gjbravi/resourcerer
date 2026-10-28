@@ -166,7 +166,7 @@ func summarize(rec *v1alpha1.Recommendation, replicas int32) Summary {
 	sum := Summary{
 		Namespace: rec.Namespace, Kind: rec.Spec.TargetRef.Kind, Name: rec.Spec.TargetRef.Name,
 		Replicas: replicas, Phase: string(st.Phase), Message: st.Message, Pending: st.Pending,
-		AutoDeploy: st.Settings[settings.AutoDeploy].Value == "Enabled", OOMKills: st.OOMKills, Hash: st.Hash,
+		AutoDeploy: st.Settings[settings.AutoDeploy].Value == "Enabled", OOMKills: st.OOMKills, Reliability: st.Reliability, Hash: st.Hash,
 	}
 	if sum.Phase == "" {
 		sum.Phase = string(v1alpha1.PhasePending)

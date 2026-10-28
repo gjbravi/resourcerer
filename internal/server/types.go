@@ -1,6 +1,9 @@
 package server
 
-import "github.com/gjbravi/resourcerer/internal/prom"
+import (
+	"github.com/gjbravi/resourcerer/api/v1alpha1"
+	"github.com/gjbravi/resourcerer/internal/prom"
+)
 
 // Resources are cores for CPU and bytes for memory; absent keys are unset.
 type Resources map[string]float64
@@ -43,26 +46,27 @@ type Score struct {
 }
 
 type Summary struct {
-	Namespace    string   `json:"namespace"`
-	Kind         string   `json:"kind"`
-	Name         string   `json:"name"`
-	Replicas     int32    `json:"replicas"`
-	AvgReplicas  float64  `json:"avgReplicas"`
-	Phase        string   `json:"phase"`
-	Message      string   `json:"message,omitempty"`
-	Score        *Score   `json:"score,omitempty"`
-	Current      Totals   `json:"current"`
-	Recommended  Totals   `json:"recommended"`
-	Pending      bool     `json:"pending"`
-	AutoDeploy   bool     `json:"autoDeploy"`
-	OOMKills     int32    `json:"oomKills"`
-	NoRequests   bool     `json:"noRequests"`
-	Under        bool     `json:"under"`
-	HPA          []string `json:"hpa,omitempty"`
-	GeneratedAt  string   `json:"generatedAt,omitempty"`
-	LastApplied  string   `json:"lastAppliedAt,omitempty"`
-	Hash         string   `json:"hash,omitempty"`
-	NamespaceSet bool     `json:"namespaceAnnotated"`
+	Namespace    string                `json:"namespace"`
+	Kind         string                `json:"kind"`
+	Name         string                `json:"name"`
+	Replicas     int32                 `json:"replicas"`
+	AvgReplicas  float64               `json:"avgReplicas"`
+	Phase        string                `json:"phase"`
+	Message      string                `json:"message,omitempty"`
+	Score        *Score                `json:"score,omitempty"`
+	Current      Totals                `json:"current"`
+	Recommended  Totals                `json:"recommended"`
+	Pending      bool                  `json:"pending"`
+	AutoDeploy   bool                  `json:"autoDeploy"`
+	OOMKills     int32                 `json:"oomKills"`
+	Reliability  *v1alpha1.Reliability `json:"reliability,omitempty"`
+	NoRequests   bool                  `json:"noRequests"`
+	Under        bool                  `json:"under"`
+	HPA          []string              `json:"hpa,omitempty"`
+	GeneratedAt  string                `json:"generatedAt,omitempty"`
+	LastApplied  string                `json:"lastAppliedAt,omitempty"`
+	Hash         string                `json:"hash,omitempty"`
+	NamespaceSet bool                  `json:"namespaceAnnotated"`
 }
 
 type Container struct {
