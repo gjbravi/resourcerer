@@ -858,6 +858,7 @@ body:has(.rz.dark) {
 .tt-h {
   color: var(--dim);
   font-size: 0.7rem;
+  font-weight: 550;
   margin-bottom: 4px;
 }
 .tt-s {
@@ -871,10 +872,13 @@ body:has(.rz.dark) {
   margin: 2px 0;
   white-space: nowrap;
 }
+.tt-r span {
+  font-weight: 600;
+}
 .tt-r b {
   margin-left: auto;
   font-family: ui-monospace, Menlo, monospace;
-  font-weight: 500;
+  font-weight: 650;
 }
 .sw {
   display: inline-block;

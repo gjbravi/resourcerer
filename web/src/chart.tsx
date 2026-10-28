@@ -320,7 +320,7 @@ export function TimeChart({
                   </div>
                   {items.map((r) => (
                     <div key={r.key} className="tt-r">
-                      <span style={{ color: `color-mix(in srgb, ${r.color} 70%, var(--text))` }}>{r.label}</span>
+                      <span style={{ color: `color-mix(in srgb, ${r.color} 60%, var(--text))` }}>{r.label}</span>
                       <b>{fmtTip(r.v)}</b>
                     </div>
                   ))}
