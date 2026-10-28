@@ -1,5 +1,18 @@
-import { Activity, Boxes, Cpu, Flame, Info, MemoryStick, PiggyBank, ShieldCheck, Zap } from "lucide-react";
-import type { ReactNode } from "react";
+import {
+  Activity,
+  Boxes,
+  ChevronDown,
+  ChevronUp,
+  Cpu,
+  Flame,
+  Info,
+  MemoryStick,
+  PiggyBank,
+  Search,
+  ShieldCheck,
+  Zap,
+} from "lucide-react";
+import { useState, type ReactNode } from "react";
 import type { Summary } from "../api";
 import { NoteArt, WandArt } from "../art";
 import { Delta, FitBar, Metric, Money, PHASE_NAMES, phaseTone, Ring, StatusBadge, WlCell } from "../components";
@@ -39,6 +52,84 @@ function MiniTable({
         ))}
       </tbody>
     </table>
+  );
+}
+
+interface NamespaceRow {
+  ns: string;
+  n: number;
+  cur: number;
+  rec: number;
+  auto: number;
+  annotated: boolean;
+}
+
+const TOP_NAMESPACES = 8;
+
+/** The namespaces with the most to change; the rest behind a search and a scrollable list. */
+function NamespacesCard({ namespaces }: { namespaces: NamespaceRow[] }) {
+  const [q, setQ] = useState("");
+  const [all, setAll] = useState(false);
+  const matches = namespaces.filter((n) => n.ns.includes(q.trim().toLowerCase()));
+  const shown = all || q ? matches : matches.slice(0, TOP_NAMESPACES);
+  return (
+    <section className="rz-card">
+      <div className="rz-cardhd">
+        <h2>Namespaces</h2>
+        {namespaces.length > TOP_NAMESPACES && (
+          <label className="rz-input small">
+            <Search size={13} />
+            <input
+              placeholder={`Search ${namespaces.length} namespaces`}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              aria-label="Search namespaces"
+            />
+          </label>
+        )}
+      </div>
+      <div className={all || q ? "rz-scrolltable" : undefined}>
+        <table className="rz-table rz-nstable">
+          <thead>
+            <tr>
+              <th>Namespace</th>
+              <th className="num">Cost / mo</th>
+              <th className="num">Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((n) => (
+              <tr key={n.ns} className="rz-click" onClick={() => navigate(`#/workloads?ns=${n.ns}`)}>
+                <td>
+                  <span className="rz-nsname">
+                    <b title={n.ns}>{n.ns}</b>
+                    {n.annotated && (
+                      <span className="rz-src s-namespace" title="The namespace has resourcerer.io annotations">
+                        annotated
+                      </span>
+                    )}
+                  </span>
+                  <span className="rz-dim rz-xs">
+                    {n.n} {n.n === 1 ? "workload" : "workloads"} · {n.auto} auto-deploy
+                  </span>
+                </td>
+                <td className="num">{fmtMoney(n.cur)}</td>
+                <td className="num">
+                  <Delta from={n.cur} to={n.rec} money />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!shown.length && <p className="rz-empty">No namespace matches “{q}”.</p>}
+      </div>
+      {!q && namespaces.length > TOP_NAMESPACES && (
+        <button className="rz-showall" onClick={() => setAll(!all)}>
+          {all ? `Show top ${TOP_NAMESPACES}` : `Show all ${namespaces.length} namespaces`}
+          {all ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -273,44 +364,7 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
             )}
           </div>
         </section>
-        <section className="rz-card">
-          <div className="rz-cardhd">
-            <h2>Namespaces</h2>
-          </div>
-          <table className="rz-table">
-            <thead>
-              <tr>
-                <th>Namespace</th>
-                <th className="num">Workloads</th>
-                <th className="num">Cost / mo</th>
-                <th className="num">Change</th>
-                <th className="num">Auto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {namespaces.map((n) => (
-                <tr key={n.ns} className="rz-click" onClick={() => navigate(`#/workloads?ns=${n.ns}`)}>
-                  <td>
-                    <b>{n.ns}</b>
-                    {n.annotated && (
-                      <span className="rz-src s-namespace" title="The namespace has resourcerer.io annotations">
-                        annotated
-                      </span>
-                    )}
-                  </td>
-                  <td className="num">{n.n}</td>
-                  <td className="num">{fmtMoney(n.cur)}</td>
-                  <td className="num">
-                    <Delta from={n.cur} to={n.rec} money />
-                  </td>
-                  <td className="num">
-                    {n.auto}/{n.n}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+        <NamespacesCard namespaces={namespaces} />
       </div>
     </div>
   );

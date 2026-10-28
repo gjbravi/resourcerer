@@ -1877,3 +1877,68 @@ body:has(.rz.dark) {
 .rz-impactcard.rel.bad b {
   color: var(--bad);
 }
+
+/* Namespaces card */
+.rz-input.small input {
+  padding: 6px 0;
+  width: 170px;
+  font-size: 0.8rem;
+}
+.rz-scrolltable {
+  max-height: 420px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.rz-nsname {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.rz-nsname b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rz-nstable {
+  table-layout: fixed;
+}
+.rz-nstable th:nth-child(2) {
+  width: 96px;
+}
+.rz-nstable th:nth-child(3) {
+  width: 132px;
+}
+.rz-nstable td:first-child {
+  overflow: hidden;
+}
+.rz-nstable td:first-child > .rz-dim {
+  display: block;
+  margin-top: 2px;
+}
+.rz-scrolltable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+}
+.rz-showall {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+  border-radius: 0 0 var(--r) var(--r);
+}
+.rz-showall:hover {
+  background: var(--accent-soft);
+}
