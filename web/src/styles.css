@@ -495,6 +495,147 @@ body:has(.rz.dark) {
   letter-spacing: 0;
 }
 
+/* Projected impact tiles */
+.rz-itiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+.rz-itile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  font-variant-numeric: tabular-nums;
+}
+.rz-itile-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--ink2);
+  font-weight: 600;
+}
+.rz-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  flex: none;
+}
+.rz-chip.t-save {
+  background: var(--save-soft);
+  color: var(--save-deep);
+}
+.rz-chip.t-accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.rz-chip.t-bad {
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  color: var(--bad);
+}
+.rz-itile .rz-money {
+  font-size: 1.9rem;
+  margin: 0;
+}
+.rz-figure {
+  font-size: 1.6rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text);
+}
+.rz-figure .unit {
+  font-size: 0.85rem;
+  font-weight: 550;
+  color: var(--faint);
+  letter-spacing: 0;
+  margin-left: 4px;
+}
+.rz-itile .rz-delta {
+  font-size: 0.76rem;
+  padding: 3px 9px;
+  border-radius: 99px;
+}
+.rz-itile .rz-delta.save {
+  background: var(--save-soft);
+  color: var(--save-deep);
+}
+.rz-itile .rz-delta.cost {
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+}
+.rz-cmp {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 2px;
+}
+.rz-cmp-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.rz-cmp-track {
+  height: 6px;
+  border-radius: 99px;
+  background: var(--track);
+  overflow: hidden;
+}
+.rz-cmp-fill {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+}
+.rz-cmp-fill.cur {
+  background: var(--c-cur);
+}
+.rz-cmp-fill.rec {
+  background: var(--c-rec);
+}
+.rz-cmp-fill.rec.up {
+  background: var(--bad);
+}
+.rz-cmp-v {
+  font-size: 0.74rem;
+  color: var(--dim);
+  min-width: 5.5em;
+  text-align: right;
+}
+.rz-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.rz-status i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.rz-status.good i {
+  background: var(--good);
+}
+.rz-status.bad {
+  color: var(--bad);
+}
+.rz-status.bad i {
+  background: var(--bad);
+}
+
 /* Score ring (lists) */
 .rz-ring {
   position: relative;

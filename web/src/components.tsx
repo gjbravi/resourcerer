@@ -280,3 +280,77 @@ export function FitBar({ value }: { value?: number }) {
     </div>
   );
 }
+
+/** Card tile for a projected-impact figure: icon chip, label, then free content. */
+export function ImpactTile({
+  icon: Icon,
+  label,
+  tone = "save",
+  children,
+}: {
+  icon: LucideIcon;
+  label: ReactNode;
+  tone?: "save" | "accent" | "bad";
+  children: ReactNode;
+}) {
+  return (
+    <div className="rz-itile">
+      <div className="rz-itile-hd">
+        <span className={`rz-chip t-${tone}`}>
+          <Icon size={15} aria-hidden />
+        </span>
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Big formatted value with its trailing unit set smaller, e.g. "0.675 Cores" or "512MiB". */
+export function Figure({ text }: { text: string }) {
+  const m = /^([-+]?[\d.,]+)\s*(\D.*)$/.exec(text);
+  return (
+    <div className="rz-figure">
+      {m ? (
+        <>
+          {m[1]}
+          <span className="unit">{m[2]}</span>
+        </>
+      ) : (
+        text
+      )}
+    </div>
+  );
+}
+
+/** Current vs recommended as two bars scaled to the larger value; an increase is shown in red. */
+export function CompareBars({
+  current,
+  recommended,
+  format,
+}: {
+  current?: number;
+  recommended?: number;
+  format: (v: number) => string;
+}) {
+  const cur = Number.isFinite(current) ? Math.max(0, current!) : 0;
+  const rec = Number.isFinite(recommended) ? Math.max(0, recommended!) : 0;
+  const max = Math.max(cur, rec);
+  const width = (v: number) => (max > 0 ? `${(v / max) * 100}%` : "0%");
+  const rows = [
+    { key: "cur", name: "Current", v: cur, cls: "cur" },
+    { key: "rec", name: "Recommended", v: rec, cls: rec > cur ? "rec up" : "rec" },
+  ];
+  return (
+    <div className="rz-cmp" role="img" aria-label={`Current ${format(cur)}, recommended ${format(rec)}`}>
+      {rows.map((r) => (
+        <div key={r.key} className="rz-cmp-row">
+          <span className="rz-cmp-track">
+            <span className={`rz-cmp-fill ${r.cls}`} style={{ width: width(r.v) }} />
+          </span>
+          <span className="rz-cmp-v">{format(r.v)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -9,8 +9,10 @@ import {
   Info,
   MemoryStick,
   Pencil,
+  PiggyBank,
   RefreshCw,
   RotateCcw,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   TriangleAlert,
@@ -23,10 +25,13 @@ import { Art, NoteArt, WandArt } from "../art";
 import { TimeChart } from "../chart";
 import {
   Change,
+  CompareBars,
   CopyButton,
   Delta,
   ErrorBox,
+  Figure,
   FitBar,
+  ImpactTile,
   Metric,
   Modal,
   Money,
@@ -558,40 +563,52 @@ function ImpactChart({ d, resource, range }: { d: Detail; resource: Resource; ra
 
 function ImpactTab({ d }: { d: Detail }) {
   const [range, setRange] = useState<Range>("1h");
+  const yearly = (d.current.monthlyCost - d.recommended.monthlyCost) * 12;
   return (
     <>
       <div className="rz-sechd">
         <h2>Projected impact</h2>
         <Zoom value={range} onChange={setRange} />
       </div>
-      <div className="rz-kpis">
-        <div className="rz-kpi">
-          <span>Monthly cost</span>
-          <b>
-            ${d.current.monthlyCost.toFixed(2)} → ${d.recommended.monthlyCost.toFixed(2)}
-          </b>
-        </div>
-        <div className="rz-kpi">
-          <span>CPU requested</span>
-          <b>
-            {fmtCores(d.current.cpu)} → {fmtCores(d.recommended.cpu)}
-          </b>
-        </div>
-        <div className="rz-kpi">
-          <span>Memory requested</span>
-          <b>
-            {fmtMem(d.current.memory)} → {fmtMem(d.recommended.memory)}
-          </b>
-        </div>
-        <div className="rz-kpi">
-          <span>Reliability</span>
-          <b className={d.oomKills ? "t-bad" : ""}>{d.oomKills ? `${d.oomKills} OOM kills` : "No OOM kills"}</b>
+      <div className="rz-itiles">
+        <ImpactTile icon={PiggyBank} label="Monthly cost">
+          <Money value={d.recommended.monthlyCost} />
+          <Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />
+          <span className="rz-dim rz-xs">
+            from {fmtMoney(d.current.monthlyCost)}
+            {Math.abs(yearly) >= 0.005 && (
+              <>
+                {" "}
+                · {fmtMoney(Math.abs(yearly))}/yr {yearly > 0 ? "saved" : "more"}
+              </>
+            )}
+          </span>
+        </ImpactTile>
+        <ImpactTile icon={Cpu} label="CPU requested" tone="accent">
+          <Figure text={fmtCores(d.recommended.cpu)} />
+          <Delta from={d.current.cpu} to={d.recommended.cpu} r="cpu" />
+          <CompareBars current={d.current.cpu} recommended={d.recommended.cpu} format={fmtCores} />
+        </ImpactTile>
+        <ImpactTile icon={MemoryStick} label="Memory requested" tone="accent">
+          <Figure text={fmtMem(d.recommended.memory)} />
+          <Delta from={d.current.memory} to={d.recommended.memory} r="memory" />
+          <CompareBars current={d.current.memory} recommended={d.recommended.memory} format={fmtMem} />
+        </ImpactTile>
+        <ImpactTile
+          icon={d.oomKills ? ShieldAlert : ShieldCheck}
+          label="Reliability"
+          tone={d.oomKills ? "bad" : "save"}
+        >
+          <div className={`rz-status ${d.oomKills ? "bad" : "good"}`}>
+            <i aria-hidden />
+            {d.oomKills ? `${d.oomKills} OOM kills` : "No OOM kills"}
+          </div>
           <span className="rz-dim rz-xs">
             {d.oomKills
               ? "The memory recommendation is raised above the limit that killed it."
               : "Usage stayed under limits."}
           </span>
-        </div>
+        </ImpactTile>
       </div>
       <div className="rz-card pad">
         <ImpactChart d={d} resource="cpu" range={range} />
