@@ -43,9 +43,16 @@ export function useAction<T>(w: Ref, fn: (arg: T) => Promise<unknown>) {
 export function useHash(): string {
   const [hash, setHash] = useState(() => window.location.hash || "#/overview");
   useEffect(() => {
+    // Switching tabs keeps the page where it is; only a different page starts at the top.
+    const page = (h: string) => h.replace(/^(#\/w\/[^/]+\/[^/]+\/[^/?]+)\/[^/?]*/, "$1");
+    let prev = window.location.hash || "#/overview";
     const on = () => {
-      setHash(window.location.hash || "#/overview");
-      window.scrollTo(0, 0);
+      const next = window.location.hash || "#/overview";
+      // The browser's scroll anchoring would otherwise follow the cards below the tab content.
+      const y = page(next) === page(prev) ? window.scrollY : 0;
+      prev = next;
+      setHash(next);
+      requestAnimationFrame(() => window.scrollTo(0, y));
     };
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
