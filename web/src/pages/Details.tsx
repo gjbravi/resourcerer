@@ -206,13 +206,11 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
           <span>
             <ShieldCheck size={15} /> Reliability
           </span>
-          <b className={sig.length ? `t-${sig[0].tone}` : ""}>{sig.length ? sig[0].title : "Healthy"}</b>
+          <b className={sig.length ? `t-${sig[0].tone}` : ""}>
+            {sig.length ? `${sig.length} ${sig.length === 1 ? "signal" : "signals"}` : "Healthy"}
+          </b>
           <span className="rz-dim rz-xs">
-            {sig.length > 1
-              ? `and ${sig.length - 1} more ${sig.length === 2 ? "signal" : "signals"}`
-              : sig.length
-                ? sig[0].detail
-                : "no throttling, OOM kills or restarts in the learning period"}
+            {sig.length ? sig[0].title : "no throttling, OOM kills or restarts in the learning period"}
           </span>
         </div>
         <div className="rz-kpi">
@@ -575,9 +573,10 @@ function ImpactChart({ d, resource, range }: { d: Detail; resource: Resource; ra
   );
 }
 
-/** Every reliability signal of the learning period, worst first. */
+/** Reliability at a glance, sized like the other impact cards; the signals are listed below them. */
 function ReliabilityCard({ d }: { d: Detail }) {
   const sig = signals(d);
+  const bad = sig.filter((x) => x.tone === "bad").length;
   const tone = sig.length ? sig[0].tone : "ok";
   return (
     <div className={`rz-impactcard rel ${tone}`}>
@@ -585,22 +584,47 @@ function ReliabilityCard({ d }: { d: Detail }) {
         <ShieldCheck size={16} /> Reliability
       </span>
       <div className="rel-body">
-        <span className="rel-icon">{tone === "ok" ? <ShieldCheck size={20} /> : <Flame size={20} />}</span>
+        <span className="rel-icon">
+          {tone === "ok" ? (
+            <ShieldCheck size={20} />
+          ) : tone === "bad" ? (
+            <Flame size={20} />
+          ) : (
+            <TriangleAlert size={20} />
+          )}
+        </span>
         <b>{sig.length ? `${sig.length} ${sig.length === 1 ? "signal" : "signals"}` : "Healthy"}</b>
       </div>
-      {sig.length ? (
-        <ul className="rz-signals">
-          {sig.map((x) => (
-            <li key={x.title} className={x.tone}>
-              <b>{x.title}</b>
-              <span>{x.detail}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <span className="rz-dim rz-xs">No throttling, OOM kills, restarts or memory close to its limit.</span>
-      )}
+      <span className="rz-dim rz-xs">
+        {sig.length
+          ? [
+              bad && `${bad} critical`,
+              sig.length - bad && `${sig.length - bad} ${sig.length - bad === 1 ? "warning" : "warnings"}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : "No throttling, OOM kills, restarts or memory close to its limit."}
+      </span>
     </div>
+  );
+}
+
+/** Every reliability signal of the learning period, worst first. */
+function SignalList({ d }: { d: Detail }) {
+  const sig = signals(d);
+  if (!sig.length) return null;
+  return (
+    <ul className="rz-signals">
+      {sig.map((x) => (
+        <li key={x.title} className={x.tone}>
+          <span className="ic">{x.tone === "bad" ? <Flame size={15} /> : <TriangleAlert size={15} />}</span>
+          <div>
+            <b>{x.title}</b>
+            <span>{x.detail}</span>
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -685,6 +709,7 @@ function ImpactTab({ d }: { d: Detail }) {
         />
         <ReliabilityCard d={d} />
       </div>
+      <SignalList d={d} />
       <div className="rz-card pad">
         <ImpactChart d={d} resource="cpu" range={range} />
         <ImpactChart d={d} resource="memory" range={range} />
