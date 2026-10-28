@@ -82,6 +82,13 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps", "events"]
     verbs: ["get", "list", "watch"]
+  # Read on request for the live reliability checks, not watched.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list"]
   - apiGroups: ["resourcerer.io"]
     resources: ["recommendations"]
     verbs: ["get", "list", "watch"{{ if not .Values.readOnly }}, "patch"{{ end }}]

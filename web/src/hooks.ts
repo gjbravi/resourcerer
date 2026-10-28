@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { api, refKey, type Range, type Ref, type Resource } from "./api";
+import { api, refKey, type Range, type Ref, type ReliabilityWindow, type Resource } from "./api";
 
 export const useInfo = () => useQuery({ queryKey: ["info"], queryFn: api.info, refetchInterval: 60_000 });
 export const useWorkloads = () => useQuery({ queryKey: ["workloads"], queryFn: api.list, refetchInterval: 15_000 });
@@ -11,12 +11,40 @@ export const useSeries = (w: Ref, container: string, resource: Resource, range: 
     queryKey: ["series", refKey(w), container, resource, range],
     queryFn: () => api.series(w, container, resource, range),
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
   });
 export const useImpact = (w: Ref, resource: Resource, range: Range) =>
   useQuery({
     queryKey: ["impact", refKey(w), resource, range],
     queryFn: () => api.impact(w, resource, range),
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
+  });
+/** Live mode refreshes every 30s, about the scrape interval, so a fix shows up as soon as Prometheus has it. */
+export const useReliability = (w: Ref, window: ReliabilityWindow, live: boolean) =>
+  useQuery({
+    queryKey: ["reliability", refKey(w), window],
+    queryFn: () => api.reliability(w, window),
+    refetchInterval: live ? 30_000 : false,
+    placeholderData: keepPreviousData,
+  });
+
+/** The current time, ticking every second, for "updated 12s ago" labels. */
+export function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
+export const useClusterSeries = (resource: Resource, range: Range) =>
+  useQuery({
+    queryKey: ["cluster-series", resource, range],
+    queryFn: () => api.clusterSeries(resource, range),
+    refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
   });
 
 /** Mutations refresh the workload and the list; results show up as the controller and applier act. */
@@ -34,9 +62,16 @@ export function useAction<T>(w: Ref, fn: (arg: T) => Promise<unknown>) {
 export function useHash(): string {
   const [hash, setHash] = useState(() => window.location.hash || "#/overview");
   useEffect(() => {
+    // Switching tabs keeps the page where it is; only a different page starts at the top.
+    const page = (h: string) => h.replace(/^(#\/w\/[^/]+\/[^/]+\/[^/?]+)\/[^/?]*/, "$1");
+    let prev = window.location.hash || "#/overview";
     const on = () => {
-      setHash(window.location.hash || "#/overview");
-      window.scrollTo(0, 0);
+      const next = window.location.hash || "#/overview";
+      // The browser's scroll anchoring would otherwise follow the cards below the tab content.
+      const y = page(next) === page(prev) ? window.scrollY : 0;
+      prev = next;
+      setHash(next);
+      requestAnimationFrame(() => window.scrollTo(0, y));
     };
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);

@@ -107,6 +107,34 @@ type Impact struct {
 	Recommended Totals `json:"recommended"`
 }
 
+// Reliability holds signals from the learning period that requests and limits may be too tight.
+type Reliability struct {
+	// +optional
+	Containers []ContainerReliability `json:"containers,omitempty"`
+	// Restarts other than OOM kills, approximated like OOMKills.
+	// +optional
+	Restarts int32 `json:"restarts,omitempty"`
+	// Containers in CrashLoopBackOff now.
+	// +optional
+	CrashLooping []string `json:"crashLooping,omitempty"`
+	// Pods with no requests or limits at all, the first evicted under node pressure.
+	// +optional
+	BestEffortPods int32 `json:"bestEffortPods,omitempty"`
+	// The HPA runs at its maximum replicas, so it cannot absorb more load.
+	// +optional
+	HPAAtMax bool `json:"hpaAtMax,omitempty"`
+}
+
+type ContainerReliability struct {
+	Name string `json:"name"`
+	// Share of CFS periods throttled by the CPU limit, in percent.
+	// +optional
+	CPUThrottledPercent int32 `json:"cpuThrottledPercent,omitempty"`
+	// Peak memory of the busiest pod, in percent of the memory limit.
+	// +optional
+	MemoryPeakPercent int32 `json:"memoryPeakPercent,omitempty"`
+}
+
 type ContainerChange struct {
 	Name string                      `json:"name"`
 	From corev1.ResourceRequirements `json:"from"`
@@ -160,6 +188,8 @@ type RecommendationStatus struct {
 	// OOM kills seen during the learning period.
 	// +optional
 	OOMKills int32 `json:"oomKills,omitempty"`
+	// +optional
+	Reliability *Reliability `json:"reliability,omitempty"`
 	// +optional
 	Warnings []string `json:"warnings,omitempty"`
 

@@ -1,5 +1,5 @@
 import type { Summary } from "../api";
-import { applicable, VIEWS } from "./Workloads";
+import { applicable, pageList, VIEWS } from "./Workloads";
 
 const base: Summary = {
   namespace: "demo",
@@ -19,6 +19,14 @@ const base: Summary = {
   namespaceAnnotated: false,
 };
 
+describe("pager", () => {
+  it("keeps the first, last and neighbouring pages and marks gaps", () => {
+    expect(pageList(1, 3)).toEqual([1, 2, 3]);
+    expect(pageList(6, 12)).toEqual([1, 0, 5, 6, 7, 0, 12]);
+    expect(pageList(12, 12)).toEqual([1, 0, 11, 12]);
+  });
+});
+
 describe("workload views", () => {
   it("only applies pending Ready or Learning recommendations with a hash", () => {
     expect(applicable(base)).toBe(true);
@@ -33,6 +41,15 @@ describe("workload views", () => {
     expect(rows.filter(VIEWS.savings[1]).map((w) => w.name)).toEqual(["api"]);
     expect(rows.filter(VIEWS.reliability[1]).map((w) => w.name)).toEqual(["ledger"]);
     expect(rows.filter(VIEWS.pending[1])).toHaveLength(2);
+  });
+
+  it("counts throttling, crash loops and memory near its limit as reliability risks", () => {
+    const at = (reliability: Summary["reliability"]) => VIEWS.reliability[1]({ ...base, reliability });
+    expect(at({ containers: [{ name: "api", cpuThrottledPercent: 5 }] })).toBe(false);
+    expect(at({ containers: [{ name: "api", cpuThrottledPercent: 40 }] })).toBe(true);
+    expect(at({ containers: [{ name: "api", memoryPeakPercent: 95 }] })).toBe(true);
+    expect(at({ crashLooping: ["api"] })).toBe(true);
+    expect(at({ hpaAtMax: true })).toBe(true);
   });
 });
 

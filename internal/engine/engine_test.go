@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -98,6 +99,31 @@ func TestOOMRaisesMemoryAboveLimit(t *testing.T) {
 	}
 	if c.Limits[Memory] != 576*Mi {
 		t.Errorf("memory limit = %v MiB, want 576 (request × 1.5)", c.Limits[Memory]/Mi)
+	}
+}
+
+func TestThrottlingRaisesCPULimit(t *testing.T) {
+	c := ContainerInput{
+		Name:     "api",
+		Requests: Values{CPU: 0.2, Memory: 256 * Mi},
+		Limits:   Values{CPU: 0.25, Memory: 512 * Mi},
+		CPU:      flat(0.2),
+		Memory:   flat(100 * Mi),
+	}
+	// Sampled usage stays under the limit, so without throttling the limit is kept.
+	if got := Recommend(input(nil, c)).Containers[0].Limits[CPU]; got != 0.25 {
+		t.Fatalf("cpu limit without throttling = %v, want unchanged 0.25", got)
+	}
+	c.CPUThrottled = 0.6
+	out := Recommend(input(nil, c)).Containers[0]
+	if got := out.Limits[CPU]; got != 0.375 {
+		t.Errorf("cpu limit = %v, want 0.375 (limit × 1.5)", got)
+	}
+	if !strings.Contains(out.Basis[CPU], "throttled 60%") {
+		t.Errorf("basis = %q, want the throttling reason", out.Basis[CPU])
+	}
+	if got := Recommend(input(map[string]string{settings.Domain + "/" + settings.CPULimits: "RequestsOnly"}, c)).Containers[0].Limits[CPU]; got != 0.25 {
+		t.Errorf("RequestsOnly cpu limit = %v, want unchanged 0.25", got)
 	}
 }
 

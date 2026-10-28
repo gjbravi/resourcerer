@@ -4,7 +4,9 @@ import {
   ArrowUp,
   Boxes,
   ChevronLeft,
+  CircleDollarSign,
   Cpu,
+  Flame,
   Hourglass,
   Info,
   MemoryStick,
@@ -17,10 +19,10 @@ import {
   Zap,
   ZapOff,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { api, type Detail, type Range, type Ref, type Resource, type SettingInfo } from "../api";
 import { Art, NoteArt, WandArt } from "../art";
-import { TimeChart } from "../chart";
+import { TimeChart, type ChartEvent } from "../chart";
 import {
   Change,
   CopyButton,
@@ -35,12 +37,15 @@ import {
   phaseTone,
 } from "../components";
 import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
-import { toast, useAction, useImpact, useSeries, useWorkload, workloadHash } from "../hooks";
+import { toast, useAction, useImpact, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
+import { resolved, signals, type Signal } from "../reliability";
+import { ReliabilityTab } from "./ReliabilityTab";
 import { meta } from "../settings";
 
 const TABS = [
   ["impact", "Impact"],
   ["recommendation", "Recommendation"],
+  ["reliability", "Reliability"],
   ["patches", "Patches"],
   ["settings", "Settings"],
 ] as const;
@@ -70,6 +75,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
   const canApply = !readOnly && !!d.hash && d.pending && (d.phase === "Ready" || d.phase === "Learning");
   const lastApply = d.history.find((h) => h.action === "Apply");
   const net = d.current.monthlyCost - d.recommended.monthlyCost;
+  const sig = signals(d);
   const doRevert = () =>
     revert.mutate(undefined, {
       onSuccess: () =>
@@ -91,14 +97,6 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
         <span className="rz-dim">
           {d.namespace} · {d.kind}
         </span>
-        <span className="rz-grow" />
-        <div className="rz-tabs" role="tablist">
-          {TABS.map(([id, label]) => (
-            <a key={id} role="tab" aria-selected={tab === id} href={workloadHash(d, id)}>
-              {label}
-            </a>
-          ))}
-        </div>
       </div>
 
       <section className="rz-metrics">
@@ -109,7 +107,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
               <Info size={15} aria-label="Requests × average replicas, priced with the cost rates in Settings" />
             </>
           }
-          art={d.oomKills > 0 || net < -0.005 ? <Art kind="shield" size={128} /> : <NoteArt />}
+          art={sig.length > 0 || net < -0.005 ? <Art kind="shield" size={128} /> : <NoteArt />}
           trend={
             <>
               <Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />{" "}
@@ -210,9 +208,11 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
           <span>
             <ShieldCheck size={15} /> Reliability
           </span>
-          <b className={d.oomKills ? "t-bad" : ""}>{d.oomKills ? `${d.oomKills} OOM kills` : "Healthy"}</b>
+          <b className={sig.length ? `t-${sig[0].tone}` : ""}>
+            {sig.length ? `${sig.length} ${sig.length === 1 ? "signal" : "signals"}` : "Healthy"}
+          </b>
           <span className="rz-dim rz-xs">
-            {d.oomKills ? "memory is raised above the limit that killed it" : "no OOM kills in the learning period"}
+            {sig.length ? sig[0].title : "no throttling, OOM kills or restarts in the learning period"}
           </span>
         </div>
         <div className="rz-kpi">
@@ -255,9 +255,21 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
         </div>
       ))}
 
+      <ReliabilityAlert d={d} sig={sig} />
+
+      <nav className="rz-tabbar" role="tablist">
+        {TABS.map(([id, label]) => (
+          <a key={id} role="tab" aria-selected={tab === id} href={workloadHash(d, id)}>
+            {label}
+            {id === "reliability" && sig.length > 0 && <em className={sig[0].tone}>{sig.length}</em>}
+          </a>
+        ))}
+      </nav>
+
       {tab === "impact" && <ImpactTab d={d} />}
       {tab === "recommendation" && <RecommendationTab d={d} />}
       {tab === "patches" && <PatchesTab d={d} />}
+      {tab === "reliability" && <ReliabilityTab d={d} />}
       {tab === "settings" && <SettingsTab d={d} readOnly={readOnly} />}
 
       <section className="rz-card">
@@ -377,6 +389,10 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
   );
 }
 
+/** Applies and reverts from the recommendation's history, as chart markers. */
+const historyEvents = (d: Detail): ChartEvent[] =>
+  d.history.map((h) => ({ t: Date.parse(h.time) / 1000, label: h.action === "Apply" ? "Applied" : "Reverted" }));
+
 /** Where an apply lands and what it triggers, in the words of the workload kind. */
 export function applyDescription(d: Pick<Detail, "kind" | "name" | "templateKind" | "templateName">): string {
   if (d.kind === "Rollout") {
@@ -388,7 +404,7 @@ export function applyDescription(d: Pick<Detail, "kind" | "name" | "templateKind
   return `Server-side apply on the ${d.kind} with field manager resourcerer, followed by a rolling update.`;
 }
 
-function Zoom({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
+export function Zoom({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
   return (
     <div className="rz-zoom">
       <span className="rz-dim rz-xs">Zoom:</span>
@@ -433,6 +449,7 @@ function ContainerChart({
         unit={resource === "cpu" ? "Millicores" : "MiB"}
         series={data}
         loading={isLoading}
+        events={historyEvents(d)}
         fmtY={resource === "cpu" ? fmtCpuAxis : fmtMemAxis}
         lines={[
           { name: "Current requests", color: "var(--c-cur)", points: l.currentRequests ?? [] },
@@ -546,13 +563,106 @@ function ImpactChart({ d, resource, range }: { d: Detail; resource: Resource; ra
         height={240}
         series={data}
         loading={isLoading}
+        events={historyEvents(d)}
+        bandsLabel="Usage"
         fmtY={resource === "cpu" ? (v) => v.toFixed(v < 1 ? 2 : 1) : (v) => (v / Gi).toFixed(2)}
         lines={[
           { name: "Requested", color: "var(--c-cur)", points: data?.lines.requested ?? [] },
-          { name: "With recommendation", color: "var(--c-rec)", points: data?.lines.withRecommendation ?? [] },
+          {
+            name: "With recommendation",
+            color: "var(--c-rec)",
+            points: data?.lines.withRecommendation ?? [],
+          },
         ]}
       />
     </>
+  );
+}
+
+/**
+ * Signals from the learning period, checked against the last 15 minutes: a fix shows up as resolved right
+ * away instead of when its old samples leave the learning period.
+ */
+function ReliabilityAlert({ d, sig }: { d: Detail; sig: Signal[] }) {
+  const recent = useReliability(d, "15m", true).data;
+  if (!sig.length) return null;
+  const open = sig.filter((x) => !resolved(x, recent));
+  const fixed = sig.length - open.length;
+  const bad = open.filter((x) => x.tone === "bad").length;
+  const warn = open.length - bad;
+  const top = open[0];
+  return (
+    <a className={`rz-relalert ${top ? top.tone : "ok"}`} href={workloadHash(d, "reliability")}>
+      <span className="ic">
+        {!top ? <ShieldCheck size={16} /> : top.tone === "bad" ? <Flame size={16} /> : <TriangleAlert size={16} />}
+      </span>
+      <span className="main">
+        <b>{top ? top.title : `${fixed} reliability ${fixed === 1 ? "issue" : "issues"} resolved in the last 15m`}</b>
+        <span>
+          {top
+            ? open.length > 1
+              ? `and ${open.length - 1} more reliability ${open.length === 2 ? "issue" : "issues"}`
+              : top.detail
+            : "Still counted in the learning period until the old samples age out."}
+        </span>
+      </span>
+      <span className="cnt">
+        {bad > 0 && <span className="b">{bad} critical</span>}
+        {warn > 0 && (
+          <span className="w">
+            {warn} {warn === 1 ? "warning" : "warnings"}
+          </span>
+        )}
+        {fixed > 0 && top && <span className="o">{fixed} resolved</span>}
+      </span>
+      <span className="go">Review →</span>
+    </a>
+  );
+}
+
+/** One figure before and after the recommendation, with bars on a shared scale. */
+function ImpactCard({
+  icon,
+  label,
+  from,
+  to,
+  fmt,
+  delta,
+}: {
+  icon: ReactNode;
+  label: string;
+  from: number;
+  to: number;
+  fmt: (v: number) => string;
+  delta: ReactNode;
+}) {
+  const top = Math.max(from, to) || 1;
+  return (
+    <div className="rz-impactcard">
+      <span className="lbl">
+        {icon} {label}
+      </span>
+      <div className="vals">
+        <b>{fmt(to)}</b>
+        {delta}
+      </div>
+      <div className="bars">
+        <div className="bar">
+          <span className="k">Now</span>
+          <span className="track">
+            <i className="cur" style={{ width: `${(from / top) * 100}%` }} />
+          </span>
+          <span className="v">{fmt(from)}</span>
+        </div>
+        <div className="bar">
+          <span className="k">After</span>
+          <span className="track">
+            <i className="rec" style={{ width: `${(to / top) * 100}%` }} />
+          </span>
+          <span className="v">{fmt(to)}</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -564,34 +674,31 @@ function ImpactTab({ d }: { d: Detail }) {
         <h2>Projected impact</h2>
         <Zoom value={range} onChange={setRange} />
       </div>
-      <div className="rz-kpis">
-        <div className="rz-kpi">
-          <span>Monthly cost</span>
-          <b>
-            ${d.current.monthlyCost.toFixed(2)} → ${d.recommended.monthlyCost.toFixed(2)}
-          </b>
-        </div>
-        <div className="rz-kpi">
-          <span>CPU requested</span>
-          <b>
-            {fmtCores(d.current.cpu)} → {fmtCores(d.recommended.cpu)}
-          </b>
-        </div>
-        <div className="rz-kpi">
-          <span>Memory requested</span>
-          <b>
-            {fmtMem(d.current.memory)} → {fmtMem(d.recommended.memory)}
-          </b>
-        </div>
-        <div className="rz-kpi">
-          <span>Reliability</span>
-          <b className={d.oomKills ? "t-bad" : ""}>{d.oomKills ? `${d.oomKills} OOM kills` : "No OOM kills"}</b>
-          <span className="rz-dim rz-xs">
-            {d.oomKills
-              ? "The memory recommendation is raised above the limit that killed it."
-              : "Usage stayed under limits."}
-          </span>
-        </div>
+      <div className="rz-impact">
+        <ImpactCard
+          icon={<CircleDollarSign size={16} />}
+          label="Monthly cost"
+          from={d.current.monthlyCost}
+          to={d.recommended.monthlyCost}
+          fmt={fmtMoney}
+          delta={<Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />}
+        />
+        <ImpactCard
+          icon={<Cpu size={16} />}
+          label="CPU requested"
+          from={d.current.cpu}
+          to={d.recommended.cpu}
+          fmt={fmtCores}
+          delta={<Delta from={d.current.cpu} to={d.recommended.cpu} r="cpu" />}
+        />
+        <ImpactCard
+          icon={<MemoryStick size={16} />}
+          label="Memory requested"
+          from={d.current.memory}
+          to={d.recommended.memory}
+          fmt={fmtMem}
+          delta={<Delta from={d.current.memory} to={d.recommended.memory} r="memory" />}
+        />
       </div>
       <div className="rz-card pad">
         <ImpactChart d={d} resource="cpu" range={range} />
