@@ -750,9 +750,32 @@ body:has(.rz.dark) {
 .rz-tcharthd {
   margin-bottom: 8px;
 }
+.rz-tchartbody {
+  position: relative;
+}
 .rz-tchart svg {
   display: block;
   cursor: crosshair;
+}
+.rz-tchartmsg {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+.recharts-tooltip-wrapper .rz-tt {
+  position: static;
+}
+.rz-tt .sw {
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, currentColor 55%, transparent);
+}
+.recharts-tooltip-wrapper {
+  transition:
+    transform 0.18s ease-out,
+    opacity 0.15s !important;
 }
 .g-grid {
   stroke: var(--track);

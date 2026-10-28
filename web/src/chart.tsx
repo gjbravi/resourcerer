@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Area, CartesianGrid, ComposedChart, Line as RLine, ReferenceLine, Tooltip, XAxis, YAxis } from "recharts";
 import type { Point, Series } from "./api";
 
 function useWidth() {
@@ -17,101 +18,6 @@ function niceMax(v: number) {
   const e = 10 ** Math.floor(Math.log10(v));
   const m = v / e;
   return ([1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((s) => m <= s) ?? 10) * e;
-}
-
-const ease = (k: number) => 1 - (1 - k) ** 3;
-
-interface View {
-  from: number;
-  to: number;
-  top: number;
-}
-
-/**
- * Animates the visible window towards the data's: on the first load the chart draws in from the left, and on a
- * new range the axes zoom from the old window to the new one instead of jumping.
- */
-function useView(target: View | null) {
-  const [view, setView] = useState<View | null>(null);
-  const [drawn, setDrawn] = useState(0);
-  const cur = useRef<View | null>(null);
-  const key = target ? `${target.from}|${target.to}|${target.top}` : "";
-  useEffect(() => {
-    if (!target) return;
-    const start = cur.current;
-    const first = start == null;
-    const t0 = performance.now();
-    const dur = first ? 900 : 650;
-    let raf = 0;
-    const tick = (now: number) => {
-      const k = ease(Math.min(1, (now - t0) / dur));
-      const v = first
-        ? target
-        : {
-            from: start.from + (target.from - start.from) * k,
-            to: start.to + (target.to - start.to) * k,
-            top: start.top + (target.top - start.top) * k,
-          };
-      cur.current = v;
-      setView(v);
-      if (first) setDrawn(k);
-      if (k < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  return [view, drawn] as const;
-}
-
-/** Monotone cubic through the points (no overshoot), as a path continuing from the current pen position. */
-function monotone(pts: [number, number][], move = true): string {
-  const n = pts.length;
-  if (n === 0) return "";
-  let d = move ? `M${pts[0][0]},${pts[0][1]}` : `L${pts[0][0]},${pts[0][1]}`;
-  if (n < 3)
-    return (
-      d +
-      pts
-        .slice(1)
-        .map((p) => `L${p[0]},${p[1]}`)
-        .join("")
-    );
-  const m: number[] = [];
-  for (let i = 0; i < n - 1; i++) m.push((pts[i + 1][1] - pts[i][1]) / (pts[i + 1][0] - pts[i][0] || 1));
-  const t = [m[0]];
-  for (let i = 1; i < n - 1; i++) t.push(m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2);
-  t.push(m[n - 2]);
-  for (let i = 0; i < n - 1; i++) {
-    if (m[i] === 0) {
-      t[i] = t[i + 1] = 0;
-      continue;
-    }
-    const a = t[i] / m[i];
-    const b = t[i + 1] / m[i];
-    const s = a * a + b * b;
-    if (s > 9) {
-      const r = 3 / Math.sqrt(s);
-      t[i] = r * a * m[i];
-      t[i + 1] = r * b * m[i];
-    }
-  }
-  for (let i = 0; i < n - 1; i++) {
-    const dx = (pts[i + 1][0] - pts[i][0]) / 3;
-    d += `C${pts[i][0] + dx},${pts[i][1] + t[i] * dx} ${pts[i + 1][0] - dx},${pts[i + 1][1] - t[i + 1] * dx} ${pts[i + 1][0]},${pts[i + 1][1]}`;
-  }
-  return d;
-}
-
-/** Splits points where samples are further apart than gap: missing data, not a slope. */
-function segments<T extends { t: number }>(pts: T[], gap: number): T[][] {
-  const out: T[][] = [];
-  for (const p of pts) {
-    const last = out[out.length - 1];
-    if (last && p.t - last[last.length - 1].t <= gap) last.push(p);
-    else out.push([p]);
-  }
-  return out;
 }
 
 export interface Line {
@@ -138,6 +44,29 @@ const BAND_LABELS: Record<(typeof BAND_KEYS)[number], string> = {
   p50: "50th percentile",
 };
 
+type Row = { t: number } & Record<string, number | null>;
+
+/**
+ * Value of a series at t: the last point for steps, linear between neighbours for measurements, and null outside
+ * the series or across a gap in data, so the line breaks instead of bridging it.
+ */
+function valueAt(pts: Point[], t: number, step: boolean, gap: number): number | null {
+  if (!pts.length || t < pts[0].t) return null;
+  let lo = 0;
+  let hi = pts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (pts[mid].t <= t) lo = mid;
+    else hi = mid - 1;
+  }
+  const p = pts[lo];
+  const n = pts[lo + 1];
+  if (p.t === t) return p.v;
+  if (step) return (n ? n.t - p.t : t - p.t) <= gap ? p.v : null;
+  if (!n || n.t - p.t > gap) return null;
+  return p.v + ((n.v - p.v) * (t - p.t)) / (n.t - p.t);
+}
+
 /** Usage percentile bands with lines for requests, limits or totals; t in unix seconds. */
 export function TimeChart({
   title,
@@ -145,6 +74,7 @@ export function TimeChart({
   series,
   lines,
   fmtY,
+  fmtTip = fmtY,
   height = 300,
   loading,
   events = [],
@@ -156,6 +86,8 @@ export function TimeChart({
   series?: Series;
   lines: Line[];
   fmtY: (v: number) => string;
+  /** Tooltip values, with units; defaults to the axis format. */
+  fmtTip?: (v: number) => string;
   height?: number;
   loading?: boolean;
   events?: ChartEvent[];
@@ -163,7 +95,6 @@ export function TimeChart({
   footer?: (t: number) => ReactNode;
 }) {
   const [ref, width] = useWidth();
-  const [hover, setHover] = useState<number | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const toggle = (k: string) =>
     setHidden((h) => {
@@ -172,58 +103,49 @@ export function TimeChart({
       else n.add(k);
       return n;
     });
-  const bands = series?.bands ?? [];
+  const id = `rz${useId().replace(/:/g, "")}`;
+  const from = series?.from ?? 0;
+  const to = series?.to ?? 1;
+  const span = to - from;
+  const bands = useMemo(() => series?.bands ?? [], [series]);
   const showBands = bands.length > 0 && !hidden.has(bandsLabel);
+  const key = (i: number) => `l${i}`;
+
+  const rows = useMemo(() => {
+    const lineGap = Math.max(span / 60, 900);
+    const bandGap = (span / 150) * 3;
+    const ts = new Set<number>();
+    // A row inside each gap gets null for that series; without it the chart joins the points across the gap.
+    const add = (pts: { t: number }[], gap: number) =>
+      pts.forEach((p, i) => {
+        ts.add(p.t);
+        if (i > 0 && p.t - pts[i - 1].t > gap) ts.add((p.t + pts[i - 1].t) / 2);
+      });
+    add(bands, bandGap);
+    for (const l of lines) add(l.points, lineGap);
+    return [...ts]
+      .sort((a, b) => a - b)
+      .map((t) => {
+        const row: Row = { t };
+        for (const k of BAND_KEYS)
+          row[k] = valueAt(
+            bands.map((b) => ({ t: b.t, v: b[k] })),
+            t,
+            false,
+            bandGap,
+          );
+        lines.forEach((l, i) => (row[key(i)] = valueAt(l.points, t, l.shape !== "smooth", lineGap)));
+        return row;
+      });
+  }, [bands, lines, span]);
+
   const shown = lines.filter((l) => !hidden.has(l.name));
   const maxV = Math.max(
     1e-9,
     ...(showBands ? bands.map((b) => b.p95) : []),
     ...shown.flatMap((l) => l.points.map((p) => p.v)),
   );
-  const [view, drawn] = useView(series ? { from: series.from, to: series.to, top: niceMax(maxV * 1.1) } : null);
-  const from = view?.from ?? 0;
-  const to = view?.to ?? 1;
-  const top = view?.top ?? 1;
-  const pad = { l: 64, r: 16, t: 18, b: 28 };
-  const iw = width - pad.l - pad.r;
-  const ih = height - pad.t - pad.b;
-  const x = (t: number) => pad.l + ((t - from) / (to - from)) * iw;
-  const y = (v: number) => pad.t + ih - (Math.max(0, v) / top) * ih;
-  const span = to - from;
-
-  const step = (pts: Point[]) => {
-    let d = "";
-    for (const p of pts) d += d ? `H${x(p.t)}V${y(p.v)}` : `M${x(p.t)},${y(p.v)}`;
-    return d && `${d}H${x(Math.max(pts[pts.length - 1].t, series?.to ?? 0))}`;
-  };
-  const lineGap = Math.max(series ? (series.to - series.from) / 60 : Infinity, 900);
-  const path = (l: Line) =>
-    l.shape === "smooth"
-      ? segments(l.points, lineGap)
-          .map((s) => monotone(s.map((p) => [x(p.t), y(p.v)])))
-          .join("")
-      : step(l.points);
-  const fillPath = (l: Line) => {
-    const base = typeof l.fill === "string" ? lines.find((o) => o.name === l.fill) : undefined;
-    return segments(l.points, lineGap)
-      .map((s) => {
-        const upper = monotone(s.map((p) => [x(p.t), y(p.v)]));
-        if (!base) return `${upper}L${x(s[s.length - 1].t)},${y(0)}L${x(s[0].t)},${y(0)}Z`;
-        const lower = s.map((p) => [x(p.t), y(at(base.points, p.t)?.v ?? p.v)] as [number, number]).reverse();
-        return `${upper}${monotone(lower, false)}Z`;
-      })
-      .join("");
-  };
-  // Buckets further apart than three widths are a gap in data, not a slope.
-  const bandGap = series ? ((series.to - series.from) / 150) * 3 : Infinity;
-  const area = (k: (typeof BAND_KEYS)[number]) =>
-    segments(bands, bandGap)
-      .map((s) => {
-        const upper = monotone(s.map((b) => [x(b.t), y(b[k])]));
-        return `${upper}L${x(s[s.length - 1].t)},${y(0)}L${x(s[0].t)},${y(0)}Z`;
-      })
-      .join("");
-
+  const top = niceMax(maxV * 1.1);
   const tickEvery =
     span <= 3600
       ? 600
@@ -235,195 +157,194 @@ export function TimeChart({
             ? 2 * 86400
             : 5 * 86400;
   const ticks: number[] = [];
-  if (view) for (let t = Math.ceil(from / tickEvery) * tickEvery; t < to; t += tickEvery) ticks.push(t);
+  for (let t = Math.ceil(from / tickEvery) * tickEvery; t < to; t += tickEvery) ticks.push(t);
   const label = (t: number) =>
     span <= 86400
       ? new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
       : new Date(t * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
-  const hb =
-    hover != null && showBands ? bands.reduce((b, p) => (Math.abs(p.t - hover) < Math.abs(b.t - hover) ? p : b)) : null;
-  const empty = !loading && bands.length === 0 && shown.every((l) => l.points.length === 0);
-  const visibleEvents = events
-    .filter((e) => series && e.t >= series.from && e.t <= series.to)
-    .sort((a, b) => a.t - b.t);
-  // Markers closer than a label's width share one label, e.g. an apply reverted minutes later.
-  const eventGroups: { key: string; x: number; xs: number[]; label: string; w: number }[] = [];
-  for (const e of visibleEvents) {
-    const ex = x(e.t);
-    const g = eventGroups[eventGroups.length - 1];
-    if (g && ex - g.xs[0] < 70) {
-      g.xs.push(ex);
-      g.label = `${g.xs.length} events`;
-    } else eventGroups.push({ key: `${e.t}-${e.label}`, x: ex, xs: [ex], label: e.label, w: 0 });
-  }
-  for (const g of eventGroups) g.w = g.label.length * 6 + 14;
 
-  const rows = [
-    ...(hb
-      ? BAND_KEYS.map((k, i) => ({ key: k, label: BAND_LABELS[k], v: hb[k], sw: `sw b${2 - i}`, color: "" }))
-      : []),
-    ...(hover != null
-      ? shown.flatMap((l) => {
-          const p = at(l.points, hover);
-          return p ? [{ key: l.name, label: l.name, v: p.v, sw: "sw", color: l.color }] : [];
-        })
-      : []),
-  ].sort((a, b) => b.v - a.v);
-  const dots =
-    hover != null
-      ? [
-          ...(hb
-            ? [
-                { v: hb.p95, color: "var(--band1)" },
-                { v: hb.p50, color: "var(--band0)" },
-              ]
-            : []),
-          ...shown.flatMap((l) => {
-            const p = at(l.points, hover);
-            return p ? [{ v: p.v, color: l.color }] : [];
-          }),
-        ]
-      : [];
-  const clip = `rz-clip-${useId().replace(/:/g, "")}`;
+  // Markers closer than a label's width share one label, e.g. an apply reverted minutes later.
+  const plotW = width - 80;
+  const groups: { t: number; ts: number[]; label: string }[] = [];
+  for (const e of events.filter((e) => series && e.t >= from && e.t <= to).sort((a, b) => a.t - b.t)) {
+    const g = groups[groups.length - 1];
+    if (g && ((e.t - g.ts[0]) / span) * plotW < 70) {
+      g.ts.push(e.t);
+      g.label = `${g.ts.length} events`;
+    } else groups.push({ t: e.t, ts: [e.t], label: e.label });
+  }
+
+  const empty = !loading && rows.length === 0;
+  const fillBase = (l: Line) => (typeof l.fill === "string" ? lines.findIndex((o) => o.name === l.fill) : -1);
+  const anim = { isAnimationActive: true, animationDuration: 700, animationEasing: "ease-out" as const };
 
   return (
     <div className="rz-tchart">
       <div className="rz-tcharthd">
         <h4>{title}</h4>
       </div>
-      <div ref={ref} style={{ position: "relative" }}>
-        <svg
-          width={width}
-          height={height}
-          onMouseLeave={() => setHover(null)}
-          onMouseMove={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            const t = from + ((e.clientX - r.left - pad.l) / iw) * span;
-            setHover(view && t >= from && t <= to ? t : null);
-          }}
-        >
+      <div ref={ref} className="rz-tchartbody">
+        <ComposedChart width={width} height={height} data={rows} margin={{ top: 20, right: 16, bottom: 4, left: 8 }}>
           <defs>
-            <clipPath id={clip}>
-              <rect x={pad.l} y={0} width={iw * drawn} height={height} />
-            </clipPath>
-            {lines
-              .filter((l) => l.fill === true)
-              .map((l, i) => (
-                <linearGradient key={l.name} id={`${clip}-g${i}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" style={{ stopColor: l.color, stopOpacity: 0.35 }} />
-                  <stop offset="1" style={{ stopColor: l.color, stopOpacity: 0.02 }} />
-                </linearGradient>
-              ))}
-          </defs>
-          {[0, 0.25, 0.5, 0.75, 1].map((f) => (
-            <g key={f}>
-              <line x1={pad.l} x2={pad.l + iw} y1={y(top * f)} y2={y(top * f)} className="g-grid" />
-              <text x={pad.l - 8} y={y(top * f) + 4} textAnchor="end" className="g-axis">
-                {fmtY(top * f)}
-              </text>
-            </g>
-          ))}
-          {ticks.map((t) => (
-            <g key={t}>
-              <line x1={x(t)} x2={x(t)} y1={pad.t} y2={pad.t + ih} className="g-grid" />
-              <text x={x(t)} y={height - 8} textAnchor="middle" className="g-axis">
-                {label(t)}
-              </text>
-            </g>
-          ))}
-          <text transform={`translate(14 ${pad.t + ih / 2}) rotate(-90)`} textAnchor="middle" className="g-axis">
-            {unit}
-          </text>
-          {view && (
-            <g clipPath={`url(#${clip})`}>
-              {BAND_KEYS.map((k, i) => (
-                <path key={k} d={area(k)} className={`g-band b${2 - i}${showBands ? "" : " off"}`} />
-              ))}
-              {lines.map((l) =>
-                l.fill && l.points.length ? (
-                  <path
-                    key={`${l.name}-fill`}
-                    d={fillPath(l)}
-                    className={`g-fill${hidden.has(l.name) ? " off" : ""}`}
-                    style={{
-                      fill:
-                        l.fill === true ? `url(#${clip}-g${lines.filter((o) => o.fill === true).indexOf(l)})` : l.color,
-                    }}
-                  />
-                ) : null,
-              )}
-              {lines.map((l) => (
-                <path
-                  key={l.name}
-                  d={path(l)}
-                  className={`g-line${hidden.has(l.name) ? " off" : ""}`}
-                  style={{ stroke: l.color, strokeDasharray: l.dash, strokeWidth: l.width }}
-                />
-              ))}
-              {eventGroups.map((g) => {
-                const lx = Math.min(Math.max(g.x, pad.l + g.w / 2), pad.l + iw - g.w / 2);
-                return (
-                  <g key={g.key} className="g-ev">
-                    {g.xs.map((ex) => (
-                      <line key={ex} x1={ex} x2={ex} y1={pad.t + 4} y2={pad.t + ih} />
-                    ))}
-                    <rect x={lx - g.w / 2} y={pad.t - 12} width={g.w} height={15} rx={7.5} />
-                    <text x={lx} y={pad.t - 1.5} textAnchor="middle">
-                      {g.label}
-                    </text>
-                  </g>
-                );
-              })}
-            </g>
-          )}
-          {(loading || empty) && !view && (
-            <text x={pad.l + iw / 2} y={pad.t + ih / 2} textAnchor="middle" className="g-axis">
-              {loading ? "Loading…" : "No samples in this window yet"}
-            </text>
-          )}
-          {empty && view && (
-            <text x={pad.l + iw / 2} y={pad.t + ih / 2} textAnchor="middle" className="g-axis">
-              No samples in this window yet
-            </text>
-          )}
-          {hover != null && (
-            <>
-              <line x1={x(hover)} x2={x(hover)} y1={pad.t} y2={pad.t + ih} className="g-cross" />
-              {dots.map((d, i) => (
-                <circle key={i} cx={x(hover)} cy={y(d.v)} r={4} className="g-dot" style={{ fill: d.color }} />
-              ))}
-            </>
-          )}
-        </svg>
-        {hover != null && rows.length > 0 && (
-          <div
-            className="rz-tt"
-            style={x(hover) > width - 280 ? { right: width - x(hover) + 14 } : { left: x(hover) + 14 }}
-          >
-            <div className="tt-h">
-              {new Date((hb?.t ?? hover) * 1000).toLocaleString([], {
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}
-            </div>
-            {rows.map((r) => (
-              <div key={r.key} className="tt-r">
-                <i className={r.sw} style={r.color ? { background: r.color } : undefined} />
-                <span>{r.label}</span>
-                <b>{fmtY(r.v)}</b>
-              </div>
+            {lines.map((l, i) => (
+              <linearGradient key={l.name} id={`${id}-g${i}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" style={{ stopColor: l.color, stopOpacity: 0.35 }} />
+                <stop offset="1" style={{ stopColor: l.color, stopOpacity: 0.02 }} />
+              </linearGradient>
             ))}
-            {visibleEvents
-              .filter((e) => Math.abs(e.t - hover) < span / 80)
-              .map((e) => (
-                <div key={e.t} className="tt-ev">
-                  {e.label} at {new Date(e.t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          </defs>
+          <CartesianGrid className="g-grid" vertical horizontal strokeDasharray="0" />
+          <XAxis
+            dataKey="t"
+            type="number"
+            domain={[from, to]}
+            ticks={ticks}
+            tickFormatter={label}
+            className="g-axis"
+            tickLine={false}
+            axisLine={false}
+            allowDataOverflow
+          />
+          <YAxis
+            domain={[0, top]}
+            ticks={[0, top / 4, top / 2, (top * 3) / 4, top]}
+            tickFormatter={fmtY}
+            className="g-axis"
+            tickLine={false}
+            axisLine={false}
+            width={56}
+            allowDataOverflow
+            label={{ value: unit, angle: -90, position: "insideLeft", className: "g-axis", dy: 30 }}
+          />
+          {BAND_KEYS.map((k, i) => (
+            <Area
+              key={k}
+              type="monotone"
+              dataKey={k}
+              className={`g-band b${2 - i}`}
+              stroke="none"
+              fill={`var(--band${2 - i})`}
+              hide={!showBands}
+              activeDot={false}
+              {...anim}
+            />
+          ))}
+          {lines.map((l, i) =>
+            l.fill ? (
+              <Area
+                key={`${l.name}-fill`}
+                type={l.shape === "smooth" ? "monotone" : "stepAfter"}
+                dataKey={
+                  fillBase(l) >= 0
+                    ? (r: Row) =>
+                        r[key(i)] == null || r[key(fillBase(l))] == null ? null : [r[key(fillBase(l))], r[key(i)]]
+                    : key(i)
+                }
+                stroke="none"
+                fill={l.fill === true ? `url(#${id}-g${i})` : l.color}
+                fillOpacity={l.fill === true ? 1 : 0.18}
+                hide={hidden.has(l.name)}
+                activeDot={false}
+                {...anim}
+              />
+            ) : null,
+          )}
+          {lines.map((l, i) => (
+            <RLine
+              key={l.name}
+              type={l.shape === "smooth" ? "monotone" : "stepAfter"}
+              dataKey={key(i)}
+              stroke={l.color}
+              strokeWidth={l.width ?? 2.2}
+              strokeDasharray={l.dash}
+              strokeLinecap="round"
+              dot={false}
+              activeDot={{ r: 4, stroke: "var(--panel)", strokeWidth: 2, fill: l.color }}
+              hide={hidden.has(l.name)}
+              {...anim}
+            />
+          ))}
+          {groups.map((g) => (
+            <ReferenceLine
+              key={g.t}
+              x={g.t}
+              className="g-ev"
+              stroke="var(--accent)"
+              strokeDasharray="2 3"
+              label={{
+                position: "top",
+                content: (props) => {
+                  const viewBox = props.viewBox as { x?: number; y?: number } | undefined;
+                  const w = g.label.length * 6 + 14;
+                  const x = Math.min(Math.max(viewBox?.x ?? 0, 64 + w / 2), width - 16 - w / 2);
+                  return (
+                    <g className="g-ev">
+                      <rect x={x - w / 2} y={(viewBox?.y ?? 20) - 16} width={w} height={15} rx={7.5} />
+                      <text x={x} y={(viewBox?.y ?? 20) - 5} textAnchor="middle">
+                        {g.label}
+                      </text>
+                    </g>
+                  );
+                },
+              }}
+            />
+          ))}
+          <Tooltip
+            cursor={{ stroke: "var(--dim)", strokeDasharray: "3 3" }}
+            isAnimationActive
+            animationDuration={180}
+            wrapperStyle={{ outline: "none", zIndex: 5 }}
+            content={({ active, payload }) => {
+              const row = payload?.[0]?.payload as Row | undefined;
+              if (!active || !row) return null;
+              const items = [
+                ...(showBands && row.p95 != null
+                  ? BAND_KEYS.map((k, i) => ({
+                      key: k,
+                      label: BAND_LABELS[k],
+                      v: row[k],
+                      sw: `sw b${2 - i}`,
+                      color: "",
+                    }))
+                  : []),
+                ...lines
+                  .map((l, i) => ({ key: l.name, label: l.name, v: row[key(i)], sw: "sw", color: l.color }))
+                  .filter((r) => !hidden.has(r.key)),
+              ]
+                .filter((r): r is typeof r & { v: number } => r.v != null)
+                .sort((a, b) => b.v - a.v);
+              const near = groups.filter((g) => Math.abs(g.t - row.t) < span / 80);
+              return (
+                <div className="rz-tt">
+                  <div className="tt-h">
+                    {new Date(row.t * 1000).toLocaleString([], {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </div>
+                  {items.map((r) => (
+                    <div key={r.key} className="tt-r">
+                      <i className={r.sw} style={r.color ? { background: r.color } : undefined} />
+                      <span>{r.label}</span>
+                      <b>{fmtTip(r.v)}</b>
+                    </div>
+                  ))}
+                  {near.map((g) => (
+                    <div key={g.t} className="tt-ev">
+                      {g.ts.length > 1 ? `${g.ts.length} applies or reverts` : g.label} around{" "}
+                      {new Date(g.t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    </div>
+                  ))}
+                  {footer?.(row.t)}
                 </div>
-              ))}
-            {footer?.(hover)}
-          </div>
+              );
+            }}
+          />
+        </ComposedChart>
+        {(loading || empty) && (
+          <div className="rz-tchartmsg">{loading ? "Loading…" : "No samples in this window yet"}</div>
         )}
       </div>
       <div className="rz-glegend" role="group" aria-label="Series">

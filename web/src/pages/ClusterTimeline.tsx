@@ -34,6 +34,7 @@ export function ClusterTimeline() {
   let series: Series | undefined = cur.data;
   let lines: Line[];
   let fmtY: (v: number) => string;
+  let fmtTip: (v: number) => string;
   let unit: string;
   if (mode === "cost") {
     const requested = costLine(l(cpu.data, "requested"), l(mem.data, "requested"), rates);
@@ -52,6 +53,7 @@ export function ClusterTimeline() {
       { name: "Usage cost", color: "var(--band0)", points: usage, shape: "smooth", fill: true, width: 1.6 },
     ];
     fmtY = (v) => `$${v < 10 ? v.toFixed(2) : v.toFixed(0)}`;
+    fmtTip = (v) => `$${v.toFixed(2)}/h`;
     unit = "USD / hour";
   } else {
     const k = mode === "cpu" ? 1 : Gi;
@@ -76,6 +78,7 @@ export function ClusterTimeline() {
       { name: "Usage", color: "var(--band0)", points: l(cur.data, "usage"), shape: "smooth", fill: true },
     ];
     fmtY = (v) => (v / k).toFixed(v / k < 10 ? 1 : 0);
+    fmtTip = mode === "cpu" ? (v) => `${v.toFixed(2)} cores` : fmtMem;
     unit = mode === "cpu" ? "Cores" : "GiB";
   }
 
@@ -111,7 +114,9 @@ export function ClusterTimeline() {
             </div>
             <div>
               <span>With recommendations / mo</span>
-              <b className="t-save">{fmtMoney(hourly("withRecommendations"))}</b>
+              <b className={hourly("withRecommendations") > hourly("requested") ? "t-bad" : "t-save"}>
+                {fmtMoney(hourly("withRecommendations"))}
+              </b>
             </div>
             <div>
               <span>Used / mo</span>
@@ -150,6 +155,7 @@ export function ClusterTimeline() {
           loading={cur.isLoading}
           lines={lines}
           fmtY={fmtY}
+          fmtTip={fmtTip}
         />
       </div>
     </section>
