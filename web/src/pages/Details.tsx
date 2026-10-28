@@ -20,7 +20,7 @@ import {
 import { useState } from "react";
 import { api, type Detail, type Range, type Ref, type Resource, type SettingInfo } from "../api";
 import { Art, NoteArt, WandArt } from "../art";
-import { TimeChart } from "../chart";
+import { TimeChart, type ChartEvent } from "../chart";
 import {
   Change,
   CopyButton,
@@ -377,6 +377,10 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
   );
 }
 
+/** Applies and reverts from the recommendation's history, as chart markers. */
+const historyEvents = (d: Detail): ChartEvent[] =>
+  d.history.map((h) => ({ t: Date.parse(h.time) / 1000, label: h.action === "Apply" ? "Applied" : "Reverted" }));
+
 /** Where an apply lands and what it triggers, in the words of the workload kind. */
 export function applyDescription(d: Pick<Detail, "kind" | "name" | "templateKind" | "templateName">): string {
   if (d.kind === "Rollout") {
@@ -388,7 +392,7 @@ export function applyDescription(d: Pick<Detail, "kind" | "name" | "templateKind
   return `Server-side apply on the ${d.kind} with field manager resourcerer, followed by a rolling update.`;
 }
 
-function Zoom({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
+export function Zoom({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
   return (
     <div className="rz-zoom">
       <span className="rz-dim rz-xs">Zoom:</span>
@@ -433,6 +437,7 @@ function ContainerChart({
         unit={resource === "cpu" ? "Millicores" : "MiB"}
         series={data}
         loading={isLoading}
+        events={historyEvents(d)}
         fmtY={resource === "cpu" ? fmtCpuAxis : fmtMemAxis}
         lines={[
           { name: "Current requests", color: "var(--c-cur)", points: l.currentRequests ?? [] },
@@ -546,10 +551,17 @@ function ImpactChart({ d, resource, range }: { d: Detail; resource: Resource; ra
         height={240}
         series={data}
         loading={isLoading}
+        events={historyEvents(d)}
+        bandsLabel="Usage"
         fmtY={resource === "cpu" ? (v) => v.toFixed(v < 1 ? 2 : 1) : (v) => (v / Gi).toFixed(2)}
         lines={[
           { name: "Requested", color: "var(--c-cur)", points: data?.lines.requested ?? [] },
-          { name: "With recommendation", color: "var(--c-rec)", points: data?.lines.withRecommendation ?? [] },
+          {
+            name: "With recommendation",
+            color: "var(--c-rec)",
+            points: data?.lines.withRecommendation ?? [],
+            fill: "Requested",
+          },
         ]}
       />
     </>

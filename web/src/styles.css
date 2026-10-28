@@ -777,6 +777,44 @@ body:has(.rz.dark) {
   fill: none;
   stroke-width: 2.2;
   stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.g-band,
+.g-line,
+.g-fill {
+  transition: opacity 0.35s ease;
+}
+.g-band.off,
+.g-line.off,
+.g-fill.off {
+  opacity: 0 !important;
+}
+.g-fill {
+  stroke: none;
+  opacity: 0.18;
+}
+.g-dot {
+  stroke: var(--panel);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.g-ev line {
+  stroke: var(--accent);
+  stroke-dasharray: 2 3;
+}
+.g-ev rect {
+  fill: var(--accent-soft, var(--band2));
+}
+.g-ev text {
+  fill: var(--accent);
+  font-size: 10px;
+  font-weight: 650;
+}
+.tt-ev {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  font-weight: 650;
 }
 .g-cross {
   stroke: var(--dim);
@@ -809,6 +847,10 @@ body:has(.rz.dark) {
   align-items: center;
   gap: 8px;
   margin: 4px 0;
+}
+.tt-r b {
+  margin-left: auto;
+  padding-left: 12px;
 }
 .sw {
   display: inline-block;
@@ -1553,4 +1595,97 @@ body:has(.rz.dark) {
       0 0 18px rgba(124, 92, 255, 0.85),
       0 0 4px rgba(255, 255, 255, 0.6) inset;
   }
+}
+
+/* Cluster timeline */
+.rz-ctl {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rz-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+}
+.rz-seg button {
+  border: 0;
+  background: none;
+  color: var(--dim);
+  padding: 5px 12px;
+  border-radius: 99px;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.rz-seg button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 650;
+}
+.rz-cluster-kpis {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 20px 0;
+}
+.rz-cluster-kpis > div:not(.rz-eff) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 180px;
+}
+.rz-cluster-kpis span {
+  color: var(--dim);
+  font-size: 0.78rem;
+}
+.rz-cluster-kpis b {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+.rz-eff {
+  flex: 1;
+  min-width: 260px;
+}
+.rz-eff .bar {
+  display: flex;
+  height: 9px;
+  margin-top: 8px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--track);
+}
+.rz-eff .bar i {
+  display: block;
+  height: 100%;
+  transition: width 1s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.rz-eff .bar .u {
+  background: var(--band0);
+}
+.rz-eff .bar .r {
+  background: var(--band2);
+}
+.rz-eff .lbl {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 0.75rem;
+}
+.rz-cluster-chart {
+  padding: 0 20px 12px;
+}
+.rz-cluster-chart .rz-tchart {
+  border: 0;
+  box-shadow: none;
+  padding: 10px 0 0;
 }

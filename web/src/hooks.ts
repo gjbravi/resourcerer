@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { api, refKey, type Range, type Ref, type Resource } from "./api";
 
@@ -11,12 +11,21 @@ export const useSeries = (w: Ref, container: string, resource: Resource, range: 
     queryKey: ["series", refKey(w), container, resource, range],
     queryFn: () => api.series(w, container, resource, range),
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
   });
 export const useImpact = (w: Ref, resource: Resource, range: Range) =>
   useQuery({
     queryKey: ["impact", refKey(w), resource, range],
     queryFn: () => api.impact(w, resource, range),
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
+  });
+export const useClusterSeries = (resource: Resource, range: Range) =>
+  useQuery({
+    queryKey: ["cluster-series", resource, range],
+    queryFn: () => api.clusterSeries(resource, range),
+    refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
   });
 
 /** Mutations refresh the workload and the list; results show up as the controller and applier act. */

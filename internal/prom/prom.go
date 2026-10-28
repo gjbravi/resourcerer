@@ -93,6 +93,24 @@ func (c *Client) Requests(r Ref, kind, resource string) string {
 		kind, quote(r.Namespace), unit, owner(r))
 }
 
+// ClusterAllocatable is what the nodes offer to pods, from kube-state-metrics.
+func ClusterAllocatable(resource string) string {
+	return fmt.Sprintf(`sum(kube_node_status_allocatable{resource="%s"})`, resource)
+}
+
+// ClusterRequested sums the requests of running pods; finished pods keep their series in kube-state-metrics.
+func ClusterRequested(resource string) string {
+	return fmt.Sprintf(`sum(kube_pod_container_resource_requests{resource="%s"} * on (namespace, pod) group_left () (max by (namespace, pod) (kube_pod_status_phase{phase="Running"}) == 1))`, resource)
+}
+
+// ClusterUsage sums usage over every container in the cluster.
+func (c *Client) ClusterUsage(resource string) string {
+	if resource == "cpu" {
+		return fmt.Sprintf(`sum(rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[%s]))`, c.RateWindow)
+	}
+	return `sum(container_memory_working_set_bytes{container!="", container!="POD"})`
+}
+
 // Recommended is the history of recommendations exported by the controller.
 func Recommended(r Ref, typ, resource string) string {
 	return fmt.Sprintf(`max by (container) (resourcerer_recommendation{namespace="%s", workload_kind="%s", workload="%s", resource="%s", type="%s"})`,

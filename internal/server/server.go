@@ -56,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/info", s.info)
 	mux.HandleFunc("GET /api/v1/workloads", s.list)
+	mux.HandleFunc("GET /api/v1/cluster/series", s.clusterSeries)
 	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}", s.detail)
 	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}/series", s.series)
 	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}/impact", s.impact)
@@ -411,6 +412,60 @@ func (s *Server) impact(w http.ResponseWriter, r *http.Request) {
 		}
 		return Series{From: float64(start.Unix()), To: float64(end.Unix()), Bands: bands(raw[""], start, end),
 			Lines: map[string][]prom.Point{"requested": nonNil(requested[""]), "withRecommendation": withRec}}, nil
+	})
+	if err, isErr := v.(error); isErr {
+		writeError(w, http.StatusBadGateway, "query Prometheus: "+err.Error())
+		return
+	}
+	writeJSON(w, v)
+}
+
+// clusterSeries charts the whole cluster: allocatable, requested and used capacity, and what requests would be
+// with every current recommendation applied.
+func (s *Server) clusterSeries(w http.ResponseWriter, r *http.Request) {
+	resource := r.URL.Query().Get("resource")
+	if resource != engine.CPU && resource != engine.Memory {
+		writeError(w, http.StatusBadRequest, "resource must be cpu or memory")
+		return
+	}
+	start, end, win := s.window(r)
+	key := strings.Join([]string{"cluster", resource, r.URL.Query().Get("range"), end.String()}, "|")
+	v := s.cache.get(key, 30*time.Second, func() (any, error) {
+		ctx := r.Context()
+		var recs v1alpha1.RecommendationList
+		if err := s.Client.List(ctx, &recs); err != nil {
+			return nil, err
+		}
+		saving := 0.0
+		for i := range recs.Items {
+			if im := recs.Items[i].Status.Impact; im != nil {
+				cur, rec := totals(im.Current), totals(im.Recommended)
+				if resource == engine.CPU {
+					saving += cur.CPU - rec.CPU
+				} else {
+					saving += cur.Memory - rec.Memory
+				}
+			}
+		}
+		step := max(win/300, s.MinStep)
+		lines := map[string][]prom.Point{}
+		for name, q := range map[string]string{
+			"allocatable": prom.ClusterAllocatable(resource),
+			"requested":   prom.ClusterRequested(resource),
+			"usage":       s.Prom.ClusterUsage(resource),
+		} {
+			m, err := s.Prom.Range(ctx, q, start, end, step, "")
+			if err != nil {
+				return nil, err
+			}
+			lines[name] = nonNil(m[""])
+		}
+		withRec := make([]prom.Point, 0, len(lines["requested"]))
+		for _, p := range lines["requested"] {
+			withRec = append(withRec, prom.Point{T: p.T, V: max(0, p.V-saving)})
+		}
+		lines["withRecommendations"] = withRec
+		return Series{From: float64(start.Unix()), To: float64(end.Unix()), Bands: []Band{}, Lines: lines}, nil
 	})
 	if err, isErr := v.(error); isErr {
 		writeError(w, http.StatusBadGateway, "query Prometheus: "+err.Error())

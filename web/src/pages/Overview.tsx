@@ -5,6 +5,7 @@ import { NoteArt, WandArt } from "../art";
 import { Delta, FitBar, Metric, Money, PHASE_NAMES, phaseTone, Ring, StatusBadge, WlCell } from "../components";
 import { fmtCores, fmtMem, fmtMoney } from "../format";
 import { navigate, workloadHash } from "../hooks";
+import { ClusterTimeline } from "./ClusterTimeline";
 import { applicable } from "./Workloads";
 
 const net = (w: Summary) => w.current.monthlyCost - w.recommended.monthlyCost;
@@ -186,6 +187,8 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
           <span className="rz-dim rz-xs">applied without review</span>
         </div>
       </section>
+
+      <ClusterTimeline />
 
       <div className="rz-grid2">
         <section className="rz-card">

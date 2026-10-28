@@ -149,6 +149,8 @@ export const api = {
     ),
   impact: (w: Ref, resource: Resource, range: Range) =>
     call<Series>("GET", `${path(w)}/impact?resource=${resource}&range=${range}`),
+  clusterSeries: (resource: Resource, range: Range) =>
+    call<Series>("GET", `/cluster/series?resource=${resource}&range=${range}`),
   apply: (w: Ref, hash: string) => call<unknown>("POST", `${path(w)}/apply`, { hash }),
   revert: (w: Ref) => call<unknown>("POST", `${path(w)}/revert`),
   regenerate: (w: Ref) => call<unknown>("POST", `${path(w)}/regenerate`),
