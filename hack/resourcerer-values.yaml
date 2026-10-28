@@ -2,11 +2,11 @@
 clusterName: kind-resourcerer
 prometheus:
   url: http://prometheus-server.monitoring.svc
-  rateWindow: 1m
-  minStep: 15s
+  rateWindow: 40s
+  minStep: 10s
 defaults:
   learning-period: PT15M
-  schedule: "@every 2m"
+  schedule: "@every 30s"
 excludedNamespaces:
   - kube-system
   - kube-public
