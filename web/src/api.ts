@@ -72,6 +72,33 @@ export interface Reliability {
   hpaAtMax?: boolean;
 }
 
+export interface Check {
+  id: "throttling" | "memory" | "oom" | "restarts" | "crashloop" | "hpa" | "qos";
+  name: string;
+  container?: string;
+  pod?: string;
+  status: "ok" | "warn" | "bad";
+  unit: "ratio" | "count" | "text";
+  value: number;
+  display: string;
+  threshold?: number;
+  detail: string;
+  source: string;
+  query?: string;
+  series?: Point[];
+}
+
+export interface ReliabilityReport {
+  window: string;
+  from: number;
+  to: number;
+  step: number;
+  generatedAt: string;
+  checks: Check[];
+}
+
+export type ReliabilityWindow = "learning" | "1d" | "6h" | "1h" | "15m";
+
 export interface Container {
   name: string;
   skipped: boolean;
@@ -158,6 +185,8 @@ export const api = {
     ),
   impact: (w: Ref, resource: Resource, range: Range) =>
     call<Series>("GET", `${path(w)}/impact?resource=${resource}&range=${range}`),
+  reliability: (w: Ref, window: ReliabilityWindow) =>
+    call<ReliabilityReport>("GET", `${path(w)}/reliability?window=${window}`),
   clusterSeries: (resource: Resource, range: Range) =>
     call<Series>("GET", `/cluster/series?resource=${resource}&range=${range}`),
   apply: (w: Ref, hash: string) => call<unknown>("POST", `${path(w)}/apply`, { hash }),

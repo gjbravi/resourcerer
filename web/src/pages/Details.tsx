@@ -37,13 +37,15 @@ import {
   phaseTone,
 } from "../components";
 import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
-import { toast, useAction, useImpact, useSeries, useWorkload, workloadHash } from "../hooks";
-import { signals } from "../reliability";
+import { toast, useAction, useImpact, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
+import { resolved, signals, type Signal } from "../reliability";
+import { ReliabilityTab } from "./ReliabilityTab";
 import { meta } from "../settings";
 
 const TABS = [
   ["impact", "Impact"],
   ["recommendation", "Recommendation"],
+  ["reliability", "Reliability"],
   ["patches", "Patches"],
   ["settings", "Settings"],
 ] as const;
@@ -253,10 +255,13 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
         </div>
       ))}
 
+      <ReliabilityAlert d={d} sig={sig} />
+
       <nav className="rz-tabbar" role="tablist">
         {TABS.map(([id, label]) => (
           <a key={id} role="tab" aria-selected={tab === id} href={workloadHash(d, id)}>
             {label}
+            {id === "reliability" && sig.length > 0 && <em className={sig[0].tone}>{sig.length}</em>}
           </a>
         ))}
       </nav>
@@ -264,6 +269,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
       {tab === "impact" && <ImpactTab d={d} />}
       {tab === "recommendation" && <RecommendationTab d={d} />}
       {tab === "patches" && <PatchesTab d={d} />}
+      {tab === "reliability" && <ReliabilityTab d={d} />}
       {tab === "settings" && <SettingsTab d={d} readOnly={readOnly} />}
 
       <section className="rz-card">
@@ -573,58 +579,44 @@ function ImpactChart({ d, resource, range }: { d: Detail; resource: Resource; ra
   );
 }
 
-/** Reliability at a glance, sized like the other impact cards; the signals are listed below them. */
-function ReliabilityCard({ d }: { d: Detail }) {
-  const sig = signals(d);
-  const bad = sig.filter((x) => x.tone === "bad").length;
-  const tone = sig.length ? sig[0].tone : "ok";
-  return (
-    <div className={`rz-impactcard rel ${tone}`}>
-      <span className="lbl">
-        <ShieldCheck size={16} /> Reliability
-      </span>
-      <div className="rel-body">
-        <span className="rel-icon">
-          {tone === "ok" ? (
-            <ShieldCheck size={20} />
-          ) : tone === "bad" ? (
-            <Flame size={20} />
-          ) : (
-            <TriangleAlert size={20} />
-          )}
-        </span>
-        <b>{sig.length ? `${sig.length} ${sig.length === 1 ? "signal" : "signals"}` : "Healthy"}</b>
-      </div>
-      <span className="rz-dim rz-xs">
-        {sig.length
-          ? [
-              bad && `${bad} critical`,
-              sig.length - bad && `${sig.length - bad} ${sig.length - bad === 1 ? "warning" : "warnings"}`,
-            ]
-              .filter(Boolean)
-              .join(" · ")
-          : "No throttling, OOM kills, restarts or memory close to its limit."}
-      </span>
-    </div>
-  );
-}
-
-/** Every reliability signal of the learning period, worst first. */
-function SignalList({ d }: { d: Detail }) {
-  const sig = signals(d);
+/**
+ * Signals from the learning period, checked against the last 15 minutes: a fix shows up as resolved right
+ * away instead of when its old samples leave the learning period.
+ */
+function ReliabilityAlert({ d, sig }: { d: Detail; sig: Signal[] }) {
+  const recent = useReliability(d, "15m", true).data;
   if (!sig.length) return null;
+  const open = sig.filter((x) => !resolved(x, recent));
+  const fixed = sig.length - open.length;
+  const bad = open.filter((x) => x.tone === "bad").length;
+  const warn = open.length - bad;
+  const top = open[0];
   return (
-    <ul className="rz-signals">
-      {sig.map((x) => (
-        <li key={x.title} className={x.tone}>
-          <span className="ic">{x.tone === "bad" ? <Flame size={15} /> : <TriangleAlert size={15} />}</span>
-          <div>
-            <b>{x.title}</b>
-            <span>{x.detail}</span>
-          </div>
-        </li>
-      ))}
-    </ul>
+    <a className={`rz-relalert ${top ? top.tone : "ok"}`} href={workloadHash(d, "reliability")}>
+      <span className="ic">
+        {!top ? <ShieldCheck size={16} /> : top.tone === "bad" ? <Flame size={16} /> : <TriangleAlert size={16} />}
+      </span>
+      <span className="main">
+        <b>{top ? top.title : `${fixed} reliability ${fixed === 1 ? "issue" : "issues"} resolved in the last 15m`}</b>
+        <span>
+          {top
+            ? open.length > 1
+              ? `and ${open.length - 1} more reliability ${open.length === 2 ? "issue" : "issues"}`
+              : top.detail
+            : "Still counted in the learning period until the old samples age out."}
+        </span>
+      </span>
+      <span className="cnt">
+        {bad > 0 && <span className="b">{bad} critical</span>}
+        {warn > 0 && (
+          <span className="w">
+            {warn} {warn === 1 ? "warning" : "warnings"}
+          </span>
+        )}
+        {fixed > 0 && top && <span className="o">{fixed} resolved</span>}
+      </span>
+      <span className="go">Review →</span>
+    </a>
   );
 }
 
@@ -707,9 +699,7 @@ function ImpactTab({ d }: { d: Detail }) {
           fmt={fmtMem}
           delta={<Delta from={d.current.memory} to={d.recommended.memory} r="memory" />}
         />
-        <ReliabilityCard d={d} />
       </div>
-      <SignalList d={d} />
       <div className="rz-card pad">
         <ImpactChart d={d} resource="cpu" range={range} />
         <ImpactChart d={d} resource="memory" range={range} />

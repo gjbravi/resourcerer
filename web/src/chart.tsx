@@ -77,6 +77,8 @@ export function TimeChart({
   height = 300,
   loading,
   events = [],
+  thresholds = [],
+  maxY,
   bandsLabel = "Usage",
   footer,
 }: {
@@ -90,6 +92,10 @@ export function TimeChart({
   height?: number;
   loading?: boolean;
   events?: ChartEvent[];
+  /** Horizontal reference lines, such as an alert threshold. */
+  thresholds?: { v: number; label: string }[];
+  /** Caps the axis for bounded values such as shares. */
+  maxY?: number;
   bandsLabel?: string;
   footer?: (t: number) => ReactNode;
 }) {
@@ -111,7 +117,7 @@ export function TimeChart({
   const key = (i: number) => `l${i}`;
 
   const rows = useMemo(() => {
-    const lineGap = Math.max(span / 60, 900);
+    const lineGap = Math.max(span / 40, 60);
     const bandGap = (span / 150) * 3;
     const ts = new Set<number>();
     // A row inside each gap gets null for that series; without it the chart joins the points across the gap.
@@ -143,8 +149,9 @@ export function TimeChart({
     1e-9,
     ...shownBands.flatMap((sb) => bands.map((b) => b[sb.key])),
     ...shown.flatMap((l) => l.points.map((p) => p.v)),
+    ...thresholds.map((t) => t.v),
   );
-  const top = niceMax(maxV * 1.1);
+  const top = Math.min(niceMax(maxV * 1.1), maxY ?? Infinity);
   const tickEvery =
     span <= 3600
       ? 600
@@ -261,6 +268,16 @@ export function TimeChart({
               activeDot={{ r: 3.5, stroke: "var(--panel)", strokeWidth: 1.5, fill: l.color }}
               hide={hidden.has(l.name)}
               {...anim}
+            />
+          ))}
+          {thresholds.map((t) => (
+            <ReferenceLine
+              key={`t${t.v}`}
+              y={t.v}
+              stroke="var(--bad)"
+              strokeDasharray="5 4"
+              strokeOpacity={0.7}
+              label={{ value: t.label, position: "insideTopRight", className: "g-thr" }}
             />
           ))}
           {groups.map((g) => (

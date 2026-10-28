@@ -144,3 +144,29 @@ type Series struct {
 	Bands []Band                  `json:"bands"`
 	Lines map[string][]prom.Point `json:"lines"`
 }
+
+// Check is one reliability check over a window; Value is a share for "ratio" checks and a number for "count".
+type Check struct {
+	ID        string       `json:"id"`
+	Name      string       `json:"name"`
+	Container string       `json:"container,omitempty"`
+	Pod       string       `json:"pod,omitempty"`
+	Status    string       `json:"status"`
+	Unit      string       `json:"unit"`
+	Value     float64      `json:"value"`
+	Display   string       `json:"display"`
+	Threshold float64      `json:"threshold,omitempty"`
+	Detail    string       `json:"detail"`
+	Source    string       `json:"source"`
+	Query     string       `json:"query,omitempty"`
+	Series    []prom.Point `json:"series,omitempty"`
+}
+
+type ReliabilityReport struct {
+	Window      string  `json:"window"`
+	From        float64 `json:"from"`
+	To          float64 `json:"to"`
+	Step        float64 `json:"step"`
+	GeneratedAt string  `json:"generatedAt"`
+	Checks      []Check `json:"checks"`
+}

@@ -103,6 +103,37 @@ func (c *Client) Throttled(r Ref, window time.Duration) string {
 	return part("container_cpu_cfs_throttled_periods_total") + "\n/\n" + part("container_cpu_cfs_periods_total")
 }
 
+// ThrottledRate is the share of CFS periods throttled per container at each step, over a rate window.
+func (c *Client) ThrottledRate(r Ref, rateWindow time.Duration) string {
+	ns := quote(r.Namespace)
+	part := func(m string) string {
+		return fmt.Sprintf("sum by (container) (rate(%s{namespace=\"%s\", container!=\"\", container!=\"POD\"}[%s]) * on (namespace, pod) group_left () %s)",
+			m, ns, model.Duration(rateWindow), owner(r))
+	}
+	return part("container_cpu_cfs_throttled_periods_total") + "\n/\n" + part("container_cpu_cfs_periods_total")
+}
+
+// MemoryOfLimit is the highest working set per container within each step, as a share of the memory limit.
+// Containers without a limit have no series.
+func (c *Client) MemoryOfLimit(r Ref, step, resolution time.Duration) string {
+	ns := quote(r.Namespace)
+	sel := fmt.Sprintf(`{namespace="%s", container!="", container!="POD"}`, ns)
+	return fmt.Sprintf(`max by (container) (
+  max_over_time((
+    max by (namespace, pod, container) (container_memory_working_set_bytes%s)
+    / on (namespace, pod, container)
+    (max by (namespace, pod, container) (container_spec_memory_limit_bytes%s) > 0)
+  )[%s:%s])
+  * on (namespace, pod) group_left () %s
+)`, sel, sel, model.Duration(step), model.Duration(resolution), owner(r))
+}
+
+// Restarts counts container restarts of the workload's pods over window, from kube-state-metrics.
+func Restarts(r Ref, window time.Duration) string {
+	return fmt.Sprintf(`sum by (container) (increase(kube_pod_container_status_restarts_total{namespace="%s"}[%s]) * on (namespace, pod) group_left () %s)`,
+		quote(r.Namespace), model.Duration(window), owner(r))
+}
+
 // Instant runs an instant query and returns one value per value of label.
 func (c *Client) Instant(ctx context.Context, q string, label string) (map[string]float64, error) {
 	v, _, err := c.API.Query(ctx, q, time.Now())

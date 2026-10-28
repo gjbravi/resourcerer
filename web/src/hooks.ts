@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { api, refKey, type Range, type Ref, type Resource } from "./api";
+import { api, refKey, type Range, type Ref, type ReliabilityWindow, type Resource } from "./api";
 
 export const useInfo = () => useQuery({ queryKey: ["info"], queryFn: api.info, refetchInterval: 60_000 });
 export const useWorkloads = () => useQuery({ queryKey: ["workloads"], queryFn: api.list, refetchInterval: 15_000 });
@@ -20,6 +20,25 @@ export const useImpact = (w: Ref, resource: Resource, range: Range) =>
     refetchInterval: 30_000,
     placeholderData: keepPreviousData,
   });
+/** Live mode refreshes every 30s, about the scrape interval, so a fix shows up as soon as Prometheus has it. */
+export const useReliability = (w: Ref, window: ReliabilityWindow, live: boolean) =>
+  useQuery({
+    queryKey: ["reliability", refKey(w), window],
+    queryFn: () => api.reliability(w, window),
+    refetchInterval: live ? 30_000 : false,
+    placeholderData: keepPreviousData,
+  });
+
+/** The current time, ticking every second, for "updated 12s ago" labels. */
+export function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
 export const useClusterSeries = (resource: Resource, range: Range) =>
   useQuery({
     queryKey: ["cluster-series", resource, range],
