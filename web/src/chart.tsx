@@ -38,11 +38,6 @@ export interface ChartEvent {
 }
 
 const BAND_KEYS = ["p95", "p75", "p50"] as const;
-const BAND_LABELS: Record<(typeof BAND_KEYS)[number], string> = {
-  p95: "95th percentile",
-  p75: "75th percentile",
-  p50: "50th percentile",
-};
 
 type Row = { t: number } & Record<string, number | null>;
 
@@ -193,7 +188,7 @@ export function TimeChart({
               </linearGradient>
             ))}
           </defs>
-          <CartesianGrid className="g-grid" vertical horizontal strokeDasharray="0" />
+          <CartesianGrid stroke="var(--track)" strokeDasharray="3 3" />
           <XAxis
             dataKey="t"
             type="number"
@@ -259,7 +254,7 @@ export function TimeChart({
               strokeDasharray={l.dash}
               strokeLinecap="round"
               dot={false}
-              activeDot={{ r: 4, stroke: "var(--panel)", strokeWidth: 2, fill: l.color }}
+              activeDot={{ r: 3.5, stroke: "var(--panel)", strokeWidth: 1.5, fill: l.color }}
               hide={hidden.has(l.name)}
               {...anim}
             />
@@ -290,28 +285,16 @@ export function TimeChart({
             />
           ))}
           <Tooltip
-            cursor={{ stroke: "var(--dim)", strokeDasharray: "3 3" }}
+            cursor={{ stroke: "var(--accent-line)", strokeWidth: 1 }}
             isAnimationActive
             animationDuration={180}
             wrapperStyle={{ outline: "none", zIndex: 5 }}
             content={({ active, payload }) => {
               const row = payload?.[0]?.payload as Row | undefined;
               if (!active || !row) return null;
-              const items = [
-                ...(showBands && row.p95 != null
-                  ? BAND_KEYS.map((k, i) => ({
-                      key: k,
-                      label: BAND_LABELS[k],
-                      v: row[k],
-                      sw: `sw b${2 - i}`,
-                      color: "",
-                    }))
-                  : []),
-                ...lines
-                  .map((l, i) => ({ key: l.name, label: l.name, v: row[key(i)], sw: "sw", color: l.color }))
-                  .filter((r) => !hidden.has(r.key)),
-              ]
-                .filter((r): r is typeof r & { v: number } => r.v != null)
+              const items = lines
+                .map((l, i) => ({ key: l.name, label: l.name, v: row[key(i)], color: l.color }))
+                .filter((r): r is typeof r & { v: number } => r.v != null && !hidden.has(r.key))
                 .sort((a, b) => b.v - a.v);
               const near = groups.filter((g) => Math.abs(g.t - row.t) < span / 80);
               return (
@@ -324,10 +307,17 @@ export function TimeChart({
                       minute: "2-digit",
                     })}
                   </div>
+                  {showBands && row.p50 != null && row.p95 != null && (
+                    <div className="tt-r">
+                      <span style={{ color: "var(--band0)" }}>{bandsLabel} p50 / p95</span>
+                      <b>
+                        {fmtTip(row.p50)} / {fmtTip(row.p95)}
+                      </b>
+                    </div>
+                  )}
                   {items.map((r) => (
                     <div key={r.key} className="tt-r">
-                      <i className={r.sw} style={r.color ? { background: r.color } : undefined} />
-                      <span>{r.label}</span>
+                      <span style={{ color: `color-mix(in srgb, ${r.color} 70%, var(--text))` }}>{r.label}</span>
                       <b>{fmtTip(r.v)}</b>
                     </div>
                   ))}

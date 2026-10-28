@@ -767,10 +767,15 @@ body:has(.rz.dark) {
   pointer-events: none;
 }
 .recharts-tooltip-wrapper .rz-tt {
-  position: static;
-}
-.rz-tt .sw {
-  box-shadow: 0 0 0 1.5px color-mix(in srgb, currentColor 55%, transparent);
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(42, 31, 77, 0.1);
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
 }
 .recharts-tooltip-wrapper {
   transition:
@@ -834,10 +839,10 @@ body:has(.rz.dark) {
   font-weight: 650;
 }
 .tt-ev {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-  font-weight: 650;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  color: var(--accent);
 }
 .g-cross {
   stroke: var(--dim);
@@ -858,8 +863,9 @@ body:has(.rz.dark) {
   font-variant-numeric: tabular-nums;
 }
 .tt-h {
-  opacity: 0.7;
-  margin-bottom: 8px;
+  color: var(--dim);
+  font-size: 0.7rem;
+  margin-bottom: 4px;
 }
 .tt-s {
   font-weight: 650;
@@ -867,13 +873,15 @@ body:has(.rz.dark) {
 }
 .tt-r {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 4px 0;
+  align-items: baseline;
+  gap: 16px;
+  margin: 2px 0;
+  white-space: nowrap;
 }
 .tt-r b {
   margin-left: auto;
-  padding-left: 12px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 500;
 }
 .sw {
   display: inline-block;
@@ -897,21 +905,31 @@ body:has(.rz.dark) {
 .rz-glegend {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-start;
-  margin-top: 10px;
+  gap: 2px 14px;
+  justify-content: flex-end;
+  margin-top: 6px;
 }
 .rz-glegend button {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  border-radius: 99px;
-  padding: 4px 11px;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 2px 0;
   color: var(--dim);
-  font-size: 0.78rem;
+  font: inherit;
+  font-size: 0.75rem;
   cursor: pointer;
+  transition: opacity 0.2s;
+}
+.rz-glegend .sw {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.rz-glegend .sw.line {
+  width: 12px;
+  height: 2px;
 }
 .rz-glegend button[aria-pressed="false"] {
   opacity: 0.45;
