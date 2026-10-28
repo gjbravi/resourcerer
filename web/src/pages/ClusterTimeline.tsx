@@ -42,15 +42,14 @@ export function ClusterTimeline() {
     const usage = costLine(l(cpu.data, "usage"), l(mem.data, "usage"), rates);
     series = cpu.data && mem.data ? { ...cpu.data, bands: [], lines: {} } : undefined;
     lines = [
-      { name: "Requested cost", color: "var(--c-cur)", points: requested, shape: "smooth", width: 2.6 },
+      { name: "Requested cost", color: "var(--c-cur)", points: requested, shape: "smooth", width: 2 },
       {
         name: "With recommendations",
-        color: "var(--save)",
+        color: "var(--c-rec)",
         points: withRecs,
         shape: "smooth",
-        fill: "Requested cost",
       },
-      { name: "Usage cost", color: "var(--band0)", points: usage, shape: "smooth", fill: true, width: 1.6 },
+      { name: "Usage cost", color: "var(--c-usage)", points: usage, shape: "smooth", width: 2 },
     ];
     fmtY = (v) => `$${v < 10 ? v.toFixed(2) : v.toFixed(0)}`;
     fmtTip = (v) => `$${v.toFixed(2)}/h`;
@@ -58,24 +57,16 @@ export function ClusterTimeline() {
   } else {
     const k = mode === "cpu" ? 1 : Gi;
     lines = [
-      {
-        name: "Allocatable",
-        color: "var(--dim)",
-        points: l(cur.data, "allocatable"),
-        shape: "smooth",
-        fill: true,
-        width: 1.4,
-      },
-      { name: "Requested", color: "var(--c-cur)", points: l(cur.data, "requested"), shape: "smooth", width: 2.6 },
+      { name: "Allocatable", color: "var(--c-alloc)", points: l(cur.data, "allocatable"), shape: "smooth", width: 2 },
+      { name: "Requested", color: "var(--c-cur)", points: l(cur.data, "requested"), shape: "smooth", width: 2 },
       {
         name: "With recommendations",
-        color: "var(--save)",
+        color: "var(--c-rec)",
         points: l(cur.data, "withRecommendations"),
         shape: "smooth",
         dash: "6 4",
-        fill: "Requested",
       },
-      { name: "Usage", color: "var(--band0)", points: l(cur.data, "usage"), shape: "smooth", fill: true },
+      { name: "Usage", color: "var(--c-usage)", points: l(cur.data, "usage"), shape: "smooth", width: 2 },
     ];
     fmtY = (v) => (v / k).toFixed(v / k < 10 ? 1 : 0);
     fmtTip = mode === "cpu" ? (v) => `${v.toFixed(2)} cores` : fmtMem;

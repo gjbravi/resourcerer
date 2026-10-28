@@ -91,14 +91,6 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
         <span className="rz-dim">
           {d.namespace} · {d.kind}
         </span>
-        <span className="rz-grow" />
-        <div className="rz-tabs" role="tablist">
-          {TABS.map(([id, label]) => (
-            <a key={id} role="tab" aria-selected={tab === id} href={workloadHash(d, id)}>
-              {label}
-            </a>
-          ))}
-        </div>
       </div>
 
       <section className="rz-metrics">
@@ -254,6 +246,14 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
           {w}
         </div>
       ))}
+
+      <nav className="rz-tabbar" role="tablist">
+        {TABS.map(([id, label]) => (
+          <a key={id} role="tab" aria-selected={tab === id} href={workloadHash(d, id)}>
+            {label}
+          </a>
+        ))}
+      </nav>
 
       {tab === "impact" && <ImpactTab d={d} />}
       {tab === "recommendation" && <RecommendationTab d={d} />}
@@ -560,7 +560,6 @@ function ImpactChart({ d, resource, range }: { d: Detail; resource: Resource; ra
             name: "With recommendation",
             color: "var(--c-rec)",
             points: data?.lines.withRecommendation ?? [],
-            fill: "Requested",
           },
         ]}
       />

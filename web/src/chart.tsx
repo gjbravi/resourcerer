@@ -37,7 +37,11 @@ export interface ChartEvent {
   label: string;
 }
 
-const BAND_KEYS = ["p95", "p75", "p50"] as const;
+const BAND_KEYS = ["p95", "p50"] as const;
+const BAND_LINES = [
+  { key: "p95", color: "var(--c-usage)", width: 2 },
+  { key: "p50", color: "var(--c-usage50)", width: 1.5 },
+] as const;
 
 type Row = { t: number } & Record<string, number | null>;
 
@@ -103,7 +107,7 @@ export function TimeChart({
   const to = series?.to ?? 1;
   const span = to - from;
   const bands = useMemo(() => series?.bands ?? [], [series]);
-  const showBands = bands.length > 0 && !hidden.has(bandsLabel);
+  const shownBands = BAND_LINES.filter((b) => bands.length > 0 && !hidden.has(`${bandsLabel} ${b.key}`));
   const key = (i: number) => `l${i}`;
 
   const rows = useMemo(() => {
@@ -137,7 +141,7 @@ export function TimeChart({
   const shown = lines.filter((l) => !hidden.has(l.name));
   const maxV = Math.max(
     1e-9,
-    ...(showBands ? bands.map((b) => b.p95) : []),
+    ...shownBands.flatMap((sb) => bands.map((b) => b[sb.key])),
     ...shown.flatMap((l) => l.points.map((p) => p.v)),
   );
   const top = niceMax(maxV * 1.1);
@@ -211,16 +215,16 @@ export function TimeChart({
             allowDataOverflow
             label={{ value: unit, angle: -90, position: "insideLeft", className: "g-axis", dy: 30 }}
           />
-          {BAND_KEYS.map((k, i) => (
-            <Area
-              key={k}
+          {BAND_LINES.map((b) => (
+            <RLine
+              key={b.key}
               type="monotone"
-              dataKey={k}
-              className={`g-band b${2 - i}`}
-              stroke="none"
-              fill={`var(--band${2 - i})`}
-              hide={!showBands}
-              activeDot={false}
+              dataKey={b.key}
+              stroke={b.color}
+              strokeWidth={b.width}
+              dot={false}
+              activeDot={{ r: 3.5, stroke: "var(--panel)", strokeWidth: 1.5, fill: b.color }}
+              hide={!bands.length || hidden.has(`${bandsLabel} ${b.key}`)}
               {...anim}
             />
           ))}
@@ -237,7 +241,7 @@ export function TimeChart({
                 }
                 stroke="none"
                 fill={l.fill === true ? `url(#${id}-g${i})` : l.color}
-                fillOpacity={l.fill === true ? 1 : 0.18}
+                fillOpacity={l.fill === true ? 1 : 0.1}
                 hide={hidden.has(l.name)}
                 activeDot={false}
                 {...anim}
@@ -292,8 +296,15 @@ export function TimeChart({
             content={({ active, payload }) => {
               const row = payload?.[0]?.payload as Row | undefined;
               if (!active || !row) return null;
-              const items = lines
-                .map((l, i) => ({ key: l.name, label: l.name, v: row[key(i)], color: l.color }))
+              const items = [
+                ...shownBands.map((b) => ({
+                  key: b.key,
+                  label: `${bandsLabel} ${b.key}`,
+                  v: row[b.key],
+                  color: b.color,
+                })),
+                ...lines.map((l, i) => ({ key: l.name, label: l.name, v: row[key(i)], color: l.color })),
+              ]
                 .filter((r): r is typeof r & { v: number } => r.v != null && !hidden.has(r.key))
                 .sort((a, b) => b.v - a.v);
               const near = groups.filter((g) => Math.abs(g.t - row.t) < span / 80);
@@ -307,14 +318,6 @@ export function TimeChart({
                       minute: "2-digit",
                     })}
                   </div>
-                  {showBands && row.p50 != null && row.p95 != null && (
-                    <div className="tt-r">
-                      <span style={{ color: "var(--band0)" }}>{bandsLabel} p50 / p95</span>
-                      <b>
-                        {fmtTip(row.p50)} / {fmtTip(row.p95)}
-                      </b>
-                    </div>
-                  )}
                   {items.map((r) => (
                     <div key={r.key} className="tt-r">
                       <span style={{ color: `color-mix(in srgb, ${r.color} 70%, var(--text))` }}>{r.label}</span>
@@ -338,12 +341,17 @@ export function TimeChart({
         )}
       </div>
       <div className="rz-glegend" role="group" aria-label="Series">
-        {bands.length > 0 && (
-          <button aria-pressed={!hidden.has(bandsLabel)} onClick={() => toggle(bandsLabel)}>
-            <i className="sw b1" />
-            {bandsLabel}
-          </button>
-        )}
+        {bands.length > 0 &&
+          BAND_LINES.map((b) => (
+            <button
+              key={b.key}
+              aria-pressed={!hidden.has(`${bandsLabel} ${b.key}`)}
+              onClick={() => toggle(`${bandsLabel} ${b.key}`)}
+            >
+              <i className="sw line" style={{ background: b.color }} />
+              {bandsLabel} {b.key}
+            </button>
+          ))}
         {lines.map((l) => (
           <button key={l.name} aria-pressed={!hidden.has(l.name)} onClick={() => toggle(l.name)}>
             <i className={l.fill === true ? "sw" : "sw line"} style={{ background: l.color }} />

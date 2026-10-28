@@ -35,10 +35,14 @@ body:has(.rz.dark) {
   --band0: #6b4cf0;
   --band1: #a48cff;
   --band2: #ddd3ff;
-  --c-cur: #2a1f4d;
-  --c-rec: #7c5cff;
-  --c-curlim: #b0a8cc;
-  --c-reclim: #c4b5fd;
+  /* Chart series: one hue per meaning, the same in every chart. */
+  --c-usage: #7c5cff;
+  --c-usage50: #b9a8ff;
+  --c-cur: #3b82f6;
+  --c-rec: #12b886;
+  --c-curlim: #f59e0b;
+  --c-reclim: #0d9488;
+  --c-alloc: #64748b;
   --tt-bg: #2a1f4d;
   --tt-ink: #f4f1ff;
   --art-plat-top: #ffffff;
@@ -90,10 +94,13 @@ body:has(.rz.dark) {
   --band0: #b9a8ff;
   --band1: #7c63e8;
   --band2: #3a2f72;
-  --c-cur: #efebff;
-  --c-rec: #b9a8ff;
-  --c-curlim: #6b6496;
-  --c-reclim: #7c63e8;
+  --c-usage: #a48cff;
+  --c-usage50: #6f5bd6;
+  --c-cur: #6aa1ff;
+  --c-rec: #3ddc97;
+  --c-curlim: #fbbf24;
+  --c-reclim: #2dd4bf;
+  --c-alloc: #94a3b8;
   --tt-bg: #f4f1ff;
   --tt-ink: #1a1631;
   --art-plat-top: #2e2854;
@@ -1715,4 +1722,35 @@ body:has(.rz.dark) {
   border: 0;
   box-shadow: none;
   padding: 10px 0 0;
+}
+
+/* Workload tabs: sit right above the content they switch. */
+.rz-tabbar {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 18px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: color-mix(in srgb, var(--panel) 55%, var(--bg));
+}
+.rz-tabbar a {
+  padding: 11px 14px 10px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--dim);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.rz-tabbar a:hover {
+  color: var(--text);
+}
+.rz-tabbar a[aria-selected="true"] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
