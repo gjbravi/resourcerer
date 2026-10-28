@@ -1754,3 +1754,122 @@ body:has(.rz.dark) {
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
+
+/* Projected impact */
+.rz-impact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.rz-impactcard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+.rz-impactcard .lbl {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  color: var(--ink2);
+}
+.rz-impactcard .lbl svg {
+  color: var(--accent);
+}
+.rz-impactcard .vals {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.rz-impactcard .vals b {
+  font-size: 1.5rem;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rz-impactcard .vals .rz-delta {
+  font-size: 0.78rem;
+}
+.rz-impactcard .bars {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+}
+.rz-impactcard .bar {
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+}
+.rz-impactcard .bar .k {
+  color: var(--dim);
+}
+.rz-impactcard .bar .v {
+  font-family: ui-monospace, Menlo, monospace;
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rz-impactcard .track {
+  height: 7px;
+  border-radius: 99px;
+  background: var(--track);
+  overflow: hidden;
+}
+.rz-impactcard .track i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  animation: rz-grow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transform-origin: left;
+}
+.rz-impactcard .track .cur {
+  background: var(--c-cur);
+}
+.rz-impactcard .track .rec {
+  background: var(--c-rec);
+  animation-delay: 0.12s;
+}
+@keyframes rz-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+.rz-impactcard.rel .rel-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rz-impactcard.rel .rel-body b {
+  font-size: 1.3rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.rz-impactcard.rel .rel-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+}
+.rz-impactcard.rel.ok .rel-icon {
+  background: var(--save-soft);
+  color: var(--save-deep);
+}
+.rz-impactcard.rel.bad .rel-icon {
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  color: var(--bad);
+}
+.rz-impactcard.rel.bad b {
+  color: var(--bad);
+}

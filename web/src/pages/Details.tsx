@@ -4,7 +4,9 @@ import {
   ArrowUp,
   Boxes,
   ChevronLeft,
+  CircleDollarSign,
   Cpu,
+  Flame,
   Hourglass,
   Info,
   MemoryStick,
@@ -17,7 +19,7 @@ import {
   Zap,
   ZapOff,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { api, type Detail, type Range, type Ref, type Resource, type SettingInfo } from "../api";
 import { Art, NoteArt, WandArt } from "../art";
 import { TimeChart, type ChartEvent } from "../chart";
@@ -567,6 +569,52 @@ function ImpactChart({ d, resource, range }: { d: Detail; resource: Resource; ra
   );
 }
 
+/** One figure before and after the recommendation, with bars on a shared scale. */
+function ImpactCard({
+  icon,
+  label,
+  from,
+  to,
+  fmt,
+  delta,
+}: {
+  icon: ReactNode;
+  label: string;
+  from: number;
+  to: number;
+  fmt: (v: number) => string;
+  delta: ReactNode;
+}) {
+  const top = Math.max(from, to) || 1;
+  return (
+    <div className="rz-impactcard">
+      <span className="lbl">
+        {icon} {label}
+      </span>
+      <div className="vals">
+        <b>{fmt(to)}</b>
+        {delta}
+      </div>
+      <div className="bars">
+        <div className="bar">
+          <span className="k">Now</span>
+          <span className="track">
+            <i className="cur" style={{ width: `${(from / top) * 100}%` }} />
+          </span>
+          <span className="v">{fmt(from)}</span>
+        </div>
+        <div className="bar">
+          <span className="k">After</span>
+          <span className="track">
+            <i className="rec" style={{ width: `${(to / top) * 100}%` }} />
+          </span>
+          <span className="v">{fmt(to)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ImpactTab({ d }: { d: Detail }) {
   const [range, setRange] = useState<Range>("1h");
   return (
@@ -575,32 +623,43 @@ function ImpactTab({ d }: { d: Detail }) {
         <h2>Projected impact</h2>
         <Zoom value={range} onChange={setRange} />
       </div>
-      <div className="rz-kpis">
-        <div className="rz-kpi">
-          <span>Monthly cost</span>
-          <b>
-            ${d.current.monthlyCost.toFixed(2)} → ${d.recommended.monthlyCost.toFixed(2)}
-          </b>
-        </div>
-        <div className="rz-kpi">
-          <span>CPU requested</span>
-          <b>
-            {fmtCores(d.current.cpu)} → {fmtCores(d.recommended.cpu)}
-          </b>
-        </div>
-        <div className="rz-kpi">
-          <span>Memory requested</span>
-          <b>
-            {fmtMem(d.current.memory)} → {fmtMem(d.recommended.memory)}
-          </b>
-        </div>
-        <div className="rz-kpi">
-          <span>Reliability</span>
-          <b className={d.oomKills ? "t-bad" : ""}>{d.oomKills ? `${d.oomKills} OOM kills` : "No OOM kills"}</b>
+      <div className="rz-impact">
+        <ImpactCard
+          icon={<CircleDollarSign size={16} />}
+          label="Monthly cost"
+          from={d.current.monthlyCost}
+          to={d.recommended.monthlyCost}
+          fmt={fmtMoney}
+          delta={<Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />}
+        />
+        <ImpactCard
+          icon={<Cpu size={16} />}
+          label="CPU requested"
+          from={d.current.cpu}
+          to={d.recommended.cpu}
+          fmt={fmtCores}
+          delta={<Delta from={d.current.cpu} to={d.recommended.cpu} r="cpu" />}
+        />
+        <ImpactCard
+          icon={<MemoryStick size={16} />}
+          label="Memory requested"
+          from={d.current.memory}
+          to={d.recommended.memory}
+          fmt={fmtMem}
+          delta={<Delta from={d.current.memory} to={d.recommended.memory} r="memory" />}
+        />
+        <div className={`rz-impactcard rel ${d.oomKills ? "bad" : "ok"}`}>
+          <span className="lbl">
+            <ShieldCheck size={16} /> Reliability
+          </span>
+          <div className="rel-body">
+            <span className="rel-icon">{d.oomKills ? <Flame size={20} /> : <ShieldCheck size={20} />}</span>
+            <b>{d.oomKills ? `${d.oomKills} OOM kills` : "No OOM kills"}</b>
+          </div>
           <span className="rz-dim rz-xs">
             {d.oomKills
               ? "The memory recommendation is raised above the limit that killed it."
-              : "Usage stayed under limits."}
+              : "Usage stayed under limits in the learning period."}
           </span>
         </div>
       </div>
