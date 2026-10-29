@@ -43,6 +43,9 @@ type Point struct {
 
 func quote(s string) string { return strings.ReplaceAll(s, `"`, `\"`) }
 
+// Owner selects the pods of a workload as a vector of 1s keyed by namespace and pod, to multiply a per-pod metric by.
+func Owner(r Ref) string { return owner(r) }
+
 // owner selects the pods of a workload as a vector of 1s keyed by namespace and pod.
 func owner(r Ref) string {
 	ns := quote(r.Namespace)

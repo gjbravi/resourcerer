@@ -99,6 +99,13 @@ the nodes cost, spot or on-demand, from Karpenter's price estimates; without it,
 `cost.allocation: node` goes further and prices each workload at the nodes its pods ran on, so a workload on on-demand
 nodes costs more than the same requests on spot.
 
+## Reliability signals
+
+Built-in signals (CPU throttling, memory headroom, restarts, crash loops, HPA at its maximum, BestEffort pods) flag
+workloads whose requests or limits may be too tight. Declare your own as PromQL templates under
+`reliability.signals`, such as error rates or latency; they show in the workload list, the Reliability tab and the
+verdict on whether to apply. See [docs/reliability-signals.md](docs/reliability-signals.md).
+
 ## Settings
 
 Set cluster defaults in the Helm values under `defaults`; override them per namespace or workload with annotations:

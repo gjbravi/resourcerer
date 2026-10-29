@@ -19,3 +19,28 @@ excludedNamespaces:
   - monitoring
   - argo-rollouts
   - karpenter
+# Declared signals from metrics kind has, so the Reliability tab and e2e cover them.
+reliability:
+  signals:
+    - id: cpu-hot
+      name: CPU used of requested
+      description: Pods use most of their CPU request; bursts compete for CPU with their neighbours.
+      unit: ratio
+      above: { warn: 0.8, critical: 1.0 }
+      query: |
+        sum(rate(container_cpu_usage_seconds_total{namespace="{{ .Namespace }}", container!="", container!="POD"}[{{ .Window }}])
+          * on (namespace, pod) group_left () {{ .OwnedPods }})
+        /
+        sum(kube_pod_container_resource_requests{namespace="{{ .Namespace }}", resource="cpu"}
+          * on (namespace, pod) group_left () {{ .OwnedPods }})
+    - id: memory-over-request
+      name: Memory above request
+      description: Working set above the memory request; these pods are evicted first under node memory pressure.
+      unit: ratio
+      above: { warn: 1.0, critical: 1.5 }
+      query: |
+        max by (container) (max_over_time(container_memory_working_set_bytes{namespace="{{ .Namespace }}", container!="", container!="POD"}[{{ .Window }}])
+          * on (namespace, pod) group_left () {{ .OwnedPods }})
+        /
+        max by (container) (kube_pod_container_resource_requests{namespace="{{ .Namespace }}", resource="memory"}
+          * on (namespace, pod) group_left () {{ .OwnedPods }})

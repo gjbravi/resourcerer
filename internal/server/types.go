@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
 	"github.com/gjbravi/resourcerer/internal/prom"
+	"github.com/gjbravi/resourcerer/internal/signals"
 )
 
 // Resources are cores for CPU and bytes for memory; absent keys are unset.
@@ -17,7 +18,36 @@ type Info struct {
 	ExcludedNamespaces []string      `json:"excludedNamespaces"`
 	Defaults           []SettingInfo `json:"defaults"`
 	Cost               Cost          `json:"cost"`
+	Reliability        Reliability   `json:"reliability"`
 	Prometheus         prom.Status   `json:"prometheus"`
+}
+
+// Reliability is the reliability signals configuration, with each declared signal checked against Prometheus.
+type Reliability struct {
+	Builtin []BuiltinSignal `json:"builtin"`
+	Signals []SignalInfo    `json:"signals"`
+	// Errors are problems with the configuration; the signals they name are not evaluated.
+	Errors []string `json:"errors,omitempty"`
+}
+
+type BuiltinSignal struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Enabled bool     `json:"enabled"`
+	Warn    *float64 `json:"warn,omitempty"`
+}
+
+type SignalInfo struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Unit        string          `json:"unit"`
+	Above       *signals.Levels `json:"above,omitempty"`
+	Below       *signals.Levels `json:"below,omitempty"`
+	Query       string          `json:"query"`
+	Runbook     string          `json:"runbook,omitempty"`
+	// Error is set when a test run of the query against Prometheus failed.
+	Error string `json:"error,omitempty"`
 }
 
 type Cost struct {
@@ -181,6 +211,9 @@ type Check struct {
 	Source    string       `json:"source"`
 	Query     string       `json:"query,omitempty"`
 	Series    []prom.Point `json:"series,omitempty"`
+	// Signal is the declared signal's id, for checks with ID "signal"; Runbook links its runbook.
+	Signal  string `json:"signal,omitempty"`
+	Runbook string `json:"runbook,omitempty"`
 }
 
 type ReliabilityReport struct {

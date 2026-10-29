@@ -170,6 +170,23 @@ type Reliability struct {
 	// The HPA runs at its maximum replicas, so it cannot absorb more load.
 	// +optional
 	HPAAtMax bool `json:"hpaAtMax,omitempty"`
+	// Signals declared in the reliability configuration that have data for this workload, over the learning period.
+	// +optional
+	Signals []SignalStatus `json:"signals,omitempty"`
+}
+
+// SignalStatus is a declared signal's worst value for the workload.
+type SignalStatus struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Value is a decimal string; Display is it in the signal's unit.
+	Value   string `json:"value"`
+	Display string `json:"display"`
+	// +kubebuilder:validation:Enum=ok;warn;critical
+	Status string `json:"status"`
+	// Container the worst value came from, when the query breaks the signal down by container.
+	// +optional
+	Container string `json:"container,omitempty"`
 }
 
 type ContainerReliability struct {

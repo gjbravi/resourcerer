@@ -1,4 +1,4 @@
-import { Check as CheckIcon, Code, Flame, RefreshCw, TriangleAlert } from "lucide-react";
+import { Check as CheckIcon, Code, ExternalLink, Flame, RefreshCw, TriangleAlert } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { Check, Detail, ReliabilityReport, ReliabilityWindow } from "../api";
 import { TimeChart } from "../chart";
@@ -14,8 +14,16 @@ const WINDOWS: [ReliabilityWindow, string][] = [
   ["15m", "15m"],
 ];
 
-const key = (c: Check) => `${c.id}/${c.container ?? ""}`;
+const key = (c: Check) => `${c.id}/${c.signal ?? ""}/${c.container ?? ""}`;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+/** A check's value in its unit; built-in charts are all ratios. */
+function fmtCheck(c: Check, v: number): string {
+  if (c.id !== "signal" || c.unit === "ratio") return pct(v);
+  if (c.unit === "seconds") return v < 1 ? `${Math.round(v * 1000)}ms` : `${+v.toFixed(2)}s`;
+  if (c.unit === "bytes") return fmtMem(v);
+  return `${+v.toFixed(2)}`;
+}
 
 function StatusIcon({ s }: { s: Check["status"] }) {
   return (
@@ -26,7 +34,7 @@ function StatusIcon({ s }: { s: Check["status"] }) {
 }
 
 function Gauge({ c }: { c: Check }) {
-  if (c.unit !== "ratio" || !c.threshold || c.display === "no limit") return null;
+  if (c.unit !== "ratio" || !c.threshold || c.threshold > 1 || c.display === "no limit") return null;
   return (
     <div className="rz-gauge">
       <div className="track">
@@ -131,6 +139,20 @@ function Adjust({ c, d }: { c: Check; d: Detail }) {
         its utilization and makes it scale out sooner.
       </span>
     ),
+    signal: (
+      <>
+        <span>{c.detail || "A signal declared in the reliability configuration."}</span>
+        {c.runbook && (
+          <a className="rz-link small" href={c.runbook} target="_blank" rel="noreferrer">
+            <ExternalLink size={13} /> Runbook
+          </a>
+        )}
+        <span className="rz-dim">
+          Not changed by the recommendation. Levels can be tuned per namespace or workload with{" "}
+          <code>resourcerer.io/reliability.{c.signal}.warn</code> and <code>.critical</code> annotations.
+        </span>
+      </>
+    ),
     qos: d.containers?.some((x) => !x.skipped && Object.keys(x.recommendedRequests).length) ? (
       <div className="fix">
         Requests for every container <span className="rz-tag ok">in the recommendation</span>
@@ -195,21 +217,23 @@ function CheckCard({ c, d, rep, before }: { c: Check; d: Detail; rep: Reliabilit
       {!!c.series?.length && (
         <div className="chart">
           <TimeChart
-            title={c.id === "memory" ? "Memory working set / limit" : "Throttled CFS periods"}
-            unit={c.id === "memory" ? "% of limit" : "% of periods"}
-            maxY={1}
+            title={
+              c.id === "signal" ? c.name : c.id === "memory" ? "Memory working set / limit" : "Throttled CFS periods"
+            }
+            unit={c.id === "signal" ? c.unit : c.id === "memory" ? "% of limit" : "% of periods"}
+            maxY={c.id === "signal" ? undefined : 1}
             height={170}
             series={{ from: rep.from, to: rep.to, bands: [], lines: {} }}
             lines={[
               {
-                name: c.id === "memory" ? "Peak / limit" : "Throttled",
+                name: c.id === "signal" ? c.name : c.id === "memory" ? "Peak / limit" : "Throttled",
                 color: c.status === "ok" ? "var(--c-usage)" : `var(--${c.status})`,
                 points: c.series,
                 shape: "smooth",
               },
             ]}
-            thresholds={c.threshold ? [{ v: c.threshold, label: `threshold ${pct(c.threshold)}` }] : []}
-            fmtY={pct}
+            thresholds={c.threshold ? [{ v: c.threshold, label: `threshold ${fmtCheck(c, c.threshold)}` }] : []}
+            fmtY={(v) => fmtCheck(c, v)}
           />
         </div>
       )}

@@ -1,18 +1,31 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowRight, ArrowUp, ChevronLeft, ChevronRight, Flame, Search, Zap, ZapOff } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  ChevronLeft,
+  ChevronRight,
+  Flame,
+  Search,
+  ShieldCheck,
+  TriangleAlert,
+  Zap,
+  ZapOff,
+} from "lucide-react";
 import { useState } from "react";
 import { api, refKey, type Phase, type Resource, type Summary } from "../api";
 import { Delta, Modal, PHASE_NAMES, Ring, StatusBadge, WlCell } from "../components";
 import { fmt } from "../format";
 import { navigate, toast, workloadHash } from "../hooks";
-import { signals } from "../reliability";
+import { severity, signals } from "../reliability";
 
 const net = (w: Summary) => w.current.monthlyCost - w.recommended.monthlyCost;
 
 export const VIEWS: Record<string, [string, (w: Summary) => boolean]> = {
   all: ["All", () => true],
   savings: ["Savings", (w) => net(w) > 0.5],
-  reliability: ["Reliability", (w) => atRisk(w)],
+  reliability: ["Reliability", (w) => signals(w).length > 0],
+  under: ["Under-provisioned", (w) => w.under || w.noRequests],
   pending: ["To apply", (w) => applicable(w) && !w.autoDeploy],
   auto: ["Auto-deploy", (w) => w.autoDeploy],
 };
@@ -24,11 +37,50 @@ export const applicable = (w: Summary) => !!w.hash && w.pending && (w.phase === 
 const COLS: Record<string, (w: Summary) => number | string> = {
   name: (w) => refKey(w),
   status: (w) => w.phase,
+  reliability: (w) => severity(w).rank,
   score: (w) => w.score?.overall ?? -1,
   cpu: (w) => w.current.cpu - w.recommended.cpu,
   memory: (w) => w.current.memory - w.recommended.memory,
   net,
 };
+
+/** Reliability signals of a workload at a glance, with the list in a tooltip. */
+function RelBadge({ w }: { w: Summary }) {
+  const s = severity(w);
+  const [at, setAt] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
+  if (s.level === "healthy") return <span className="rz-rel healthy">healthy</span>;
+  const Icon = s.level === "critical" ? Flame : s.level === "fixed" ? ShieldCheck : TriangleAlert;
+  // Fixed to the viewport, so the table's scroll box does not clip it; above the badge near the bottom edge.
+  const show = (e: React.SyntheticEvent<HTMLElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setAt(
+      r.bottom + 140 > window.innerHeight
+        ? { left: r.left, bottom: window.innerHeight - r.top + 6 }
+        : { left: r.left, top: r.bottom + 6 },
+    );
+  };
+  return (
+    <span
+      className={`rz-rel ${s.level}`}
+      tabIndex={0}
+      onMouseEnter={show}
+      onFocus={show}
+      onMouseLeave={() => setAt(null)}
+      onBlur={() => setAt(null)}
+    >
+      <Icon size={12} /> {s.label}
+      <span className="rz-reltip" role="tooltip" style={at ? { display: "flex", ...at } : undefined}>
+        {s.signals.map((x) => (
+          <span key={x.title} className={x.fixed ? "fixed" : x.tone}>
+            <i />
+            {x.title}
+            {x.fixed && <em> · fixed by the recommendation</em>}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
 
 function ReqDiff({ r, a, b, noReq }: { r: Resource; a: number; b: number; noReq: boolean }) {
   const same = Math.abs(a - b) < (r === "cpu" ? 0.0005 : 2 ** 19);
@@ -284,6 +336,7 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
                 </th>
                 {head("name", "Workload")}
                 {head("status", "Status")}
+                {head("reliability", "Reliability")}
                 {head("score", "Score")}
                 {head("cpu", "CPU requests", true)}
                 {head("memory", "Memory requests", true)}
@@ -295,7 +348,7 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
               {pageRows.map((w) => (
                 <tr
                   key={refKey(w)}
-                  className="rz-click"
+                  className={`rz-click rel-${severity(w).level}`}
                   tabIndex={0}
                   onClick={() => navigate(workloadHash(w))}
                   onKeyDown={(e) => e.key === "Enter" && navigate(workloadHash(w))}
@@ -315,12 +368,9 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
                   </td>
                   <td>
                     <StatusBadge phase={w.phase} title={w.message} />
-                    {w.oomKills > 0 && (
-                      <span className="rz-oom" title="OOM kills during the learning period">
-                        <Flame size={12} />
-                        {w.oomKills}
-                      </span>
-                    )}
+                  </td>
+                  <td>
+                    <RelBadge w={w} />
                   </td>
                   <td>
                     <Ring value={w.score?.overall} size={32} stroke={3.5} />

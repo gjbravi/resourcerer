@@ -33,6 +33,7 @@ import (
 	"github.com/gjbravi/resourcerer/internal/engine"
 	"github.com/gjbravi/resourcerer/internal/prom"
 	"github.com/gjbravi/resourcerer/internal/settings"
+	"github.com/gjbravi/resourcerer/internal/signals"
 	"github.com/gjbravi/resourcerer/internal/workload"
 )
 
@@ -266,7 +267,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	since := now.Add(-eff.Duration(settings.LearningPeriod))
 	rec.Status.OOMKills = int32(r.oomKills(ctx, w, since))
-	rec.Status.Reliability = r.reliability(ctx, w, in.Containers, since)
+	rel := cluster.Reliability(defaults)
+	ov := signals.OverridesFrom(ns.Annotations, obj.GetAnnotations())
+	rec.Status.Reliability = r.reliability(ctx, w, in.Containers, since, rel.Builtin, ov)
+	rec.Status.Reliability.Signals = r.signals(ctx, w, rel, ov, eff.Duration(settings.LearningPeriod))
 	if err := r.Status().Patch(ctx, rec, patch); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -416,8 +420,36 @@ func (r *Reconciler) oomKills(ctx context.Context, w *workload.Workload, since t
 }
 
 // reliability collects signals that requests or limits are too tight, beyond OOM kills.
-func (r *Reconciler) reliability(ctx context.Context, w *workload.Workload, cs []engine.ContainerInput, since time.Time) *v1alpha1.Reliability {
+func (r *Reconciler) reliability(ctx context.Context, w *workload.Workload, cs []engine.ContainerInput, since time.Time, b signals.Builtin, ov signals.Overrides) *v1alpha1.Reliability {
+	on := func(id string, t signals.Toggle) bool { return t.On() && !ov.Disabled[id] }
 	rel := &v1alpha1.Reliability{}
+	defer func() {
+		if !on("throttling", b.Throttling) {
+			for i := range rel.Containers {
+				rel.Containers[i].CPUThrottledPercent = 0
+			}
+		}
+		if !on("memoryHeadroom", b.MemoryHeadroom) {
+			for i := range rel.Containers {
+				rel.Containers[i].MemoryPeakPercent = 0
+			}
+		}
+		rel.Containers = slices.DeleteFunc(rel.Containers, func(c v1alpha1.ContainerReliability) bool {
+			return c.CPUThrottledPercent == 0 && c.MemoryPeakPercent == 0
+		})
+		if !on("restarts", b.Restarts) {
+			rel.Restarts = 0
+		}
+		if !on("crashLoop", b.CrashLoop) {
+			rel.CrashLooping = nil
+		}
+		if !on("hpaAtMax", b.HPAAtMax) {
+			rel.HPAAtMax = false
+		}
+		if !on("bestEffort", b.BestEffort) {
+			rel.BestEffortPods = 0
+		}
+	}()
 	for _, c := range cs {
 		cr := v1alpha1.ContainerReliability{Name: c.Name, CPUThrottledPercent: int32(math.Round(c.CPUThrottled * 100))}
 		if lim := c.Limits[engine.Memory]; lim > 0 && len(c.Memory) > 0 {
@@ -451,6 +483,29 @@ func (r *Reconciler) reliability(ctx context.Context, w *workload.Workload, cs [
 		}
 	}
 	return rel
+}
+
+// signals evaluates the declared reliability signals over the learning period. A signal without data does not apply
+// to the workload; one that fails is logged and left out, so a bad query never blocks the recommendation.
+func (r *Reconciler) signals(ctx context.Context, w *workload.Workload, cfg signals.Config, ov signals.Overrides, learning time.Duration) []v1alpha1.SignalStatus {
+	vars := signals.VarsFor(prom.Ref{Namespace: w.Namespace(), Kind: w.Kind, Name: w.Name()}, learning)
+	var out []v1alpha1.SignalStatus
+	for _, s := range cfg.Signals {
+		if ov.Disabled[s.ID] {
+			continue
+		}
+		res, err := s.Evaluate(ctx, r.Prom, vars, s.LevelsWith(ov))
+		if err != nil {
+			log.FromContext(ctx).V(1).Info("evaluate reliability signal", "signal", s.ID, "error", err.Error())
+			continue
+		}
+		if res == nil {
+			continue
+		}
+		out = append(out, v1alpha1.SignalStatus{ID: s.ID, Name: s.Name, Value: strconv.FormatFloat(res.Value, 'g', 6, 64),
+			Display: signals.Format(s.Unit, res.Value), Status: res.Status, Container: res.Container})
+	}
+	return out
 }
 
 func (r *Reconciler) hpa(ctx context.Context, w *workload.Workload) *engine.HPA {

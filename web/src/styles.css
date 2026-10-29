@@ -564,15 +564,6 @@ body:has(.rz.dark) {
   background: color-mix(in srgb, var(--bad) 14%, transparent);
   color: var(--bad);
 }
-.rz-oom {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: 8px;
-  color: var(--bad);
-  font-size: 0.74rem;
-  font-weight: 700;
-}
 .rz-btn {
   display: inline-flex;
   align-items: center;
@@ -2653,4 +2644,84 @@ body:has(.rz.dark) {
   background: var(--accent-soft);
   white-space: nowrap;
   cursor: help;
+}
+
+/* Reliability in the workload list */
+.rz-table tr.rel-critical td:first-child {
+  box-shadow: inset 3px 0 0 var(--bad);
+}
+.rz-table tr.rel-warning td:first-child {
+  box-shadow: inset 3px 0 0 var(--c-curlim);
+}
+.rz-rel {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 99px;
+  font-size: 0.74rem;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: help;
+}
+.rz-rel.healthy {
+  color: var(--faint);
+  font-weight: 500;
+  cursor: default;
+}
+.rz-rel.critical {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, var(--panel));
+}
+.rz-rel.warning {
+  color: color-mix(in srgb, var(--c-curlim) 60%, var(--text));
+  background: color-mix(in srgb, var(--c-curlim) 16%, var(--panel));
+}
+.rz-rel.fixed {
+  color: color-mix(in srgb, var(--c-rec) 60%, var(--text));
+  background: color-mix(in srgb, var(--c-rec) 14%, var(--panel));
+}
+.rz-reltip {
+  display: none;
+  position: fixed;
+  z-index: 20;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgba(42, 31, 77, 0.12);
+  color: var(--text);
+  font-weight: 500;
+}
+.rz-reltip span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rz-reltip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  flex: none;
+  background: var(--c-curlim);
+}
+.rz-reltip .bad i {
+  background: var(--bad);
+}
+.rz-reltip .fixed i {
+  background: var(--c-rec);
+}
+.rz-reltip em {
+  color: var(--dim);
+  font-style: normal;
+}
+
+.rz-sigerr {
+  margin: 0 20px 12px;
+}
+.rz-sigempty {
+  padding: 4px 20px 16px;
 }

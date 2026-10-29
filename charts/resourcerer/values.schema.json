@@ -38,6 +38,44 @@
         }
       }
     },
+    "reliability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "builtin": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "throttling": { "$ref": "#/definitions/builtinSignal" },
+            "memoryHeadroom": { "$ref": "#/definitions/builtinSignal" },
+            "restarts": { "$ref": "#/definitions/builtinSignal" },
+            "crashLoop": { "$ref": "#/definitions/builtinSignal" },
+            "hpaAtMax": { "$ref": "#/definitions/builtinSignal" },
+            "bestEffort": { "$ref": "#/definitions/builtinSignal" }
+          }
+        },
+        "signals": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "name", "unit", "query"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,40}[a-z0-9])?$" },
+              "name": { "type": "string", "minLength": 1 },
+              "description": { "type": "string" },
+              "unit": { "type": "string", "enum": ["ratio", "count", "seconds", "bytes"] },
+              "above": { "$ref": "#/definitions/levels" },
+              "below": { "$ref": "#/definitions/levels" },
+              "query": { "type": "string", "minLength": 1 },
+              "runbook": { "type": "string" }
+            },
+            "oneOf": [{ "required": ["above"] }, { "required": ["below"] }]
+          }
+        }
+      }
+    },
     "auth": { "type": "object", "properties": { "strategy": { "type": "string", "enum": ["anonymous"] } } },
     "readOnly": { "type": "boolean" },
     "controller": { "$ref": "#/definitions/component" },
@@ -53,6 +91,17 @@
     }
   },
   "definitions": {
+    "builtinSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "enabled": { "type": "boolean" }, "warn": { "type": "number", "minimum": 0 } }
+    },
+    "levels": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": { "warn": { "type": "number" }, "critical": { "type": "number" } }
+    },
     "component": {
       "type": "object",
       "properties": {

@@ -17,13 +17,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
+	"github.com/gjbravi/resourcerer/internal/cluster"
 	"github.com/gjbravi/resourcerer/internal/engine"
 	"github.com/gjbravi/resourcerer/internal/prom"
 	"github.com/gjbravi/resourcerer/internal/settings"
+	"github.com/gjbravi/resourcerer/internal/signals"
 	"github.com/gjbravi/resourcerer/internal/workload"
 )
 
 const (
+	// Default warning levels of the built-in signals; the reliability configuration can change them.
 	throttledWarn  = 0.10
 	memoryNearWarn = 0.90
 	// Points per chart; each one is the worst value within its step.
@@ -61,6 +64,11 @@ func (s *Server) reliability(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) reliabilityReport(ctx context.Context, rec *v1alpha1.Recommendation, name string, start, end time.Time) (*ReliabilityReport, error) {
+	defaults, _ := s.Cluster.Defaults(ctx, s.Client)
+	cfg := cluster.Reliability(defaults)
+	ov := s.overrides(ctx, rec)
+	throttledWarn := cfg.Builtin.Throttling.WarnOr(throttledWarn)
+	memoryNearWarn := cfg.Builtin.MemoryHeadroom.WarnOr(memoryNearWarn)
 	win := end.Sub(start)
 	step := max(win/reliabilityPoints, s.MinStep).Truncate(time.Second)
 	ref := prom.Ref{Namespace: rec.Namespace, Kind: rec.Spec.TargetRef.Kind, Name: rec.Spec.TargetRef.Name}
@@ -133,7 +141,85 @@ func (s *Server) reliabilityReport(ctx context.Context, rec *v1alpha1.Recommenda
 	pods, hpa := s.workloadPods(ctx, rec), s.workloadHPA(ctx, rec)
 	rep.Checks = append(rep.Checks, podChecks(pods, start, restarts, restartsQ)...)
 	rep.Checks = append(rep.Checks, hpaCheck(hpa), qosCheck(pods))
+	rep.Checks = slices.DeleteFunc(rep.Checks, func(c Check) bool {
+		t, builtin := builtinToggle(cfg.Builtin, c.ID)
+		return builtin && (!t.On() || ov.Disabled[builtinIDs[c.ID]])
+	})
+	rep.Checks = append(rep.Checks, s.signalChecks(ctx, ref, cfg, ov, start, end, step, rateWindow)...)
 	return rep, nil
+}
+
+// builtinIDs maps check IDs to the names the reliability configuration and annotations use.
+var builtinIDs = map[string]string{"throttling": "throttling", "memory": "memoryHeadroom", "restarts": "restarts",
+	"crashloop": "crashLoop", "hpa": "hpaAtMax", "qos": "bestEffort"}
+
+func builtinToggle(b signals.Builtin, check string) (signals.Toggle, bool) {
+	switch check {
+	case "throttling":
+		return b.Throttling, true
+	case "memory":
+		return b.MemoryHeadroom, true
+	case "restarts":
+		return b.Restarts, true
+	case "crashloop":
+		return b.CrashLoop, true
+	case "hpa":
+		return b.HPAAtMax, true
+	case "qos":
+		return b.BestEffort, true
+	}
+	return signals.Toggle{}, false
+}
+
+// signalChecks evaluates the declared signals over the window, with a series for the chart. Signals without data
+// do not apply to the workload and are left out; a failing one shows its error.
+func (s *Server) signalChecks(ctx context.Context, ref prom.Ref, cfg signals.Config, ov signals.Overrides, start, end time.Time, step, rateWindow time.Duration) []Check {
+	var out []Check
+	for _, sig := range cfg.Signals {
+		if ov.Disabled[sig.ID] {
+			continue
+		}
+		levels := sig.LevelsWith(ov)
+		c := Check{ID: "signal", Signal: sig.ID, Name: sig.Name, Unit: sig.Unit, Runbook: sig.Runbook, Detail: sig.Description,
+			Source: "Declared in the reliability configuration of the chart values."}
+		if t := levels.Critical; t != nil {
+			c.Threshold = *t
+		} else if levels.Warn != nil {
+			c.Threshold = *levels.Warn
+		}
+		vars := signals.VarsFor(ref, end.Sub(start))
+		c.Query, _ = sig.Render(vars)
+		res, err := sig.Evaluate(ctx, s.Prom, vars, levels)
+		if err != nil {
+			c.Status, c.Display, c.Detail = "warn", "error", "The query failed: "+err.Error()
+			out = append(out, c)
+			continue
+		}
+		if res == nil {
+			continue
+		}
+		c.Value, c.Display, c.Container = res.Value, signals.Format(sig.Unit, res.Value), res.Container
+		c.Status = map[string]string{signals.OK: "ok", signals.Warn: "warn", signals.Critical: "bad"}[res.Status]
+		if q, err := sig.Render(signals.VarsFor(ref, max(step, rateWindow))); err == nil {
+			if series, err := s.Prom.Range(ctx, q, start, end, step, "container"); err == nil {
+				c.Series = nonNil(series[res.Container])
+			}
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// overrides reads the signal annotations of the workload's namespace and the workload.
+func (s *Server) overrides(ctx context.Context, rec *v1alpha1.Recommendation) signals.Overrides {
+	var ns corev1.Namespace
+	_ = s.Client.Get(ctx, client.ObjectKey{Name: rec.Namespace}, &ns)
+	var wl map[string]string
+	if obj, err := workload.NewObject(rec.Spec.TargetRef.Kind); err == nil &&
+		s.Client.Get(ctx, client.ObjectKey{Namespace: rec.Namespace, Name: rec.Spec.TargetRef.Name}, obj) == nil {
+		wl = obj.GetAnnotations()
+	}
+	return signals.OverridesFrom(ns.Annotations, wl)
 }
 
 // podChecks reads OOM kills, restarts and crash loops from pod status, the source the kubelet writes.
