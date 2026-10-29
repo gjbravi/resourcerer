@@ -91,7 +91,7 @@ func (s *Server) Start(addr string) func(context.Context) error {
 }
 
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {
-	defaults, rates := s.Cluster.Defaults(r.Context(), s.Client)
+	defaults, pricing := s.Cluster.Defaults(r.Context(), s.Client)
 	eff := settings.Resolve(defaults, nil, nil)
 	st := s.cache.get("prom-status", 30*time.Second, func() (any, error) {
 		return s.Prom.Status(r.Context(), s.PromURL), nil
@@ -104,9 +104,40 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 		Selection:          string(s.Cluster.Selection),
 		ExcludedNamespaces: s.Cluster.ExcludedNamespaces,
 		Defaults:           settingInfos(eff, nil),
-		Cost:               Cost{CPUCoreHour: rates.CPUCoreHour, MemoryGiBHour: rates.MemoryGiBHour},
+		Cost:               costInfo(pricing),
 		Prometheus:         st.(prom.Status),
 	})
+}
+
+func costInfo(p cluster.Pricing) Cost {
+	c := Cost{CPUCoreHour: p.Rates.CPUCoreHour, MemoryGiBHour: p.Rates.MemoryGiBHour, Mode: p.Mode, Source: p.Source,
+		State: p.State, Reason: p.Reason, Nodes: p.Nodes, Spot: p.Spot, OnDemand: p.OnDemand,
+		HourlyCost: p.HourlyCost, OnDemandHourlyCost: p.OnDemandHourlyCost}
+	if !p.CalibratedAt.IsZero() {
+		c.CalibratedAt = p.CalibratedAt.UTC().Format(time.RFC3339)
+	}
+	if p.Refresh > 0 {
+		c.Refresh = p.Refresh.String()
+	}
+	return c
+}
+
+// capacity counts the workload's pods on spot and on-demand Karpenter nodes; nil without Karpenter.
+func (s *Server) capacity(ctx context.Context, rec *v1alpha1.Recommendation) map[string]int {
+	ref := prom.Ref{Namespace: rec.Namespace, Kind: rec.Spec.TargetRef.Kind, Name: rec.Spec.TargetRef.Name}
+	v := s.cache.get("capacity|"+rec.Namespace+"|"+rec.Name, time.Minute, func() (any, error) {
+		m, err := s.Prom.Instant(ctx, prom.PodsByCapacity(ref), "capacity_type")
+		if err != nil || len(m) == 0 {
+			return map[string]int(nil), nil
+		}
+		out := map[string]int{}
+		for k, n := range m {
+			out[k] = int(n)
+		}
+		return out, nil
+	})
+	c, _ := v.(map[string]int)
+	return c
 }
 
 func settingInfos(eff settings.Effective, st map[string]v1alpha1.Setting) []SettingInfo {
@@ -283,6 +314,7 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 		d.LastApplyResult = &ApplyResult{Time: a.Time.UTC().Format(time.RFC3339), Result: a.Result, Message: a.Message}
 	}
 	d.Events = s.events(r.Context(), rec)
+	d.Capacity = s.capacity(r.Context(), rec)
 	writeJSON(w, d)
 }
 

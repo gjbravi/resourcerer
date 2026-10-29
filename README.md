@@ -94,7 +94,8 @@ Phases: **Pending** (collecting history), **Learning** (preliminary, learning pe
 unavailable). Auto-deploy only applies Ready recommendations.
 
 The score (0–100) is how closely current requests match the recommendation, weighted by cost; net impact is requests
-× average replicas, priced with `cost.cpuCoreHour` and `cost.memoryGiBHour`.
+× average replicas × hourly rates × 730. With Karpenter, `cost.source: auto` (the default) calibrates the rates to what
+the nodes cost, spot or on-demand, from Karpenter's price estimates; without it, the rates are `cost.rates`.
 
 ## Settings
 

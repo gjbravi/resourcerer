@@ -9,5 +9,7 @@ data:
   {{- range $k, $v := .Values.defaults }}
   {{ $k }}: {{ $v | toString | quote }}
   {{- end }}
-  cost.cpu-core-hour: {{ .Values.cost.cpuCoreHour | toString | quote }}
-  cost.memory-gib-hour: {{ .Values.cost.memoryGiBHour | toString | quote }}
+  cost.source: {{ .Values.cost.source | quote }}
+  cost.cpu-core-hour: {{ .Values.cost.rates.cpuCoreHour | toString | quote }}
+  cost.memory-gib-hour: {{ .Values.cost.rates.memoryGiBHour | toString | quote }}
+  cost.karpenter.refresh-interval: {{ .Values.cost.karpenter.refreshInterval | quote }}

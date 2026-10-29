@@ -36,8 +36,8 @@ import {
   StatusBadge,
   phaseTone,
 } from "../components";
-import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
-import { toast, useAction, useImpact, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
+import { ago, costSource, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
+import { toast, useAction, useImpact, useInfo, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
 import { resolved, signals, type Signal } from "../reliability";
 import { ReliabilityTab } from "./ReliabilityTab";
 import { meta } from "../settings";
@@ -620,6 +620,19 @@ function ReliabilityAlert({ d, sig }: { d: Detail; sig: Signal[] }) {
   );
 }
 
+/** Where the cost comes from: the rates, and whether the pods run on spot or on-demand nodes. */
+function CostNote({ d }: { d: Detail }) {
+  const info = useInfo().data;
+  const c = d.capacity ?? {};
+  const pods = Object.values(c).reduce((a, n) => a + n, 0);
+  return (
+    <a href="#/settings" title={info ? costSource(info.cost) : undefined}>
+      {info?.cost.source === "karpenter" ? "Karpenter prices" : "Configured rates"}
+      {pods > 0 && ` · ${c.spot ?? 0} of ${pods} ${pods === 1 ? "pod" : "pods"} on spot`}
+    </a>
+  );
+}
+
 /** One figure before and after the recommendation, with bars on a shared scale. */
 function ImpactCard({
   icon,
@@ -628,6 +641,7 @@ function ImpactCard({
   to,
   fmt,
   delta,
+  note,
 }: {
   icon: ReactNode;
   label: string;
@@ -635,6 +649,7 @@ function ImpactCard({
   to: number;
   fmt: (v: number) => string;
   delta: ReactNode;
+  note?: ReactNode;
 }) {
   const top = Math.max(from, to) || 1;
   return (
@@ -646,6 +661,7 @@ function ImpactCard({
         <b>{fmt(to)}</b>
         {delta}
       </div>
+      {note && <span className="note">{note}</span>}
       <div className="bars">
         <div className="bar">
           <span className="k">Now</span>
@@ -682,6 +698,7 @@ function ImpactTab({ d }: { d: Detail }) {
           to={d.recommended.monthlyCost}
           fmt={fmtMoney}
           delta={<Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />}
+          note={<CostNote d={d} />}
         />
         <ImpactCard
           icon={<Cpu size={16} />}

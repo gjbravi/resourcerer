@@ -188,7 +188,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 	}
 
-	defaults, rates := r.Cluster.Defaults(ctx, r.Client)
+	defaults, pricing := r.Cluster.Defaults(ctx, r.Client)
+	rates := pricing.Rates
 	eff := settings.Resolve(defaults, ns.Annotations, obj.GetAnnotations())
 	period, _ := settings.ParseSchedule(eff.Get(settings.Schedule))
 	now := r.Now()

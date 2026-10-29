@@ -58,3 +58,19 @@ export function pct(a?: number, b?: number): number | null {
   if (!a || b == null) return null;
   return Math.round(((b - a) / a) * 100);
 }
+
+/** One line on where cost rates come from, for captions and tooltips. */
+export function costSource(c: { source: string; state?: string; spot?: number; onDemand?: number }): string {
+  const nodes = `Karpenter node prices · ${c.spot ?? 0} spot, ${c.onDemand ?? 0} on-demand nodes`;
+  switch (c.state) {
+    case "stale":
+      return `${nodes} · last calibration, refresh failing`;
+    case "error":
+      return c.source === "karpenter"
+        ? `${nodes} · Karpenter prices failing`
+        : "configured rates · Karpenter prices unavailable";
+    case "fallback":
+      return "configured rates (no Karpenter in this cluster)";
+  }
+  return c.source === "karpenter" ? nodes : "configured rates";
+}
