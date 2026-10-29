@@ -30,8 +30,27 @@ export interface Info {
   selection: "all" | "label";
   excludedNamespaces: string[];
   defaults: SettingInfo[];
-  cost: { cpuCoreHour: number; memoryGiBHour: number };
+  cost: CostInfo;
   prometheus: PrometheusStatus;
+}
+
+export interface CostInfo {
+  cpuCoreHour: number;
+  memoryGiBHour: number;
+  /** The configured cost.source. */
+  mode: "auto" | "karpenter" | "static";
+  /** The source in use: rates calibrated to Karpenter node prices, or the configured rates. */
+  source: "karpenter" | "static";
+  state: "ok" | "stale" | "fallback" | "error";
+  reason?: string;
+  nodes?: number;
+  spot?: number;
+  onDemand?: number;
+  hourlyCost?: number;
+  onDemandHourlyCost?: number;
+  calibratedAt?: string;
+  /** How often calibrated rates are recomputed, as a Go duration. */
+  refresh?: string;
 }
 
 export interface Totals {
@@ -118,6 +137,8 @@ export interface Change {
 }
 
 export interface Detail extends Summary {
+  /** Pods per capacity type of their Karpenter node. */
+  capacity?: Record<string, number>;
   nextScheduleAt?: string;
   containers: Container[] | null;
   hpaRecommendation?: { name: string; current: number; recommended: number; clamped: boolean };

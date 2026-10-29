@@ -1,4 +1,4 @@
-import { ago, fmtCpu, fmtMem, pct, quantity } from "./format";
+import { ago, fmtCpu, fmtMem, pct, quantity, costSource } from "./format";
 
 describe("format", () => {
   it("keeps CPU in millicores and memory in MiB/GiB", () => {
@@ -19,5 +19,18 @@ describe("format", () => {
     expect(pct(1, 0.126)).toBe(-87);
     expect(pct(0, 1)).toBeNull();
     expect(ago(new Date(Date.now() - 90_000).toISOString())).toBe("2m ago");
+  });
+});
+
+describe("costSource", () => {
+  it("names the source and says when it is degraded", () => {
+    const k = { source: "karpenter", spot: 26, onDemand: 1 };
+    expect(costSource({ ...k, state: "ok" })).toBe("Karpenter node prices · 26 spot, 1 on-demand nodes");
+    expect(costSource({ ...k, state: "stale" })).toBe(
+      "Karpenter node prices · 26 spot, 1 on-demand nodes · last calibration, refresh failing",
+    );
+    expect(costSource({ source: "static", state: "ok" })).toBe("configured rates");
+    expect(costSource({ source: "static", state: "fallback" })).toBe("configured rates (no Karpenter in this cluster)");
+    expect(costSource({ source: "static", state: "error" })).toBe("configured rates · Karpenter prices unavailable");
   });
 });

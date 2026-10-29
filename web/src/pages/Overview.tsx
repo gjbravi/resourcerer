@@ -16,8 +16,8 @@ import { useState, type ReactNode } from "react";
 import type { Summary } from "../api";
 import { NoteArt, WandArt } from "../art";
 import { Delta, FitBar, Metric, Money, PHASE_NAMES, phaseTone, Ring, StatusBadge, WlCell } from "../components";
-import { fmtCores, fmtMem, fmtMoney } from "../format";
-import { navigate, workloadHash } from "../hooks";
+import { costSource, fmtCores, fmtMem, fmtMoney } from "../format";
+import { navigate, useInfo, workloadHash } from "../hooks";
 import { ClusterTimeline } from "./ClusterTimeline";
 import { signals } from "../reliability";
 import { applicable, atRisk } from "./Workloads";
@@ -135,6 +135,7 @@ function NamespacesCard({ namespaces }: { namespaces: NamespaceRow[] }) {
 }
 
 export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }) {
+  const info = useInfo().data;
   const sum = (f: (w: Summary) => number) => rows.reduce((a, w) => a + f(w), 0);
   const scored = rows.filter((w) => w.score);
   const weight = scored.reduce((a, w) => a + w.recommended.monthlyCost, 0);
@@ -212,6 +213,11 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
               <span className="rz-dim">
                 cluster total · {fmtMoney(cur.cost)} → {fmtMoney(rec.cost)}
               </span>
+              {info && (
+                <a className={`rz-costsrc ${info.cost.state}`} href="#/settings" title="How costs are estimated">
+                  {costSource(info.cost)}
+                </a>
+              )}
             </>
           }
         >
