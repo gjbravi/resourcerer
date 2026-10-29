@@ -15,6 +15,7 @@ import (
 
 	"github.com/gjbravi/resourcerer/internal/engine"
 	"github.com/gjbravi/resourcerer/internal/settings"
+	"github.com/gjbravi/resourcerer/internal/signals"
 )
 
 type Selection string
@@ -88,6 +89,11 @@ func withAllocation(p Pricing, static engine.Rates, allocation string) Pricing {
 		p.Allocation = AllocationNode
 	}
 	return p
+}
+
+// Reliability reads the reliability signals configuration from the defaults ConfigMap data.
+func Reliability(data map[string]string) signals.Config {
+	return signals.Parse(data[signals.ConfigKey])
 }
 
 // refreshInterval parses the configured refresh, keeping it at or above MinRefresh; invalid values use the default.

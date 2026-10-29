@@ -32,6 +32,7 @@ import (
 	"github.com/gjbravi/resourcerer/internal/engine"
 	"github.com/gjbravi/resourcerer/internal/prom"
 	"github.com/gjbravi/resourcerer/internal/settings"
+	"github.com/gjbravi/resourcerer/internal/signals"
 	"github.com/gjbravi/resourcerer/internal/workload"
 )
 
@@ -106,8 +107,39 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 		ExcludedNamespaces: s.Cluster.ExcludedNamespaces,
 		Defaults:           settingInfos(eff, nil),
 		Cost:               costInfo(pricing),
+		Reliability:        s.reliabilityInfo(r.Context(), cluster.Reliability(defaults)),
 		Prometheus:         st.(prom.Status),
 	})
+}
+
+// reliabilityInfo describes the signals configuration. Each declared signal is test-run once in a while against
+// a workload that does not exist: a PromQL error shows up, while no data is expected.
+func (s *Server) reliabilityInfo(ctx context.Context, cfg signals.Config) Reliability {
+	b := cfg.Builtin
+	warn := func(t signals.Toggle, def float64) *float64 { v := t.WarnOr(def); return &v }
+	out := Reliability{Errors: cfg.Errors, Signals: []SignalInfo{}, Builtin: []BuiltinSignal{
+		{ID: "throttling", Name: "CPU throttling", Enabled: b.Throttling.On(), Warn: warn(b.Throttling, throttledWarn)},
+		{ID: "memoryHeadroom", Name: "Memory headroom", Enabled: b.MemoryHeadroom.On(), Warn: warn(b.MemoryHeadroom, memoryNearWarn)},
+		{ID: "restarts", Name: "Restarts", Enabled: b.Restarts.On()},
+		{ID: "crashLoop", Name: "Crash loop", Enabled: b.CrashLoop.On()},
+		{ID: "hpaAtMax", Name: "HPA at its maximum", Enabled: b.HPAAtMax.On()},
+		{ID: "bestEffort", Name: "BestEffort pods", Enabled: b.BestEffort.On()},
+	}}
+	probe := prom.Ref{Namespace: "resourcerer-probe", Kind: "Deployment", Name: "resourcerer-probe"}
+	for _, sig := range cfg.Signals {
+		info := SignalInfo{ID: sig.ID, Name: sig.Name, Description: sig.Description, Unit: sig.Unit, Above: sig.Above,
+			Below: sig.Below, Query: sig.Query, Runbook: sig.Runbook}
+		v := s.cache.get("signal-probe|"+sig.ID+"|"+sig.Query, 5*time.Minute, func() (any, error) {
+			_, err := sig.Evaluate(ctx, s.Prom, signals.VarsFor(probe, 5*time.Minute), signals.Levels{})
+			if err != nil {
+				return err.Error(), nil
+			}
+			return "", nil
+		})
+		info.Error, _ = v.(string)
+		out.Signals = append(out.Signals, info)
+	}
+	return out
 }
 
 func costInfo(p cluster.Pricing) Cost {

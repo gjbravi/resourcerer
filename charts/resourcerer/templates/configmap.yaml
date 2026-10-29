@@ -14,3 +14,5 @@ data:
   cost.cpu-core-hour: {{ .Values.cost.rates.cpuCoreHour | toString | quote }}
   cost.memory-gib-hour: {{ .Values.cost.rates.memoryGiBHour | toString | quote }}
   cost.karpenter.refresh-interval: {{ .Values.cost.karpenter.refreshInterval | quote }}
+  reliability.yaml: |
+    {{- toYaml .Values.reliability | nindent 4 }}

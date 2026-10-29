@@ -67,6 +67,38 @@ cost:
     # up new rates when their recommendation is next generated.
     refreshInterval: 10m
 
+# -- Reliability signals: when a workload's requests or limits may be too tight, or it is unhealthy for other
+# reasons. They show in the workload list, the Reliability tab and the verdict on whether to apply.
+# See docs/reliability-signals.md.
+reliability:
+  # -- Signals resourcerer computes itself; `enabled: false` turns one off, `warn` sets its warning level.
+  # OOM kills are always on: the memory recommendation depends on them.
+  builtin:
+    # -- Share of CFS periods throttled by the CPU limit. Critical from 0.25, where the recommendation raises the
+    # limit.
+    throttling: { enabled: true, warn: 0.10 }
+    # -- Peak working set as a share of the memory limit.
+    memoryHeadroom: { enabled: true, warn: 0.90 }
+    restarts: { enabled: true }
+    crashLoop: { enabled: true }
+    hpaAtMax: { enabled: true }
+    bestEffort: { enabled: true }
+  # -- Signals declared as PromQL templates, evaluated per workload over its learning period (at most 20).
+  # Workloads without data for a signal do not show it.
+  signals: []
+  # - id: http-5xx
+  #   name: HTTP 5xx rate
+  #   description: Share of requests answered with a 5xx.
+  #   unit: ratio                    # ratio | count | seconds | bytes
+  #   above: { warn: 0.01, critical: 0.05 }   # or below: for values that should stay high
+  #   runbook: https://example.com/runbooks/5xx
+  #   query: |
+  #     sum(rate(istio_requests_total{response_code=~"5..", destination_workload_namespace="{{ .Namespace }}",
+  #       destination_workload="{{ .Name }}"}[{{ .Window }}]))
+  #     /
+  #     sum(rate(istio_requests_total{destination_workload_namespace="{{ .Namespace }}",
+  #       destination_workload="{{ .Name }}"}[{{ .Window }}]))
+
 auth:
   # -- Only `anonymous` for now: anyone who reaches the UI can use it, with the server's
   # ServiceAccount. Keep the Service internal or put an authenticating proxy in front.

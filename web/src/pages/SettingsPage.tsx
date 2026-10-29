@@ -1,5 +1,7 @@
-import { CircleCheck, CircleX, Database, PiggyBank } from "lucide-react";
+import { CircleCheck, CircleX, Database, PiggyBank, ShieldCheck } from "lucide-react";
+import { Fragment, useState } from "react";
 import type { Info } from "../api";
+import { CopyButton } from "../components";
 import { ago } from "../format";
 import { SettingsTable } from "./Details";
 
@@ -174,6 +176,123 @@ export function SettingsPage({ info }: { info: Info }) {
         </div>
         <SettingsTable values={info.defaults} showSource={false} />
       </section>
+      <ReliabilitySignals cfg={info.reliability} />
     </div>
+  );
+}
+
+const levelText = (l?: { warn?: number; critical?: number }, unit?: string) =>
+  [l?.warn != null && `warn ${fmtLevel(l.warn, unit)}`, l?.critical != null && `critical ${fmtLevel(l.critical, unit)}`]
+    .filter(Boolean)
+    .join(" · ");
+
+const fmtLevel = (v: number, unit?: string) => (unit === "ratio" ? `${+(v * 100).toFixed(2)}%` : String(v));
+
+/** The reliability signals in use: built-in ones and those declared in the chart values, each test-run. */
+function ReliabilitySignals({ cfg }: { cfg: Info["reliability"] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <section className="rz-card">
+      <div className="rz-cardhd">
+        <div>
+          <h2>
+            <ShieldCheck size={16} /> Reliability signals
+          </h2>
+          <p className="rz-dim rz-xs">
+            Set in the Helm values under <code>reliability</code>; see <code>docs/reliability-signals.md</code>. Turn
+            one off for a namespace or workload with <code>resourcerer.io/reliability.disabled</code>.
+          </p>
+        </div>
+      </div>
+      {!!cfg.errors?.length && (
+        <div className="rz-alert t-bad rz-sigerr">
+          <CircleX size={16} />
+          <div>
+            {cfg.errors.map((e) => (
+              <div key={e}>{e}</div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="rz-tablewrap">
+        <table className="rz-table compact">
+          <thead>
+            <tr>
+              <th>Signal</th>
+              <th>Type</th>
+              <th>Levels</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cfg.builtin.map((b) => (
+              <tr key={b.id}>
+                <td>
+                  {b.name} <code className="rz-dim">{b.id}</code>
+                </td>
+                <td className="rz-dim">built-in</td>
+                <td>{b.warn != null ? `warn ${Math.round(b.warn * 100)}%` : "—"}</td>
+                <td>
+                  {b.enabled ? (
+                    <span className="rz-badge t-ok">
+                      <CircleCheck size={13} /> On
+                    </span>
+                  ) : (
+                    <span className="rz-badge">Off</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {cfg.signals.map((x) => (
+              <Fragment key={x.id}>
+                <tr className="rz-click" onClick={() => setOpen(open === x.id ? null : x.id)}>
+                  <td>
+                    {x.name} <code className="rz-dim">{x.id}</code>
+                    {x.description && <div className="rz-dim rz-xs">{x.description}</div>}
+                  </td>
+                  <td className="rz-dim">declared · {x.unit}</td>
+                  <td>
+                    {x.above ? "above" : "below"}: {levelText(x.above ?? x.below, x.unit)}
+                  </td>
+                  <td>
+                    {x.error ? (
+                      <span className="rz-badge t-bad" title={x.error}>
+                        <CircleX size={13} /> Query fails
+                      </span>
+                    ) : (
+                      <span className="rz-badge t-ok">
+                        <CircleCheck size={13} /> Valid
+                      </span>
+                    )}
+                  </td>
+                </tr>
+                {open === x.id && (
+                  <tr>
+                    <td colSpan={4}>
+                      {x.error && <p className="t-bad rz-xs">{x.error}</p>}
+                      <div className="rz-query">
+                        <pre>{x.query}</pre>
+                        <CopyButton text={x.query} />
+                      </div>
+                      {x.runbook && (
+                        <a className="rz-link small" href={x.runbook} target="_blank" rel="noreferrer">
+                          Runbook
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!cfg.signals.length && (
+        <p className="rz-dim rz-xs rz-sigempty">
+          No declared signals. Add PromQL templates under <code>reliability.signals</code> to flag what matters to your
+          workloads, such as error rates or latency.
+        </p>
+      )}
+    </section>
   );
 }

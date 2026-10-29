@@ -81,6 +81,15 @@ curl -fs "$API/workloads/pricing/Deployment/on-demand-app/placement" \
 wait_for "the recommendation records evidence from its history" 120 bash -c \
   "kubectl --context $CTX -n demo get rec deployment-api -o json | jq -e '.status.evidence.historySeconds > 0 and (.status.evidence.used.cpu | tonumber) > 0'"
 
+# hack/resourcerer-values.yaml declares cpu-hot and memory-over-request.
+curl -fs "$API/info" | jq -e '[.reliability.signals[] | select(.error == null)] | length == 2' >/dev/null \
+  && pass "declared reliability signals are valid" || fail "declared reliability signals are valid"
+wait_for "declared signals are evaluated per workload" 120 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-api -o json | jq -e '[.status.reliability.signals[]?.id] | index(\"memory-over-request\")'"
+curl -fs "$API/workloads/demo/Deployment/api/reliability?window=1h" \
+  | jq -e '[.checks[] | select(.id == "signal" and .signal == "memory-over-request" and .container != null)] | length > 0' >/dev/null \
+  && pass "the Reliability tab checks declared signals per container" || fail "the Reliability tab checks declared signals per container"
+
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/api/apply" -d '{"hash":"stale"}')
 [[ "$code" == 409 ]] && pass "apply with a stale hash is refused" || fail "apply with a stale hash is refused (got $code)"
 

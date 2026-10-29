@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { HatLogo } from "./art";
 import { ErrorBox, Toasts } from "./components";
 import { useHash, useInfo, useWorkloads } from "./hooks";
+import { configureSignals } from "./reliability";
 import { Details } from "./pages/Details";
 import { Overview } from "./pages/Overview";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -17,6 +18,7 @@ function App() {
   const [dark, setDark] = useState(() => localStorage.getItem("resourcerer.theme") === "dark");
   const hash = useHash();
   const info = useInfo();
+  configureSignals(info.data?.reliability);
   const workloads = useWorkloads();
   const [path, query = ""] = hash.slice(1).split("?");
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);

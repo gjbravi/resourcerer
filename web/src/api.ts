@@ -31,6 +31,7 @@ export interface Info {
   excludedNamespaces: string[];
   defaults: SettingInfo[];
   cost: CostInfo;
+  reliability: ReliabilityConfig;
   prometheus: PrometheusStatus;
 }
 
@@ -115,15 +116,47 @@ export interface Reliability {
   crashLooping?: string[];
   bestEffortPods?: number;
   hpaAtMax?: boolean;
+  /** Declared signals with data for the workload, over the learning period. */
+  signals?: SignalStatus[];
+}
+
+export interface SignalStatus {
+  id: string;
+  name: string;
+  value: string;
+  display: string;
+  status: "ok" | "warn" | "critical";
+  container?: string;
+}
+
+/** The reliability signals configuration from the chart values. */
+export interface ReliabilityConfig {
+  builtin: { id: string; name: string; enabled: boolean; warn?: number }[];
+  signals: {
+    id: string;
+    name: string;
+    description?: string;
+    unit: "ratio" | "count" | "seconds" | "bytes";
+    above?: { warn?: number; critical?: number };
+    below?: { warn?: number; critical?: number };
+    query: string;
+    runbook?: string;
+    /** A test run of the query against Prometheus failed. */
+    error?: string;
+  }[];
+  errors?: string[];
 }
 
 export interface Check {
-  id: "throttling" | "memory" | "oom" | "restarts" | "crashloop" | "hpa" | "qos";
+  id: "throttling" | "memory" | "oom" | "restarts" | "crashloop" | "hpa" | "qos" | "signal";
+  /** The declared signal, for checks with id "signal". */
+  signal?: string;
+  runbook?: string;
   name: string;
   container?: string;
   pod?: string;
   status: "ok" | "warn" | "bad";
-  unit: "ratio" | "count" | "text";
+  unit: "ratio" | "count" | "text" | "seconds" | "bytes";
   value: number;
   display: string;
   threshold?: number;
