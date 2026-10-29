@@ -47,6 +47,9 @@ cost:
   # -- `auto` calibrates the rates below to what the nodes cost, from Karpenter's price estimates in Prometheus
   # (spot and on-demand per node), and uses them as they are without Karpenter. `karpenter` and `static` force one.
   source: auto
+  # -- How often rates are recalibrated from Karpenter prices (Go duration, at least 30s). Workload costs pick up
+  # new rates when their recommendation is next generated.
+  refreshInterval: 10m
   # -- With Karpenter prices these set the CPU to memory ratio; otherwise they are the rates.
   cpuCoreHour: 0.0316
   memoryGiBHour: 0.0042

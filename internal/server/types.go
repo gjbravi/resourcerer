@@ -32,6 +32,7 @@ type Cost struct {
 	HourlyCost         float64 `json:"hourlyCost,omitempty"`
 	OnDemandHourlyCost float64 `json:"onDemandHourlyCost,omitempty"`
 	UpdatedAt          string  `json:"updatedAt,omitempty"`
+	Refresh            string  `json:"refresh,omitempty"`
 }
 
 type SettingInfo struct {

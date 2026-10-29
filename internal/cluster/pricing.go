@@ -18,7 +18,11 @@ const (
 	CostAuto      = "auto"
 )
 
-const pricingTTL = 10 * time.Minute
+// DefaultRefresh is how long calibrated rates are reused; MinRefresh keeps a short setting from loading Prometheus.
+const (
+	DefaultRefresh = 10 * time.Minute
+	MinRefresh     = 30 * time.Second
+)
 
 // Pricing is the rates every cost estimate uses, and where they come from.
 type Pricing struct {
@@ -32,6 +36,8 @@ type Pricing struct {
 	OnDemandHourlyCost    float64
 	CPUCores, MemoryBytes float64
 	UpdatedAt             time.Time
+	// Refresh is how often calibrated rates are recomputed.
+	Refresh time.Duration
 }
 
 // Pricer calibrates rates from Prometheus and caches them, since node prices change slowly.
@@ -44,23 +50,25 @@ type Pricer struct {
 	err    error
 }
 
-// Pricing returns rates for the configured source; static are the configured rates.
-func (p *Pricer) Pricing(ctx context.Context, static engine.Rates, source string) Pricing {
+// Pricing returns rates for the configured source, recomputing calibrated ones once refresh has passed.
+func (p *Pricer) Pricing(ctx context.Context, static engine.Rates, source string, refresh time.Duration) Pricing {
 	if source == CostStatic || p == nil || p.Prom == nil {
 		return Pricing{Rates: static, Source: CostStatic}
 	}
+	refresh = max(refresh, MinRefresh)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if time.Since(p.at) > pricingTTL {
+	if time.Since(p.at) > refresh {
 		p.cached, p.err = p.karpenter(ctx)
 		p.at = time.Now()
 	}
 	if p.err != nil {
-		return Pricing{Rates: static, Source: CostStatic, Reason: p.err.Error()}
+		return Pricing{Rates: static, Source: CostStatic, Reason: p.err.Error(), Refresh: refresh}
 	}
 	out := p.cached
 	out.Rates = Calibrate(static, out.HourlyCost, out.CPUCores, out.MemoryBytes)
 	out.Source = CostKarpenter
+	out.Refresh = refresh
 	return out
 }
 

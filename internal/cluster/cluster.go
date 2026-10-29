@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -36,9 +37,10 @@ type Config struct {
 }
 
 const (
-	costCPUKey    = "cost.cpu-core-hour"
-	costMemoryKey = "cost.memory-gib-hour"
-	costSourceKey = "cost.source"
+	costCPUKey     = "cost.cpu-core-hour"
+	costMemoryKey  = "cost.memory-gib-hour"
+	costSourceKey  = "cost.source"
+	costRefreshKey = "cost.refresh-interval"
 )
 
 var DefaultRates = engine.Rates{CPUCoreHour: 0.0316, MemoryGiBHour: 0.0042}
@@ -64,7 +66,7 @@ func (c Config) Defaults(ctx context.Context, r client.Reader) (map[string]strin
 	var cm corev1.ConfigMap
 	rates, source := DefaultRates, CostAuto
 	if c.DefaultsConfigMap.Name == "" || r.Get(ctx, c.DefaultsConfigMap, &cm) != nil {
-		return nil, c.Pricer.Pricing(ctx, rates, source)
+		return nil, c.Pricer.Pricing(ctx, rates, source, DefaultRefresh)
 	}
 	if v, err := strconv.ParseFloat(cm.Data[costCPUKey], 64); err == nil {
 		rates.CPUCoreHour = v
@@ -75,7 +77,16 @@ func (c Config) Defaults(ctx context.Context, r client.Reader) (map[string]strin
 	if v := cm.Data[costSourceKey]; v != "" {
 		source = v
 	}
-	return cm.Data, c.Pricer.Pricing(ctx, rates, source)
+	return cm.Data, c.Pricer.Pricing(ctx, rates, source, refreshInterval(cm.Data[costRefreshKey]))
+}
+
+// refreshInterval parses the configured refresh, keeping it at or above MinRefresh; invalid values use the default.
+func refreshInterval(s string) time.Duration {
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return DefaultRefresh
+	}
+	return max(d, MinRefresh)
 }
 
 func parseBool(s string) (value, ok bool) {

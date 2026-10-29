@@ -102,7 +102,10 @@ export function SettingsPage({ info }: { info: Info }) {
                 {c.updatedAt && (
                   <>
                     <dt>Updated</dt>
-                    <dd>{ago(c.updatedAt)}</dd>
+                    <dd>
+                      {ago(c.updatedAt)}
+                      {c.refresh && <span className="rz-dim"> · every {c.refresh}</span>}
+                    </dd>
                   </>
                 )}
               </>

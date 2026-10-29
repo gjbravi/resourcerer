@@ -115,6 +115,9 @@ func costInfo(p cluster.Pricing) Cost {
 	if !p.UpdatedAt.IsZero() {
 		c.UpdatedAt = p.UpdatedAt.UTC().Format(time.RFC3339)
 	}
+	if p.Refresh > 0 {
+		c.Refresh = p.Refresh.String()
+	}
 	return c
 }
 

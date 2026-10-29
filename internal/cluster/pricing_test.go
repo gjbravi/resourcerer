@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/gjbravi/resourcerer/internal/engine"
 )
@@ -26,7 +27,16 @@ func TestCalibrate(t *testing.T) {
 func TestStaticSourceSkipsPrometheus(t *testing.T) {
 	static := engine.Rates{CPUCoreHour: 1, MemoryGiBHour: 2}
 	var p *Pricer
-	if got := p.Pricing(context.Background(), static, CostAuto); got.Rates != static || got.Source != CostStatic {
+	if got := p.Pricing(context.Background(), static, CostAuto, time.Minute); got.Rates != static || got.Source != CostStatic {
 		t.Errorf("a nil pricer must return the static rates, got %+v", got)
+	}
+}
+
+func TestRefreshInterval(t *testing.T) {
+	cases := map[string]time.Duration{"": DefaultRefresh, "1h": time.Hour, "5s": MinRefresh, "soon": DefaultRefresh, "-1m": DefaultRefresh}
+	for in, want := range cases {
+		if got := refreshInterval(in); got != want {
+			t.Errorf("refreshInterval(%q) = %v, want %v", in, got, want)
+		}
 	}
 }

@@ -46,6 +46,8 @@ export interface CostInfo {
   hourlyCost?: number;
   onDemandHourlyCost?: number;
   updatedAt?: string;
+  /** How often calibrated rates are recomputed, as a Go duration. */
+  refresh?: string;
 }
 
 export interface Totals {

@@ -19,6 +19,7 @@
       "type": "object",
       "properties": {
         "source": { "type": "string", "enum": ["auto", "karpenter", "static"] },
+        "refreshInterval": { "type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(ms|s|m|h))+$" },
         "cpuCoreHour": { "type": "number", "minimum": 0 },
         "memoryGiBHour": { "type": "number", "minimum": 0 }
       }
