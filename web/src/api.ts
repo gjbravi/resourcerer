@@ -30,8 +30,22 @@ export interface Info {
   selection: "all" | "label";
   excludedNamespaces: string[];
   defaults: SettingInfo[];
-  cost: { cpuCoreHour: number; memoryGiBHour: number };
+  cost: CostInfo;
   prometheus: PrometheusStatus;
+}
+
+export interface CostInfo {
+  cpuCoreHour: number;
+  memoryGiBHour: number;
+  /** "karpenter": calibrated to node prices; "static": the configured rates. */
+  source: "karpenter" | "static";
+  reason?: string;
+  nodes?: number;
+  spot?: number;
+  onDemand?: number;
+  hourlyCost?: number;
+  onDemandHourlyCost?: number;
+  updatedAt?: string;
 }
 
 export interface Totals {
@@ -118,6 +132,8 @@ export interface Change {
 }
 
 export interface Detail extends Summary {
+  /** Pods per capacity type of their Karpenter node. */
+  capacity?: Record<string, number>;
   nextScheduleAt?: string;
   containers: Container[] | null;
   hpaRecommendation?: { name: string; current: number; recommended: number; clamped: boolean };

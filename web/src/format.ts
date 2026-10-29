@@ -58,3 +58,10 @@ export function pct(a?: number, b?: number): number | null {
   if (!a || b == null) return null;
   return Math.round(((b - a) / a) * 100);
 }
+
+/** One line on where cost rates come from, for captions and tooltips. */
+export function costSource(c: { source: string; spot?: number; onDemand?: number; reason?: string }): string {
+  if (c.source === "karpenter")
+    return `Karpenter node prices · ${c.spot ?? 0} spot, ${c.onDemand ?? 0} on-demand nodes`;
+  return c.reason ? "configured rates (no Karpenter prices)" : "configured rates";
+}

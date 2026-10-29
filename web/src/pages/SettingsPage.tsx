@@ -1,9 +1,11 @@
 import { CircleCheck, CircleX, Database, PiggyBank } from "lucide-react";
 import type { Info } from "../api";
+import { ago } from "../format";
 import { SettingsTable } from "./Details";
 
 export function SettingsPage({ info }: { info: Info }) {
   const p = info.prometheus;
+  const c = info.cost;
   return (
     <div className="rz-page">
       <div className="rz-pagehd">
@@ -72,14 +74,60 @@ export function SettingsPage({ info }: { info: Info }) {
             </h2>
           </div>
           <dl className="rz-dl">
+            <dt>Source</dt>
+            <dd>
+              {c.source === "karpenter" ? (
+                <span className="rz-badge t-ok">Karpenter node prices</span>
+              ) : (
+                <span className="rz-badge">Configured rates</span>
+              )}
+            </dd>
             <dt>CPU per core-hour</dt>
-            <dd>${info.cost.cpuCoreHour}</dd>
+            <dd>${c.cpuCoreHour.toFixed(4)}</dd>
             <dt>Memory per GiB-hour</dt>
-            <dd>${info.cost.memoryGiBHour}</dd>
+            <dd>${c.memoryGiBHour.toFixed(4)}</dd>
+            {c.source === "karpenter" && (
+              <>
+                <dt>Nodes</dt>
+                <dd>
+                  {c.nodes} ({c.spot} spot, {c.onDemand} on-demand)
+                </dd>
+                <dt>Node cost</dt>
+                <dd>
+                  ${(c.hourlyCost ?? 0).toFixed(2)}/h · ${((c.hourlyCost ?? 0) * 730).toFixed(0)}/mo
+                  {!!c.onDemandHourlyCost && (
+                    <span className="rz-dim"> (on-demand: ${(c.onDemandHourlyCost * 730).toFixed(0)}/mo)</span>
+                  )}
+                </dd>
+                {c.updatedAt && (
+                  <>
+                    <dt>Updated</dt>
+                    <dd>{ago(c.updatedAt)}</dd>
+                  </>
+                )}
+              </>
+            )}
+            {c.reason && (
+              <>
+                <dt>Why configured</dt>
+                <dd className="rz-dim">{c.reason}</dd>
+              </>
+            )}
           </dl>
           <p className="rz-foot rz-dim rz-xs">
-            Estimates only; monthly = hourly × 730. Set with <code>cost.cpuCoreHour</code> and{" "}
-            <code>cost.memoryGiBHour</code>.
+            {c.source === "karpenter" ? (
+              <>
+                The configured rates (<code>cost.cpuCoreHour</code>, <code>cost.memoryGiBHour</code>) are scaled so the
+                Karpenter nodes cost what Karpenter's price estimates say, spot or on-demand, refreshed every 10
+                minutes. Node prices do not split CPU from memory, so the configured ratio is kept.
+              </>
+            ) : (
+              <>
+                Set with <code>cost.cpuCoreHour</code> and <code>cost.memoryGiBHour</code>. With Karpenter,{" "}
+                <code>cost.source: auto</code> calibrates them to node prices.
+              </>
+            )}{" "}
+            Monthly = hourly × 730, from requests × average replicas.
           </p>
           <div className="rz-cardhd">
             <h2>Scope</h2>

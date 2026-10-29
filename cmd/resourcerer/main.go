@@ -94,6 +94,7 @@ func main() {
 	if err != nil {
 		fail(err, "create Prometheus client")
 	}
+	cfg.Pricer = &cluster.Pricer{Prom: p}
 
 	// Only the defaults ConfigMap is ever read; caching every ConfigMap in a large cluster costs
 	// hundreds of MiB.

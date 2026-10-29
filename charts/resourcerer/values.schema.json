@@ -18,6 +18,7 @@
     "cost": {
       "type": "object",
       "properties": {
+        "source": { "type": "string", "enum": ["auto", "karpenter", "static"] },
         "cpuCoreHour": { "type": "number", "minimum": 0 },
         "memoryGiBHour": { "type": "number", "minimum": 0 }
       }

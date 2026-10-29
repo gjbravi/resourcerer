@@ -1,4 +1,4 @@
-import { ago, fmtCpu, fmtMem, pct, quantity } from "./format";
+import { ago, fmtCpu, fmtMem, pct, quantity, costSource } from "./format";
 
 describe("format", () => {
   it("keeps CPU in millicores and memory in MiB/GiB", () => {
@@ -19,5 +19,17 @@ describe("format", () => {
     expect(pct(1, 0.126)).toBe(-87);
     expect(pct(0, 1)).toBeNull();
     expect(ago(new Date(Date.now() - 90_000).toISOString())).toBe("2m ago");
+  });
+});
+
+describe("costSource", () => {
+  it("names Karpenter prices with the node mix, or the configured rates", () => {
+    expect(costSource({ source: "karpenter", spot: 26, onDemand: 1 })).toBe(
+      "Karpenter node prices · 26 spot, 1 on-demand nodes",
+    );
+    expect(costSource({ source: "static" })).toBe("configured rates");
+    expect(costSource({ source: "static", reason: "no Karpenter node prices" })).toBe(
+      "configured rates (no Karpenter prices)",
+    );
   });
 });

@@ -23,6 +23,15 @@ type Info struct {
 type Cost struct {
 	CPUCoreHour   float64 `json:"cpuCoreHour"`
 	MemoryGiBHour float64 `json:"memoryGiBHour"`
+	// Source is "karpenter" when the rates are calibrated to node prices, "static" for the configured rates.
+	Source             string  `json:"source"`
+	Reason             string  `json:"reason,omitempty"`
+	Nodes              int     `json:"nodes,omitempty"`
+	Spot               int     `json:"spot,omitempty"`
+	OnDemand           int     `json:"onDemand,omitempty"`
+	HourlyCost         float64 `json:"hourlyCost,omitempty"`
+	OnDemandHourlyCost float64 `json:"onDemandHourlyCost,omitempty"`
+	UpdatedAt          string  `json:"updatedAt,omitempty"`
 }
 
 type SettingInfo struct {
@@ -117,15 +126,17 @@ type ApplyResult struct {
 
 type Detail struct {
 	Summary
-	NextScheduleAt  string        `json:"nextScheduleAt,omitempty"`
-	Containers      []Container   `json:"containers"`
-	HPARec          *HPA          `json:"hpaRecommendation,omitempty"`
-	Settings        []SettingInfo `json:"settings"`
-	Warnings        []string      `json:"warnings,omitempty"`
-	History         []History     `json:"history"`
-	Events          []Event       `json:"events"`
-	LastApplyResult *ApplyResult  `json:"lastApplyResult,omitempty"`
-	ApplyMethod     string        `json:"applyMethod"`
+	// Capacity counts the workload's pods per capacity type of their Karpenter node (spot, on-demand).
+	Capacity        map[string]int `json:"capacity,omitempty"`
+	NextScheduleAt  string         `json:"nextScheduleAt,omitempty"`
+	Containers      []Container    `json:"containers"`
+	HPARec          *HPA           `json:"hpaRecommendation,omitempty"`
+	Settings        []SettingInfo  `json:"settings"`
+	Warnings        []string       `json:"warnings,omitempty"`
+	History         []History      `json:"history"`
+	Events          []Event        `json:"events"`
+	LastApplyResult *ApplyResult   `json:"lastApplyResult,omitempty"`
+	ApplyMethod     string         `json:"applyMethod"`
 	// TemplateKind and TemplateName name where resources are applied, when not the workload itself.
 	TemplateKind string `json:"templateKind,omitempty"`
 	TemplateName string `json:"templateName,omitempty"`

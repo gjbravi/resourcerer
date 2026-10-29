@@ -2385,3 +2385,20 @@ body:has(.rz.dark) {
     padding-left: 18px;
   }
 }
+
+/* Cost source captions */
+.rz-costsrc,
+.rz-impactcard .note a {
+  color: var(--dim);
+  font-size: 0.74rem;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.rz-costsrc {
+  display: block;
+  margin-top: 6px;
+}
+.rz-costsrc:hover,
+.rz-impactcard .note a:hover {
+  color: var(--accent);
+}

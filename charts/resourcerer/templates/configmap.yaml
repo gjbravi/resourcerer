@@ -9,5 +9,6 @@ data:
   {{- range $k, $v := .Values.defaults }}
   {{ $k }}: {{ $v | toString | quote }}
   {{- end }}
+  cost.source: {{ .Values.cost.source | quote }}
   cost.cpu-core-hour: {{ .Values.cost.cpuCoreHour | toString | quote }}
   cost.memory-gib-hour: {{ .Values.cost.memoryGiBHour | toString | quote }}
