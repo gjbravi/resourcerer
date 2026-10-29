@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/gjbravi/resourcerer/compare/v0.3.1...v0.4.0) (2026-10-29)
+
+
+### Features
+
+* **cost:** price workloads at the nodes their pods ran on ([#17](https://github.com/gjbravi/resourcerer/issues/17)) ([06c5b79](https://github.com/gjbravi/resourcerer/commit/06c5b799245c0f621ada25d4ba11332006545669))
+
 ## [0.3.1](https://github.com/gjbravi/resourcerer/compare/v0.3.0...v0.3.1) (2026-10-29)
 
 
