@@ -19,17 +19,26 @@ fmt: ## Format Go and UI code
 	cd web && npm run format
 
 CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.23.0
+ACTIONLINT ?= go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
 .PHONY: generate
 generate: ## Generate deepcopy code and the CRD into the chart
 	$(CONTROLLER_GEN) object paths=./api/... crd paths=./api/... output:crd:artifacts:config=charts/resourcerer/crds
 
 .PHONY: lint
-lint: ## Run linters
+lint: lint-workflows ## Run linters
 	go vet ./...
 	go tool golangci-lint run
 	cd web && npm run lint && npm run typecheck
 	helm lint charts/resourcerer
+
+.PHONY: lint-workflows
+lint-workflows: ## Lint GitHub Actions workflows
+	$(ACTIONLINT)
+
+.PHONY: verify-generate
+verify-generate: generate ## Fail when generated code or the CRD is out of date
+	git diff --exit-code -- api charts/resourcerer/crds
 
 .PHONY: test
 test: ## Run Go and UI unit tests
@@ -71,7 +80,10 @@ kind-up: ## Create a kind cluster with metrics-server, VPA and demo workloads
 	CLUSTER_NAME=$(CLUSTER_NAME) ./hack/kind-up.sh
 
 .PHONY: kind-deploy
-kind-deploy: image ## Build, load into kind and install the chart
+kind-deploy: image kind-install ## Build, load into kind and install the chart
+
+.PHONY: kind-install
+kind-install: ## Load an already built $(IMG) into kind and install the chart
 	CLUSTER_NAME=$(CLUSTER_NAME) ./hack/kind-load.sh $(IMG)
 	kubectl --context $(KUBE_CONTEXT) apply --server-side --force-conflicts -f charts/resourcerer/crds
 	helm upgrade --install resourcerer charts/resourcerer \

@@ -12,8 +12,8 @@ kube-state-metrics:
 server:
   retention: 15d
   global:
-    scrape_interval: 15s
-    evaluation_interval: 15s
+    scrape_interval: 10s
+    evaluation_interval: 10s
   persistentVolume:
     enabled: true
     size: 4Gi
