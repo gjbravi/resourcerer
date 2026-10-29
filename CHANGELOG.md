@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/gjbravi/resourcerer/compare/v0.5.0...v0.6.0) (2026-10-29)
+
+
+### Features
+
+* **reliability:** configurable signals and severity in the workload list ([#21](https://github.com/gjbravi/resourcerer/issues/21)) ([baa2949](https://github.com/gjbravi/resourcerer/commit/baa29497d04c1f7187509d9f2fd37ddcba3d09d8))
+
 ## [0.5.0](https://github.com/gjbravi/resourcerer/compare/v0.4.0...v0.5.0) (2026-10-29)
 
 

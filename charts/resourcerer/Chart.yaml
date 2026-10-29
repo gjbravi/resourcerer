@@ -4,8 +4,8 @@ description: >-
   Recommends and applies CPU and memory requests for your workloads from
   Prometheus usage history, with a UI to review them.
 type: application
-version: 0.5.0
-appVersion: 0.5.0
+version: 0.6.0
+appVersion: 0.6.0
 kubeVersion: '>=1.33.0-0'
 home: https://github.com/gjbravi/resourcerer
 icon: https://raw.githubusercontent.com/gjbravi/resourcerer/main/docs/logo.svg
