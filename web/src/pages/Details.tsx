@@ -36,7 +36,7 @@ import {
   StatusBadge,
   phaseTone,
 } from "../components";
-import { ago, costSource, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
+import { ago, allocationNote, costSource, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
 import { toast, useAction, useImpact, useInfo, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
 import { resolved, signals, type Signal } from "../reliability";
 import { ReliabilityTab } from "./ReliabilityTab";
@@ -625,10 +625,11 @@ function CostNote({ d }: { d: Detail }) {
   const info = useInfo().data;
   const c = d.capacity ?? {};
   const pods = Object.values(c).reduce((a, n) => a + n, 0);
+  const alloc = allocationNote(d.pricing);
   return (
-    <a href="#/settings" title={info ? costSource(info.cost) : undefined}>
+    <a href="#/settings" title={alloc?.title ?? (info ? costSource(info.cost) : undefined)}>
       {info?.cost.source === "karpenter" ? "Karpenter prices" : "Configured rates"}
-      {pods > 0 && ` · ${c.spot ?? 0} of ${pods} ${pods === 1 ? "pod" : "pods"} on spot`}
+      {alloc ? ` · ${alloc.label}` : pods > 0 && ` · ${c.spot ?? 0} of ${pods} ${pods === 1 ? "pod" : "pods"} on spot`}
     </a>
   );
 }

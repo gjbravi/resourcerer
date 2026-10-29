@@ -1,4 +1,4 @@
-import { ago, fmtCpu, fmtMem, pct, quantity, costSource } from "./format";
+import { ago, fmtCpu, fmtMem, pct, quantity, costSource, allocationNote } from "./format";
 
 describe("format", () => {
   it("keeps CPU in millicores and memory in MiB/GiB", () => {
@@ -32,5 +32,29 @@ describe("costSource", () => {
     expect(costSource({ source: "static", state: "ok" })).toBe("configured rates");
     expect(costSource({ source: "static", state: "fallback" })).toBe("configured rates (no Karpenter in this cluster)");
     expect(costSource({ source: "static", state: "error" })).toBe("configured rates · Karpenter prices unavailable");
+  });
+});
+
+describe("allocationNote", () => {
+  const node = { allocation: "node" as const, factor: "1.100", clusterFactor: "0.550", coveragePercent: 100 };
+  it("is empty for cluster allocation by design", () => {
+    expect(allocationNote({ allocation: "cluster", factor: "0.5", clusterFactor: "0.5" })).toBeUndefined();
+  });
+  it("explains a fallback to the cluster average", () => {
+    expect(
+      allocationNote({ allocation: "cluster", factor: "0.5", clusterFactor: "0.5", reason: "no pods" })?.label,
+    ).toBe("cluster average");
+  });
+  it("compares the workload to the cluster and names its main capacity type", () => {
+    const n = allocationNote({
+      ...node,
+      capacity: { spot: 20, "on-demand": 80 },
+      instanceTypes: [{ name: "m7g.xlarge", percent: 80 }],
+    });
+    expect(n?.label).toBe("2.00× cluster average · 80% on-demand");
+    expect(n?.title).toContain("m7g.xlarge 80%");
+  });
+  it("mentions requests on unpriced nodes", () => {
+    expect(allocationNote({ ...node, coveragePercent: 60 })?.title).toContain("60% of requests on priced nodes");
   });
 });

@@ -7,6 +7,10 @@ prometheus:
 defaults:
   learning-period: PT15M
   schedule: "@every 1m"
+# hack/fake-karpenter.sh serves Karpenter's metrics with fixed prices.
+cost:
+  source: karpenter
+  allocation: node
 excludedNamespaces:
   - kube-system
   - kube-public
@@ -14,3 +18,4 @@ excludedNamespaces:
   - local-path-storage
   - monitoring
   - argo-rollouts
+  - karpenter

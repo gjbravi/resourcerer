@@ -41,6 +41,8 @@ export interface CostInfo {
   mode: "auto" | "karpenter" | "static";
   /** The source in use: rates calibrated to Karpenter node prices, or the configured rates. */
   source: "karpenter" | "static";
+  /** How the rates are split between workloads: the cluster's average, or the nodes each workload ran on. */
+  allocation: "cluster" | "node";
   state: "ok" | "stale" | "fallback" | "error";
   reason?: string;
   nodes?: number;
@@ -51,6 +53,18 @@ export interface CostInfo {
   calibratedAt?: string;
   /** How often calibrated rates are recomputed, as a Go duration. */
   refresh?: string;
+}
+
+/** How a workload's costs were priced; factors multiply the configured rates and are decimal strings. */
+export interface Pricing {
+  allocation: "cluster" | "node";
+  factor: string;
+  clusterFactor: string;
+  coveragePercent?: number;
+  capacity?: Record<string, number>;
+  instanceTypes?: { name: string; percent: number }[];
+  /** Why node allocation fell back to the cluster's rates. */
+  reason?: string;
 }
 
 export interface Totals {
@@ -139,6 +153,7 @@ export interface Change {
 export interface Detail extends Summary {
   /** Pods per capacity type of their Karpenter node. */
   capacity?: Record<string, number>;
+  pricing?: Pricing;
   nextScheduleAt?: string;
   containers: Container[] | null;
   hpaRecommendation?: { name: string; current: number; recommended: number; clamped: boolean };

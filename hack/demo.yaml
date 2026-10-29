@@ -282,3 +282,50 @@ spec:
     canary:
       steps:
         - setWeight: 100
+---
+# Same requests on an on-demand and on spot nodes (labels set by hack/fake-karpenter.sh): node allocation
+# must price the first about 3x the second.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pricing
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: on-demand-app
+  namespace: pricing
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: on-demand-app }
+  template:
+    metadata:
+      labels: { app: on-demand-app }
+    spec:
+      nodeSelector: { karpenter.sh/capacity-type: on-demand }
+      containers:
+        - name: app
+          image: registry.k8s.io/pause:3.10
+          resources: { requests: { cpu: 100m, memory: 128Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spot-app
+  namespace: pricing
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: spot-app }
+  template:
+    metadata:
+      labels: { app: spot-app }
+    spec:
+      nodeSelector: { karpenter.sh/capacity-type: spot }
+      tolerations:
+        - { key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule }
+      containers:
+        - name: app
+          image: registry.k8s.io/pause:3.10
+          resources: { requests: { cpu: 100m, memory: 128Mi } }

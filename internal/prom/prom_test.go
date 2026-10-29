@@ -34,3 +34,21 @@ func TestRolloutOwnerUsesReplicaSets(t *testing.T) {
 		t.Errorf("rollout owner query:\n%s", q)
 	}
 }
+
+func TestWorkloadNodeCost(t *testing.T) {
+	q := WorkloadNodeCost(Ref{Namespace: "demo", Kind: "StatefulSet", Name: "cache"}, 0.0316, 0.0042, false)
+	for _, want := range []string{
+		`kube_pod_container_resource_requests{namespace="demo", resource="cpu"} * 0.0316`,
+		`topk by (namespace, pod) (1,`,
+		`topk by (node_name) (1,`,
+		`"price_type", "on-demand", "capacity_type", "reserved"`,
+		`owner_kind="StatefulSet", owner_name="cache"`,
+	} {
+		if !strings.Contains(q, want) {
+			t.Errorf("node cost query lacks %s:\n%s", want, q)
+		}
+	}
+	if p := WorkloadNodeCost(Ref{Namespace: "demo", Kind: "StatefulSet", Name: "cache"}, 0.0316, 0.0042, true); !strings.Contains(p, "* 0 + 1)") {
+		t.Errorf("priced query must leave the factor out:\n%s", p)
+	}
+}

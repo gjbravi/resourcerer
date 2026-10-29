@@ -26,6 +26,8 @@ type Cost struct {
 	// Mode is the configured cost.source; Source is the one in use, karpenter or static.
 	Mode   string `json:"mode"`
 	Source string `json:"source"`
+	// Allocation is cluster or node: how the rates are split between workloads.
+	Allocation string `json:"allocation"`
 	// State is ok, stale, fallback or error; Reason explains anything but ok.
 	State              string  `json:"state"`
 	Reason             string  `json:"reason,omitempty"`
@@ -131,16 +133,18 @@ type ApplyResult struct {
 type Detail struct {
 	Summary
 	// Capacity counts the workload's pods per capacity type of their Karpenter node (spot, on-demand).
-	Capacity        map[string]int `json:"capacity,omitempty"`
-	NextScheduleAt  string         `json:"nextScheduleAt,omitempty"`
-	Containers      []Container    `json:"containers"`
-	HPARec          *HPA           `json:"hpaRecommendation,omitempty"`
-	Settings        []SettingInfo  `json:"settings"`
-	Warnings        []string       `json:"warnings,omitempty"`
-	History         []History      `json:"history"`
-	Events          []Event        `json:"events"`
-	LastApplyResult *ApplyResult   `json:"lastApplyResult,omitempty"`
-	ApplyMethod     string         `json:"applyMethod"`
+	Capacity map[string]int `json:"capacity,omitempty"`
+	// Pricing is how the workload's costs were priced.
+	Pricing         *v1alpha1.Pricing `json:"pricing,omitempty"`
+	NextScheduleAt  string            `json:"nextScheduleAt,omitempty"`
+	Containers      []Container       `json:"containers"`
+	HPARec          *HPA              `json:"hpaRecommendation,omitempty"`
+	Settings        []SettingInfo     `json:"settings"`
+	Warnings        []string          `json:"warnings,omitempty"`
+	History         []History         `json:"history"`
+	Events          []Event           `json:"events"`
+	LastApplyResult *ApplyResult      `json:"lastApplyResult,omitempty"`
+	ApplyMethod     string            `json:"applyMethod"`
 	// TemplateKind and TemplateName name where resources are applied, when not the workload itself.
 	TemplateKind string `json:"templateKind,omitempty"`
 	TemplateName string `json:"templateName,omitempty"`

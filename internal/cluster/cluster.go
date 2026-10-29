@@ -40,6 +40,7 @@ const (
 	costCPUKey     = "cost.cpu-core-hour"
 	costMemoryKey  = "cost.memory-gib-hour"
 	costSourceKey  = "cost.source"
+	costAllocKey   = "cost.allocation"
 	costRefreshKey = "cost.karpenter.refresh-interval"
 )
 
@@ -66,7 +67,7 @@ func (c Config) Defaults(ctx context.Context, r client.Reader) (map[string]strin
 	var cm corev1.ConfigMap
 	rates, source := DefaultRates, CostAuto
 	if c.DefaultsConfigMap.Name == "" || r.Get(ctx, c.DefaultsConfigMap, &cm) != nil {
-		return nil, c.Pricer.Pricing(ctx, rates, source, DefaultRefresh)
+		return nil, withAllocation(c.Pricer.Pricing(ctx, rates, source, DefaultRefresh), rates, "")
 	}
 	if v, err := strconv.ParseFloat(cm.Data[costCPUKey], 64); err == nil {
 		rates.CPUCoreHour = v
@@ -77,7 +78,16 @@ func (c Config) Defaults(ctx context.Context, r client.Reader) (map[string]strin
 	if v := cm.Data[costSourceKey]; v != "" {
 		source = v
 	}
-	return cm.Data, c.Pricer.Pricing(ctx, rates, source, refreshInterval(cm.Data[costRefreshKey]))
+	return cm.Data, withAllocation(c.Pricer.Pricing(ctx, rates, source, refreshInterval(cm.Data[costRefreshKey])), rates, cm.Data[costAllocKey])
+}
+
+// withAllocation records the configured rates and allocation; anything but node allocates at the cluster rates.
+func withAllocation(p Pricing, static engine.Rates, allocation string) Pricing {
+	p.Static, p.Allocation = static, AllocationCluster
+	if allocation == AllocationNode {
+		p.Allocation = AllocationNode
+	}
+	return p
 }
 
 // refreshInterval parses the configured refresh, keeping it at or above MinRefresh; invalid values use the default.

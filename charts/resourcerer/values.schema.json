@@ -20,6 +20,7 @@
       "additionalProperties": false,
       "properties": {
         "source": { "type": "string", "enum": ["auto", "karpenter", "static"] },
+        "allocation": { "type": "string", "enum": ["cluster", "node"] },
         "rates": {
           "type": "object",
           "additionalProperties": false,
