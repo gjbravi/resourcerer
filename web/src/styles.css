@@ -1789,97 +1789,6 @@ body:has(.rz.dark) {
   border-bottom-color: var(--accent);
 }
 
-/* Projected impact */
-.rz-impact {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-  margin-bottom: 16px;
-}
-.rz-impactcard {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px 18px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  box-shadow: var(--shadow);
-  min-width: 0;
-}
-.rz-impactcard .lbl {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 0.82rem;
-  color: var(--ink2);
-}
-.rz-impactcard .lbl svg {
-  color: var(--accent);
-}
-.rz-impactcard .vals {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}
-.rz-impactcard .vals b {
-  font-size: 1.5rem;
-  font-weight: 750;
-  letter-spacing: -0.025em;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.rz-impactcard .vals .rz-delta {
-  font-size: 0.78rem;
-}
-.rz-impactcard .bars {
-  display: grid;
-  gap: 6px;
-  margin-top: auto;
-}
-.rz-impactcard .bar {
-  display: grid;
-  grid-template-columns: 38px 1fr auto;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.72rem;
-}
-.rz-impactcard .bar .k {
-  color: var(--dim);
-}
-.rz-impactcard .bar .v {
-  font-family: ui-monospace, Menlo, monospace;
-  color: var(--ink2);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.rz-impactcard .track {
-  height: 7px;
-  border-radius: 99px;
-  background: var(--track);
-  overflow: hidden;
-}
-.rz-impactcard .track i {
-  display: block;
-  height: 100%;
-  border-radius: 99px;
-  animation: rz-grow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  transform-origin: left;
-}
-.rz-impactcard .track .cur {
-  background: var(--c-cur);
-}
-.rz-impactcard .track .rec {
-  background: var(--c-rec);
-  animation-delay: 0.12s;
-}
-@keyframes rz-grow {
-  from {
-    transform: scaleX(0);
-  }
-}
-
 /* Namespaces card */
 .rz-input.small input {
   padding: 6px 0;
@@ -2407,4 +2316,341 @@ body:has(.rz.dark) {
 .rz-costsrc:hover,
 .rz-impactcard .note a:hover {
   color: var(--accent);
+}
+
+/* Where a workload ran */
+.rz-place {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.rz-place h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 1rem;
+}
+.rz-place h3 svg {
+  color: var(--accent);
+}
+.rz-place h4 {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--ink2);
+  font-weight: 650;
+}
+.rz-place-sum {
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.rz-place-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  margin: 0 0 14px;
+}
+.rz-place-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.rz-place-kpi {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--track);
+}
+.rz-place-kpi b {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+.rz-place-kpi span {
+  font-size: 0.74rem;
+}
+.rz-place-stack {
+  display: flex;
+  height: 14px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--track);
+}
+.rz-place-stack i {
+  height: 100%;
+  transition: width 0.25s;
+}
+.rz-place-stack i + i {
+  border-left: 2px solid var(--panel);
+}
+.rz-place-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 0.78rem;
+  color: var(--ink2);
+}
+.rz-place-legend i,
+.rz-place-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  margin-right: 4px;
+}
+.rz-place-tl {
+  min-width: 0;
+  overflow: hidden;
+}
+.rz-place-types {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.rz-place-types th {
+  text-align: left;
+  font-size: 0.74rem;
+  font-weight: 550;
+  color: var(--dim);
+  padding: 6px 8px;
+}
+.rz-place-types td {
+  padding: 7px 8px;
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+}
+.rz-place-types .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.rz-place-mini {
+  display: inline-block;
+  width: 80px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 99px;
+  background: var(--track);
+  vertical-align: middle;
+  overflow: hidden;
+}
+.rz-place-mini i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+}
+
+/* Impact tab */
+.rz-ba-ctl {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.rz-card > .rz-place {
+  padding: 0 20px 18px;
+}
+.rz-place-formula table {
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.rz-place-formula th,
+.rz-place-formula td {
+  padding: 4px 14px 4px 0;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--ink2);
+}
+.rz-place-formula th {
+  font-weight: 600;
+  color: var(--dim);
+}
+.rz-place-formula .num {
+  text-align: right;
+  color: var(--text);
+}
+.rz-place-formula p {
+  margin-top: 6px;
+}
+
+.rz-verdict {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 20px;
+  margin-bottom: 14px;
+  border-left: 4px solid var(--c-alloc);
+}
+.rz-verdict .ic {
+  flex: none;
+  display: flex;
+  color: var(--c-alloc);
+}
+.rz-verdict h2 {
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+}
+.rz-verdict h2 .eff {
+  font-weight: 600;
+}
+.rz-verdict.t-ok {
+  border-left-color: var(--c-rec);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c-rec) 9%, var(--panel)), var(--panel) 60%);
+}
+.rz-verdict.t-ok .ic,
+.rz-verdict.t-ok .eff {
+  color: var(--c-rec);
+}
+.rz-verdict.t-warn {
+  border-left-color: var(--c-curlim);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c-curlim) 9%, var(--panel)), var(--panel) 60%);
+}
+.rz-verdict.t-warn .ic {
+  color: var(--c-curlim);
+}
+.rz-verdict.t-bad {
+  border-left-color: var(--bad, #e5484d);
+}
+.rz-verdict.t-bad .ic {
+  color: var(--bad, #e5484d);
+}
+.rz-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rz-reasons li {
+  font-size: 0.76rem;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: var(--track);
+  color: var(--ink2);
+}
+.rz-reasons li.ok {
+  background: color-mix(in srgb, var(--c-rec) 14%, var(--panel));
+  color: color-mix(in srgb, var(--c-rec) 55%, var(--text));
+}
+.rz-reasons li.warn {
+  background: color-mix(in srgb, var(--c-curlim) 16%, var(--panel));
+  color: color-mix(in srgb, var(--c-curlim) 50%, var(--text));
+}
+.rz-ba-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.rz-bacard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 18px;
+  min-width: 0;
+}
+.rz-bacard .lbl {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+  color: var(--ink2);
+}
+.rz-bacard .lbl svg {
+  color: var(--accent);
+}
+.rz-bacard .vals {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rz-bacard .vals b {
+  font-size: 1.4rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.rz-bacard .vals .rz-delta {
+  font-size: 0.78rem;
+}
+.rz-bacard .bars {
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  align-items: center;
+  gap: 5px 8px;
+  font-size: 0.72rem;
+}
+.rz-bacard .k {
+  color: var(--dim);
+}
+.rz-bacard .v {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink2);
+  white-space: nowrap;
+}
+.rz-bacard .track {
+  height: 7px;
+  border-radius: 99px;
+  background: var(--track);
+  overflow: hidden;
+}
+.rz-bacard .track i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+}
+.rz-bacard .track .cur {
+  background: var(--c-cur);
+}
+.rz-bacard .track .rec {
+  background: var(--c-rec);
+}
+.rz-headroom {
+  margin: 4px 0 0;
+}
+.rz-costtoggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.rz-costtoggle .chev {
+  flex: none;
+  color: var(--accent);
+  transition: transform 0.15s;
+}
+.rz-costtoggle[aria-expanded="true"] .chev {
+  transform: rotate(90deg);
+}
+.rz-card > .rz-cardhd:has(.rz-costtoggle[aria-expanded="false"]) {
+  padding-bottom: 16px;
+}
+
+.rz-verdict > div {
+  flex: 1;
+  min-width: 0;
+}
+.rz-soon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px dashed var(--accent-line);
+  color: var(--accent);
+  background: var(--accent-soft);
+  white-space: nowrap;
+  cursor: help;
 }

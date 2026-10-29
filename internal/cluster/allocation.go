@@ -55,25 +55,37 @@ var errNoRequests = errors.New("no running pods with requests in the window")
 // Allocate reads where the workload's pods ran over the window ending at end and prices them at their nodes.
 // clusterFactor is the calibrated rates over the configured ones, used for requests on nodes without a price.
 func Allocate(ctx context.Context, p *prom.Client, ref prom.Ref, static engine.Rates, clusterFactor float64, window time.Duration, end time.Time, minStep time.Duration) (Allocation, error) {
+	h, err := fetch(ctx, p, ref, static, window, end, minStep)
+	if err != nil {
+		return Allocation{}, err
+	}
+	return combine(sums(h.cost), sums(h.priced), sum(h.total[""]), clusterFactor)
+}
+
+// history is the workload's requests over the window, valued at the configured rates: times the node factor
+// (cost) and on priced nodes (priced), keyed "capacity_type|instance_type", and on any node (total).
+type history struct {
+	cost, priced, total map[string][]prom.Point
+	start, end          time.Time
+	step                time.Duration
+}
+
+func fetch(ctx context.Context, p *prom.Client, ref prom.Ref, static engine.Rates, window time.Duration, end time.Time, minStep time.Duration) (history, error) {
 	window = min(window, allocationWindow)
-	step := max(window/allocationPoints, minStep).Truncate(time.Second)
-	start := end.Add(-window)
+	h := history{step: max(window/allocationPoints, minStep).Truncate(time.Second), start: end.Add(-window), end: end}
 	ctx, cancel := context.WithTimeout(ctx, allocationTimeout)
 	defer cancel()
-
-	cost, err := p.RangeComplete(ctx, prom.WorkloadNodeCost(ref, static.CPUCoreHour, static.MemoryGiBHour, false), start, end, step, "key")
-	if err != nil {
-		return Allocation{}, fmt.Errorf("query node prices of the workload's pods: %w", err)
+	var err error
+	if h.cost, err = p.RangeComplete(ctx, prom.WorkloadNodeCost(ref, static.CPUCoreHour, static.MemoryGiBHour, false), h.start, end, h.step, "key"); err != nil {
+		return h, fmt.Errorf("query node prices of the workload's pods: %w", err)
 	}
-	priced, err := p.RangeComplete(ctx, prom.WorkloadNodeCost(ref, static.CPUCoreHour, static.MemoryGiBHour, true), start, end, step, "key")
-	if err != nil {
-		return Allocation{}, fmt.Errorf("query the workload's priced requests: %w", err)
+	if h.priced, err = p.RangeComplete(ctx, prom.WorkloadNodeCost(ref, static.CPUCoreHour, static.MemoryGiBHour, true), h.start, end, h.step, "key"); err != nil {
+		return h, fmt.Errorf("query the workload's priced requests: %w", err)
 	}
-	total, err := p.RangeComplete(ctx, prom.WorkloadRequestValue(ref, static.CPUCoreHour, static.MemoryGiBHour), start, end, step, "")
-	if err != nil {
-		return Allocation{}, fmt.Errorf("query the workload's requests: %w", err)
+	if h.total, err = p.RangeComplete(ctx, prom.WorkloadRequestValue(ref, static.CPUCoreHour, static.MemoryGiBHour), h.start, end, h.step, ""); err != nil {
+		return h, fmt.Errorf("query the workload's requests: %w", err)
 	}
-	return combine(sums(cost), sums(priced), sum(total[""]), clusterFactor)
+	return h, nil
 }
 
 // combine turns request-weighted sums into an allocation. cost and priced are keyed "capacity_type|instance_type":

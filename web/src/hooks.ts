@@ -20,6 +20,9 @@ export const useImpact = (w: Ref, resource: Resource, range: Range) =>
     refetchInterval: 30_000,
     placeholderData: keepPreviousData,
   });
+/** The placement covers the whole learning period and the server caches it for 5 minutes. */
+export const usePlacement = (w: Ref, enabled = true) =>
+  useQuery({ queryKey: ["placement", refKey(w)], queryFn: () => api.placement(w), staleTime: 300_000, enabled });
 /** Live mode refreshes every 30s, about the scrape interval, so a fix shows up as soon as Prometheus has it. */
 export const useReliability = (w: Ref, window: ReliabilityWindow, live: boolean) =>
   useQuery({

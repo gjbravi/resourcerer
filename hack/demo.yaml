@@ -329,3 +329,30 @@ spec:
         - name: app
           image: registry.k8s.io/pause:3.10
           resources: { requests: { cpu: 100m, memory: 128Mi } }
+---
+# Spread over the on-demand and spot nodes, so its placement mixes capacity types.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mixed-app
+  namespace: pricing
+spec:
+  replicas: 4
+  selector:
+    matchLabels: { app: mixed-app }
+  template:
+    metadata:
+      labels: { app: mixed-app }
+    spec:
+      tolerations:
+        - { key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels: { app: mixed-app }
+      containers:
+        - name: app
+          image: registry.k8s.io/pause:3.10
+          resources: { requests: { cpu: 50m, memory: 64Mi } }
