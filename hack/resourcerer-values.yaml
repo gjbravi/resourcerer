@@ -6,7 +6,7 @@ prometheus:
   minStep: 10s
 defaults:
   learning-period: PT15M
-  schedule: "@every 30s"
+  schedule: "@every 1m"
 excludedNamespaces:
   - kube-system
   - kube-public
