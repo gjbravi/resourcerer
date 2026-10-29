@@ -189,7 +189,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	defaults, pricing := r.Cluster.Defaults(ctx, r.Client)
-	rates := pricing.Rates
 	eff := settings.Resolve(defaults, ns.Annotations, obj.GetAnnotations())
 	period, _ := settings.ParseSchedule(eff.Get(settings.Schedule))
 	now := r.Now()
@@ -216,6 +215,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 	out := engine.Recommend(in)
+	rates, priced := r.price(ctx, w, pricing, eff.Duration(settings.LearningPeriod), now)
 	sum := engine.Summarize(in.Containers, out, avg, rates)
 	threshold, _ := settings.ParsePercent(eff.Get(settings.AutoThreshold))
 	hash := engine.Hash(out)
@@ -252,6 +252,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		Current:     totals(sum.Current),
 		Recommended: totals(sum.Recommended),
 	}
+	rec.Status.Pricing = priced
 	since := now.Add(-eff.Duration(settings.LearningPeriod))
 	rec.Status.OOMKills = int32(r.oomKills(ctx, w, since))
 	rec.Status.Reliability = r.reliability(ctx, w, in.Containers, since)
@@ -328,6 +329,43 @@ func (r *Reconciler) gather(ctx context.Context, w *workload.Workload, eff setti
 		Expected:   int(learning / step),
 	}, avg, nil
 }
+
+// price returns the rates for the workload's costs and how they were found. Node allocation needs Karpenter prices;
+// without them, or when the query fails, the workload is priced at the cluster's rates and the reason recorded.
+func (r *Reconciler) price(ctx context.Context, w *workload.Workload, p cluster.Pricing, learning time.Duration, now time.Time) (engine.Rates, *v1alpha1.Pricing) {
+	k := p.ClusterFactor()
+	out := &v1alpha1.Pricing{Allocation: cluster.AllocationCluster, Factor: factor(k), ClusterFactor: factor(k)}
+	if p.Allocation != cluster.AllocationNode {
+		return p.Rates, out
+	}
+	if p.Source != cluster.CostKarpenter {
+		out.Reason = "Node allocation needs Karpenter prices; the cost source is " + p.Source + "."
+		return p.Rates, out
+	}
+	ref := prom.Ref{Namespace: w.Namespace(), Kind: w.Kind, Name: w.Name()}
+	a, err := cluster.Allocate(ctx, r.Prom, ref, p.Static, k, learning, now, r.MinStep)
+	if err != nil {
+		log.FromContext(ctx).V(1).Info("allocate cost by node", "error", err.Error())
+		out.Reason = err.Error()
+		return p.Rates, out
+	}
+	out.Allocation, out.Factor = cluster.AllocationNode, factor(a.Factor)
+	out.CoveragePercent = percent(a.Coverage)
+	if len(a.Capacity) > 0 {
+		out.Capacity = map[string]int32{}
+		for c, v := range a.Capacity {
+			out.Capacity[c] = percent(v)
+		}
+	}
+	for _, t := range a.InstanceTypes {
+		out.InstanceTypes = append(out.InstanceTypes, v1alpha1.InstanceTypeShare{Name: t.Name, Percent: percent(t.Share)})
+	}
+	return a.Rates(p.Static), out
+}
+
+func factor(f float64) string { return strconv.FormatFloat(f, 'f', 3, 64) }
+
+func percent(f float64) int32 { return int32(math.Round(f * 100)) }
 
 func (r *Reconciler) pods(ctx context.Context, w *workload.Workload) []corev1.Pod {
 	sel, err := metav1.LabelSelectorAsSelector(w.Selector)

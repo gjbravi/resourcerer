@@ -1,4 +1,4 @@
-import type { Resource, Resources } from "./api";
+import type { Pricing, Resource, Resources } from "./api";
 
 export const Mi = 2 ** 20;
 export const Gi = 2 ** 30;
@@ -73,4 +73,28 @@ export function costSource(c: { source: string; state?: string; spot?: number; o
       return "configured rates (no Karpenter in this cluster)";
   }
   return c.source === "karpenter" ? nodes : "configured rates";
+}
+
+/** Short label and tooltip for how a workload was priced, or undefined when it uses the cluster's rates by design. */
+export function allocationNote(p: Pricing | undefined): { label: string; title: string } | undefined {
+  if (!p) return undefined;
+  if (p.allocation === "cluster") {
+    return p.reason
+      ? { label: "cluster average", title: `Priced at the cluster's average rates: ${p.reason}` }
+      : undefined;
+  }
+  const ratio = Number(p.factor) / Number(p.clusterFactor);
+  const rel = Number.isFinite(ratio) && ratio > 0 ? `${ratio.toFixed(2)}× cluster average` : "node prices";
+  const cap = Object.entries(p.capacity ?? {}).sort((a, b) => b[1] - a[1])[0];
+  const types = (p.instanceTypes ?? []).map((t) => `${t.name} ${t.percent}%`).join(", ");
+  const title = [
+    "Priced at the nodes its pods ran on during the learning period.",
+    types && `Instance types: ${types}.`,
+    p.coveragePercent !== undefined && p.coveragePercent < 100
+      ? `${p.coveragePercent}% of requests on priced nodes; the rest at the cluster average.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return { label: cap ? `${rel} · ${cap[1]}% ${cap[0]}` : rel, title };
 }

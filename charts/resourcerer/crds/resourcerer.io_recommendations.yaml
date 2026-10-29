@@ -519,6 +519,58 @@ spec:
                 - Unsupported
                 - Error
                 type: string
+              pricing:
+                description: Pricing records how the costs in Impact were priced.
+                properties:
+                  allocation:
+                    description: Allocation is cluster (the cluster's average rates)
+                      or node (the rates of the nodes the pods ran on).
+                    enum:
+                    - cluster
+                    - node
+                    type: string
+                  capacity:
+                    additionalProperties:
+                      format: int32
+                      type: integer
+                    description: Share of the priced requests per capacity type (spot,
+                      on-demand, reserved), in percent.
+                    type: object
+                  clusterFactor:
+                    type: string
+                  coveragePercent:
+                    description: Share of the workload's requests that ran on nodes
+                      with a price, in percent.
+                    format: int32
+                    type: integer
+                  factor:
+                    description: Factor multiplies the configured rates for this workload;
+                      ClusterFactor is the cluster's average.
+                    type: string
+                  instanceTypes:
+                    description: Instance types that carried most of the priced requests,
+                      with their share in percent.
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        percent:
+                          format: int32
+                          type: integer
+                      required:
+                      - name
+                      - percent
+                      type: object
+                    type: array
+                  reason:
+                    description: Reason explains why node allocation fell back to
+                      the cluster's rates.
+                    type: string
+                required:
+                - allocation
+                - clusterFactor
+                - factor
+                type: object
               reliability:
                 description: Reliability holds signals from the learning period that
                   requests and limits may be too tight.

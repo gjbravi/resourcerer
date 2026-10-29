@@ -10,7 +10,7 @@ fail() {
   printf '\033[31mFAIL\033[0m %s\n' "$*"
   echo "--- recommendations"
   k get recs -A -o wide || true
-  for r in payments/deployment-checkout demo/deployment-api; do
+  for r in payments/deployment-checkout demo/deployment-api pricing/deployment-on-demand-app pricing/deployment-spot-app; do
     echo "--- $r status"
     k -n "${r%%/*}" get rec "${r##*/}" -o json | jq '.status | del(.containers[]?.basis)' || true
   done
@@ -61,6 +61,19 @@ wait_for "istio-proxy is not optimized" 60 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.containers[?(@.name==\"istio-proxy\")].skipped}') == true ]]"
 wait_for "HPA target is recommended for web" 360 bash -c \
   "[[ -n \$(kubectl --context $CTX -n demo get rec deployment-web -o jsonpath='{.status.hpa.recommended}') ]]"
+
+# hack/fake-karpenter.sh prices one worker on-demand (m7g.xlarge, factor 0.84) and the rest spot (t3.xlarge, 0.26).
+wait_for "costs are calibrated to Karpenter prices" 120 bash -c \
+  "curl -fs $API/info | jq -e '.cost.source == \"karpenter\" and .cost.state == \"ok\" and .cost.allocation == \"node\"'"
+wait_for "node allocation finds on-demand-app on the on-demand node" 180 bash -c \
+  "[[ \$(kubectl --context $CTX -n pricing get rec deployment-on-demand-app -o json | jq -r '.status.pricing.capacity[\"on-demand\"] // 0') -ge 90 ]]"
+wait_for "node allocation finds spot-app on spot nodes" 180 bash -c \
+  "[[ \$(kubectl --context $CTX -n pricing get rec deployment-spot-app -o json | jq -r '.status.pricing.capacity.spot // 0') -ge 90 ]]"
+od=$(rec_field pricing deployment-on-demand-app '{.status.impact.current.monthlyCost}')
+spot=$(rec_field pricing deployment-spot-app '{.status.impact.current.monthlyCost}')
+jq -en --argjson od "$od" --argjson spot "$spot" '$od > 2 * $spot' >/dev/null \
+  && pass "the same requests cost more on on-demand (\$$od) than on spot (\$$spot)" \
+  || fail "the same requests cost more on on-demand (\$$od) than on spot (\$$spot)"
 
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/api/apply" -d '{"hash":"stale"}')
 [[ "$code" == 409 ]] && pass "apply with a stale hash is refused" || fail "apply with a stale hash is refused (got $code)"

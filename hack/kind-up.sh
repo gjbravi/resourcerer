@@ -47,13 +47,18 @@ helm upgrade --install argo-rollouts argo/argo-rollouts \
   --kube-context "$CTX" --namespace argo-rollouts --create-namespace --version "$ARGO_ROLLOUTS_CHART_VERSION" \
   --set controller.resources.requests.cpu=20m --set controller.resources.requests.memory=64Mi --wait
 
+log "fake Karpenter metrics and node capacity types"
+"$ROOT/hack/fake-karpenter.sh" "$CTX"
+
 log "demo workloads"
 kubectl --context "$CTX" apply -f "$ROOT/hack/demo.yaml"
 # Fail here, with the reason, if the demo does not fit on the nodes.
 if ! kubectl --context "$CTX" -n demo wait deploy --all --for=condition=Available --timeout=180s ||
   ! kubectl --context "$CTX" -n payments wait deploy/checkout --for=condition=Available --timeout=120s ||
+  ! kubectl --context "$CTX" -n pricing wait deploy --all --for=condition=Available --timeout=120s ||
   ! kubectl --context "$CTX" -n demo wait rollout --all --for=condition=Available --timeout=180s; then
-  kubectl --context "$CTX" get pods -n demo -n payments -o wide
+  kubectl --context "$CTX" get pods -A -o wide | grep -E '^(demo|payments|pricing) '
+
   kubectl --context "$CTX" get events -A --field-selector reason=FailedScheduling | tail -20
   exit 1
 fi

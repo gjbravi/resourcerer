@@ -191,6 +191,56 @@ func PodsByCapacity(r Ref) string {
 )`, quote(r.Namespace), owner(r))
 }
 
+// nodeFactor is each Karpenter node's hourly price over what its allocatable capacity costs at the given rates,
+// labeled node, capacity_type and instance_type. Reserved capacity is priced as on-demand. A node name reused by a
+// new instance keeps both series for a few minutes, so the current series wins and one is kept per node.
+func nodeFactor(cpuRate, memRate float64) string {
+	alloc := func(r string) string {
+		sel := fmt.Sprintf(`karpenter_nodes_allocatable{resource_type="%s"}`, r)
+		return fmt.Sprintf(`(max by (node_name, instance_type, zone, capacity_type) (%s) or on (node_name) max by (node_name, instance_type, zone, capacity_type) (last_over_time(%s[5m])))`, sel, sel)
+	}
+	price := `label_replace(max by (instance_type, zone, capacity_type) (last_over_time(karpenter_cloudprovider_instance_type_offering_price_estimate[5m])), "price_type", "$1", "capacity_type", "(.*)")`
+	nodes := fmt.Sprintf(`label_replace(label_replace(topk by (node_name) (1, %s), "price_type", "$1", "capacity_type", "(.*)"), "price_type", "on-demand", "capacity_type", "reserved")`, alloc("cpu"))
+	value := fmt.Sprintf(`(max by (node_name) (%s) * %g + max by (node_name) (%s) / 2^30 * %g)`, alloc("cpu"), cpuRate, alloc("memory"), memRate)
+	return fmt.Sprintf(`label_replace(
+  (%s * 0 + on (instance_type, zone, price_type) group_left () max by (instance_type, zone, price_type) (%s))
+  / on (node_name) group_left () %s,
+  "node", "$1", "node_name", "(.*)")`, nodes, price, value)
+}
+
+// podWeight is what each running pod of the workload requests, valued at the given rates and labeled with its node.
+// A pod name reused on another node can leave two kube_pod_info series, so one is kept per pod.
+func podWeight(r Ref, cpuRate, memRate float64) string {
+	ns := quote(r.Namespace)
+	return fmt.Sprintf(`sum by (namespace, pod) (
+    kube_pod_container_resource_requests{namespace="%[1]s", resource="cpu"} * %[2]g
+    or kube_pod_container_resource_requests{namespace="%[1]s", resource="memory"} / 2^30 * %[3]g
+  )
+  * on (namespace, pod) group_left () (max by (namespace, pod) (kube_pod_status_phase{namespace="%[1]s", phase="Running"}) == 1)
+  * on (namespace, pod) group_left () %[4]s
+  * on (namespace, pod) group_left (node) topk by (namespace, pod) (1, max by (namespace, pod, node) (kube_pod_info{namespace="%[1]s", node!=""}))`,
+		ns, cpuRate, memRate, owner(r))
+}
+
+// WorkloadNodeCost is the workload's requests valued at the given rates and multiplied by its nodes' factor, per
+// capacity type and instance type joined as "capacity_type|instance_type" in the key label. With priced set, the
+// factor is left out: the requests that run on priced nodes.
+func WorkloadNodeCost(r Ref, cpuRate, memRate float64, priced bool) string {
+	f := nodeFactor(cpuRate, memRate)
+	if priced {
+		f = fmt.Sprintf("(%s * 0 + 1)", f)
+	}
+	return fmt.Sprintf(`label_join(sum by (capacity_type, instance_type) (
+  (%s)
+  * on (node) group_left (capacity_type, instance_type) %s
+), "key", "|", "capacity_type", "instance_type")`, podWeight(r, cpuRate, memRate), f)
+}
+
+// WorkloadRequestValue is the workload's requests valued at the given rates, on any node.
+func WorkloadRequestValue(r Ref, cpuRate, memRate float64) string {
+	return fmt.Sprintf("sum(%s)", podWeight(r, cpuRate, memRate))
+}
+
 // ClusterAllocatable is what the nodes offer to pods, from kube-state-metrics.
 func ClusterAllocatable(resource string) string {
 	return fmt.Sprintf(`sum(kube_node_status_allocatable{resource="%s"})`, resource)
@@ -226,9 +276,21 @@ func Step(window time.Duration, minStep time.Duration) time.Duration {
 
 // Range runs a range query and returns one series per value of label (empty label: a single series under "").
 func (c *Client) Range(ctx context.Context, q string, start, end time.Time, step time.Duration, label string) (map[string][]Point, error) {
-	v, _, err := c.API.QueryRange(ctx, q, promv1.Range{Start: start, End: end, Step: step})
+	return c.rangeQuery(ctx, q, start, end, step, label, false)
+}
+
+// RangeComplete is Range that fails on warnings, such as a partial response from Thanos when a store is down.
+func (c *Client) RangeComplete(ctx context.Context, q string, start, end time.Time, step time.Duration, label string) (map[string][]Point, error) {
+	return c.rangeQuery(ctx, q, start, end, step, label, true)
+}
+
+func (c *Client) rangeQuery(ctx context.Context, q string, start, end time.Time, step time.Duration, label string, complete bool) (map[string][]Point, error) {
+	v, warnings, err := c.API.QueryRange(ctx, q, promv1.Range{Start: start, End: end, Step: step})
 	if err != nil {
 		return nil, err
+	}
+	if complete && len(warnings) > 0 {
+		return nil, fmt.Errorf("incomplete result: %s", strings.Join(warnings, "; "))
 	}
 	m, ok := v.(model.Matrix)
 	if !ok {

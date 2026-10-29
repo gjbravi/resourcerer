@@ -20,6 +20,7 @@ helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <ver
 | `excludedNamespaces` | `kube-system`, `kube-public`, `kube-node-lease` | Never managed; the release namespace is added. |
 | `defaults` | `{}` | Cluster defaults for settings, keyed by annotation name without `resourcerer.io/`. |
 | `cost.source` | `auto` | `static` (`cost.rates`), `karpenter` (rates calibrated to Karpenter node prices, an error when missing) or `auto` (Karpenter when available). |
+| `cost.allocation` | `cluster` | `cluster` (every workload at the cluster's average rates) or `node` (each workload at the rates of the nodes its pods ran on; needs Karpenter prices). |
 | `cost.rates.cpuCoreHour`, `cost.rates.memoryGiBHour` | `0.0316`, `0.0042` | USD rates; with Karpenter, the CPU to memory ratio. |
 | `cost.karpenter.refreshInterval` | `10m` | How often rates are recalibrated from Karpenter prices; at least `30s`. |
 | `auth.strategy` | `anonymous` | Only `anonymous` for now. |

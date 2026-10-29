@@ -107,6 +107,33 @@ type Impact struct {
 	Recommended Totals `json:"recommended"`
 }
 
+// Pricing records how the costs in Impact were priced.
+type Pricing struct {
+	// Allocation is cluster (the cluster's average rates) or node (the rates of the nodes the pods ran on).
+	// +kubebuilder:validation:Enum=cluster;node
+	Allocation string `json:"allocation"`
+	// Factor multiplies the configured rates for this workload; ClusterFactor is the cluster's average.
+	Factor        string `json:"factor"`
+	ClusterFactor string `json:"clusterFactor"`
+	// Share of the workload's requests that ran on nodes with a price, in percent.
+	// +optional
+	CoveragePercent int32 `json:"coveragePercent,omitempty"`
+	// Share of the priced requests per capacity type (spot, on-demand, reserved), in percent.
+	// +optional
+	Capacity map[string]int32 `json:"capacity,omitempty"`
+	// Instance types that carried most of the priced requests, with their share in percent.
+	// +optional
+	InstanceTypes []InstanceTypeShare `json:"instanceTypes,omitempty"`
+	// Reason explains why node allocation fell back to the cluster's rates.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+}
+
+type InstanceTypeShare struct {
+	Name    string `json:"name"`
+	Percent int32  `json:"percent"`
+}
+
 // Reliability holds signals from the learning period that requests and limits may be too tight.
 type Reliability struct {
 	// +optional
@@ -185,6 +212,8 @@ type RecommendationStatus struct {
 	Score *Score `json:"score,omitempty"`
 	// +optional
 	Impact *Impact `json:"impact,omitempty"`
+	// +optional
+	Pricing *Pricing `json:"pricing,omitempty"`
 	// OOM kills seen during the learning period.
 	// +optional
 	OOMKills int32 `json:"oomKills,omitempty"`

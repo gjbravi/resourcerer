@@ -13,7 +13,7 @@ import (
 var static = engine.Rates{CPUCoreHour: 0.0316, MemoryGiBHour: 0.0042}
 
 func TestCalibrate(t *testing.T) {
-	// develop-pe: 115.9 cores and 417.3GiB of Karpenter nodes cost $2.1751/h, $5.41/h at the static rates.
+	// 115.9 cores and 417.3GiB of Karpenter nodes cost $2.1751/h, $5.41/h at the static rates.
 	got := Calibrate(static, 2.1751, 115.9, 417.3*engine.Gi)
 	if math.Abs(got.CPUCoreHour-0.01271) > 0.0001 || math.Abs(got.MemoryGiBHour-0.00169) > 0.00001 {
 		t.Errorf("rates = %+v, want about 0.0127/core-h and 0.0017/GiB-h", got)

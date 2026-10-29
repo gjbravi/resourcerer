@@ -111,7 +111,7 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 
 func costInfo(p cluster.Pricing) Cost {
 	c := Cost{CPUCoreHour: p.Rates.CPUCoreHour, MemoryGiBHour: p.Rates.MemoryGiBHour, Mode: p.Mode, Source: p.Source,
-		State: p.State, Reason: p.Reason, Nodes: p.Nodes, Spot: p.Spot, OnDemand: p.OnDemand,
+		Allocation: p.Allocation, State: p.State, Reason: p.Reason, Nodes: p.Nodes, Spot: p.Spot, OnDemand: p.OnDemand,
 		HourlyCost: p.HourlyCost, OnDemandHourlyCost: p.OnDemandHourlyCost}
 	if !p.CalibratedAt.IsZero() {
 		c.CalibratedAt = p.CalibratedAt.UTC().Format(time.RFC3339)
@@ -315,6 +315,7 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Events = s.events(r.Context(), rec)
 	d.Capacity = s.capacity(r.Context(), rec)
+	d.Pricing = rec.Status.Pricing
 	writeJSON(w, d)
 }
 

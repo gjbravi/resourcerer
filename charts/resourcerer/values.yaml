@@ -51,6 +51,12 @@ cost:
   # `auto`: `karpenter` when its metrics are in Prometheus, `static` otherwise.
   # A failed recalibration keeps the last good one instead of falling back to `rates`.
   source: auto
+  # -- How the rates are split between workloads.
+  # `cluster`: every workload at the cluster's average rates.
+  # `node`: each workload at the rates of the nodes its pods ran on, weighted by time and requests over the learning
+  # period (at most 7 days), so on-demand workloads cost more than spot ones. Needs `karpenter` as the source in use;
+  # otherwise, and for requests on nodes without a price, the cluster's average applies.
+  allocation: cluster
   # -- With `static`, the rates in USD. With `karpenter`, the CPU to memory ratio, and the rates until the first
   # calibration.
   rates:

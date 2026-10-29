@@ -47,6 +47,10 @@ const (
 // Pricing is the rates every cost estimate uses, and where they come from.
 type Pricing struct {
 	Rates engine.Rates
+	// Static is the configured rates; Rates over Static is the cluster factor.
+	Static engine.Rates
+	// Allocation is how the rates are split between workloads: cluster or node.
+	Allocation string
 	// Mode is the configured source; Source is the one in use, karpenter or static.
 	Mode, Source string
 	State        string
@@ -170,6 +174,17 @@ func (p *Pricer) karpenter(ctx context.Context) (Pricing, error) {
 		}
 	}
 	return out, nil
+}
+
+// ClusterFactor is how much the rates in use differ from the configured ones.
+func (p Pricing) ClusterFactor() float64 {
+	if p.Static.CPUCoreHour > 0 {
+		return p.Rates.CPUCoreHour / p.Static.CPUCoreHour
+	}
+	if p.Static.MemoryGiBHour > 0 {
+		return p.Rates.MemoryGiBHour / p.Static.MemoryGiBHour
+	}
+	return 1
 }
 
 // Calibrate scales configured rates so the capacity they price costs what the nodes cost per hour. The CPU to
