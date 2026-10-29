@@ -144,6 +144,9 @@ jobs:
   passed:
     needs: [gate, go, web, chart, e2e]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
     steps:
       - run: echo "${{ needs.gate.outputs.tree }}" > tree.txt
       - uses: actions/upload-artifact@v7
@@ -151,3 +154,15 @@ jobs:
           name: ci-passed-${{ needs.gate.outputs.tree }}
           path: tree.txt
           retention-days: 90
+      # Check runs of a dispatched run are not linked to pull requests, so release-please's pull request would
+      # wait for the required checks forever; commit statuses with the same names are.
+      - name: Report the required checks on the commit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          for check in go web chart e2e; do
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=success -f context="$check" \
+              -f description="Passed in a dispatched CI run" -f target_url="$RUN_URL" >/dev/null
+          done

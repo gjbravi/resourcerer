@@ -26,14 +26,15 @@ Please do not open public issues for security problems. You will get an acknowle
 ## Verifying releases
 
 Images and charts are signed with [cosign](https://github.com/sigstore/cosign) keyless signing from the release
-workflow, and images carry an SBOM and SLSA provenance:
+workflow, and images carry an SBOM and SLSA provenance. Releases from 0.3.0 are signed by the workflow on `main`,
+earlier ones by the workflow on their tag:
 
 ```bash
 cosign verify ghcr.io/gjbravi/resourcerer:<version> \
-  --certificate-identity-regexp '^https://github.com/gjbravi/resourcerer/\.github/workflows/release\.yaml@refs/tags/v' \
+  --certificate-identity-regexp '^https://github.com/gjbravi/resourcerer/\.github/workflows/release\.yaml@refs/(heads/main|tags/v.+)$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
 cosign verify ghcr.io/gjbravi/charts/resourcerer:<version> \
-  --certificate-identity-regexp '^https://github.com/gjbravi/resourcerer/\.github/workflows/release\.yaml@refs/tags/v' \
+  --certificate-identity-regexp '^https://github.com/gjbravi/resourcerer/\.github/workflows/release\.yaml@refs/(heads/main|tags/v.+)$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
