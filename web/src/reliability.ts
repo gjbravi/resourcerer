@@ -6,6 +6,8 @@ export interface Signal {
   detail: string;
   /** The live check that measures the same thing. */
   check: { id: Check["id"]; container?: string };
+  /** The recommendation itself fixes it, by raising the memory or the CPU limit. */
+  fixed?: boolean;
 }
 
 /** Same threshold as the engine: from here the recommendation raises the CPU limit. */
@@ -23,6 +25,7 @@ export function signals(w: Summary): Signal[] {
       title: `${w.oomKills} OOM ${w.oomKills === 1 ? "kill" : "kills"}`,
       detail: "The memory recommendation is raised above the limit that killed it.",
       check: { id: "oom" },
+      fixed: true,
     });
   if (r?.crashLooping?.length)
     out.push({
@@ -42,6 +45,7 @@ export function signals(w: Summary): Signal[] {
             ? "The CPU limit caps it in bursts; the recommendation raises the limit."
             : "The CPU limit caps it in short bursts.",
         check: { id: "throttling", container: c.name },
+        fixed: t >= THROTTLED_RAISE,
       });
   }
   if (w.oomKills === 0)

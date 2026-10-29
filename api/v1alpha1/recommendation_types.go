@@ -107,6 +107,26 @@ type Impact struct {
 	Recommended Totals `json:"recommended"`
 }
 
+// Evidence is how the recommendation would have held up against the usage history it was computed from.
+type Evidence struct {
+	// History is how much usage history the recommendation saw, and Learning the learning period, in seconds.
+	HistorySeconds  int64 `json:"historySeconds"`
+	LearningSeconds int64 `json:"learningSeconds"`
+	// Share of samples in which the busiest pod used more than the recommended request, worst container, in percent.
+	// +optional
+	CPUAbovePercent int32 `json:"cpuAbovePercent,omitempty"`
+	// +optional
+	MemoryAbovePercent int32 `json:"memoryAbovePercent,omitempty"`
+	// Highest usage of the busiest pod as a percent of the recommended request, worst container.
+	// +optional
+	CPUPeakPercent int32 `json:"cpuPeakPercent,omitempty"`
+	// +optional
+	MemoryPeakPercent int32 `json:"memoryPeakPercent,omitempty"`
+	// Used is p95 usage × average replicas, priced like the requests: what the workload needs.
+	// +optional
+	Used *Totals `json:"used,omitempty"`
+}
+
 // Pricing records how the costs in Impact were priced.
 type Pricing struct {
 	// Allocation is cluster (the cluster's average rates) or node (the rates of the nodes the pods ran on).
@@ -214,6 +234,8 @@ type RecommendationStatus struct {
 	Impact *Impact `json:"impact,omitempty"`
 	// +optional
 	Pricing *Pricing `json:"pricing,omitempty"`
+	// +optional
+	Evidence *Evidence `json:"evidence,omitempty"`
 	// OOM kills seen during the learning period.
 	// +optional
 	OOMKills int32 `json:"oomKills,omitempty"`

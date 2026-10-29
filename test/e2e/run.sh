@@ -75,6 +75,12 @@ jq -en --argjson od "$od" --argjson spot "$spot" '$od > 2 * $spot' >/dev/null \
   && pass "the same requests cost more on on-demand (\$$od) than on spot (\$$spot)" \
   || fail "the same requests cost more on on-demand (\$$od) than on spot (\$$spot)"
 
+curl -fs "$API/workloads/pricing/Deployment/on-demand-app/placement" \
+  | jq -e '.available and .capacity["on-demand"].requests > 0.9 and (.types[0].name == "m7g.xlarge") and (.timeline | length) > 0' >/dev/null \
+  && pass "placement shows where on-demand-app ran" || fail "placement shows where on-demand-app ran"
+wait_for "the recommendation records evidence from its history" 120 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-api -o json | jq -e '.status.evidence.historySeconds > 0 and (.status.evidence.used.cpu | tonumber) > 0'"
+
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/api/apply" -d '{"hash":"stale"}')
 [[ "$code" == 409 ]] && pass "apply with a stale hash is refused" || fail "apply with a stale hash is refused (got $code)"
 

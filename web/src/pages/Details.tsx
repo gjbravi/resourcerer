@@ -4,7 +4,9 @@ import {
   ArrowUp,
   Boxes,
   ChevronLeft,
+  CircleCheck,
   CircleDollarSign,
+  CircleX,
   Cpu,
   Flame,
   Hourglass,
@@ -36,9 +38,11 @@ import {
   StatusBadge,
   phaseTone,
 } from "../components";
-import { ago, allocationNote, costSource, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
-import { toast, useAction, useImpact, useInfo, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
+import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
+import { toast, useAction, useImpact, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
 import { resolved, signals, type Signal } from "../reliability";
+import { verdict } from "../verdict";
+import { CostSection } from "./Placement";
 import { ReliabilityTab } from "./ReliabilityTab";
 import { meta } from "../settings";
 
@@ -186,24 +190,6 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
       </div>
 
       <section className="rz-card rz-kpis">
-        <div className="rz-kpi">
-          <span>
-            <Cpu size={15} /> CPU requested
-          </span>
-          <b>
-            {fmtCores(d.recommended.cpu)} <Delta from={d.current.cpu} to={d.recommended.cpu} r="cpu" />
-          </b>
-          <span className="rz-dim rz-xs">from {fmtCores(d.current.cpu)}</span>
-        </div>
-        <div className="rz-kpi">
-          <span>
-            <MemoryStick size={15} /> Memory requested
-          </span>
-          <b>
-            {fmtMem(d.recommended.memory)} <Delta from={d.current.memory} to={d.recommended.memory} r="memory" />
-          </b>
-          <span className="rz-dim rz-xs">from {fmtMem(d.current.memory)}</span>
-        </div>
         <div className="rz-kpi">
           <span>
             <ShieldCheck size={15} /> Reliability
@@ -620,22 +606,118 @@ function ReliabilityAlert({ d, sig }: { d: Detail; sig: Signal[] }) {
   );
 }
 
-/** Where the cost comes from: the rates, and whether the pods run on spot or on-demand nodes. */
-function CostNote({ d }: { d: Detail }) {
-  const info = useInfo().data;
-  const c = d.capacity ?? {};
-  const pods = Object.values(c).reduce((a, n) => a + n, 0);
-  const alloc = allocationNote(d.pricing);
+function ImpactTab({ d }: { d: Detail }) {
+  const [range, setRange] = useState<Range>("1h");
+  const [resource, setResource] = useState<Resource>("cpu");
+  const recent = useReliability(d, "15m", true).data;
+  const v = verdict(
+    d,
+    signals(d).filter((x) => !resolved(x, recent)),
+  );
+  const used = d.evidence?.used;
+  const usedCost = used ? Number(used.monthlyCost) : undefined;
+  const idle = usedCost != null ? d.current.monthlyCost - usedCost : undefined;
+  const ev = d.evidence;
   return (
-    <a href="#/settings" title={alloc?.title ?? (info ? costSource(info.cost) : undefined)}>
-      {info?.cost.source === "karpenter" ? "Karpenter prices" : "Configured rates"}
-      {alloc ? ` · ${alloc.label}` : pods > 0 && ` · ${c.spot ?? 0} of ${pods} ${pods === 1 ? "pod" : "pods"} on spot`}
-    </a>
+    <>
+      <section className={`rz-card rz-verdict t-${v.tone}`}>
+        <span className="ic">
+          {v.tone === "ok" ? (
+            <CircleCheck size={20} />
+          ) : v.tone === "wait" ? (
+            <Hourglass size={20} />
+          ) : v.tone === "bad" ? (
+            <CircleX size={20} />
+          ) : (
+            <TriangleAlert size={20} />
+          )}
+        </span>
+        <div>
+          <h2>
+            {v.title}
+            {v.effect && <span className="eff"> · {v.effect}</span>}
+          </h2>
+          <ul className="rz-reasons">
+            {v.reasons
+              .filter((r) => r.text)
+              .map((r) => (
+                <li key={r.text} className={r.tone}>
+                  {r.text}
+                </li>
+              ))}
+          </ul>
+        </div>
+        <span
+          className="rz-soon"
+          title="Statistical models that estimate the chance of peaks beyond the usage history are on the way."
+        >
+          <Sparkles size={12} /> Decision models coming soon
+        </span>
+      </section>
+
+      <div className="rz-ba-grid">
+        <BeforeAfter
+          icon={<CircleDollarSign size={15} />}
+          label="Monthly cost"
+          from={d.current.monthlyCost}
+          to={d.recommended.monthlyCost}
+          fmt={fmtMoney}
+          delta={<Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />}
+          note={
+            idle != null && idle > 0.005 ? `${fmtMoney(idle)} of it pays for capacity the pods do not use` : undefined
+          }
+        />
+        <BeforeAfter
+          icon={<Cpu size={15} />}
+          label="CPU, all replicas"
+          from={d.current.cpu}
+          to={d.recommended.cpu}
+          fmt={fmtCores}
+          delta={<Delta from={d.current.cpu} to={d.recommended.cpu} r="cpu" />}
+          note={used ? `uses ${fmtCores(Number(used.cpu))} at p95` : undefined}
+        />
+        <BeforeAfter
+          icon={<MemoryStick size={15} />}
+          label="Memory, all replicas"
+          from={d.current.memory}
+          to={d.recommended.memory}
+          fmt={fmtMem}
+          delta={<Delta from={d.current.memory} to={d.recommended.memory} r="memory" />}
+          note={used ? `uses ${fmtMem(Number(used.memory))} at p95` : undefined}
+        />
+      </div>
+
+      <section className="rz-card pad">
+        <div className="rz-sechd">
+          <h2>Usage against the recommendation</h2>
+          <div className="rz-ba-ctl">
+            <div className="rz-zoom" role="group" aria-label="Resource">
+              {(["cpu", "memory"] as const).map((r) => (
+                <button key={r} aria-pressed={resource === r} onClick={() => setResource(r)}>
+                  {r === "cpu" ? "CPU" : "Memory"}
+                </button>
+              ))}
+            </div>
+            <Zoom value={range} onChange={setRange} />
+          </div>
+        </div>
+        {ev && (
+          <p className="rz-dim rz-xs rz-headroom">
+            {resource === "cpu"
+              ? `During the learning period, the busiest pod peaked at ${ev.cpuPeakPercent ?? 0}% of the recommended CPU and used more than it ${ev.cpuAbovePercent ?? 0}% of the time.`
+              : `During the learning period, the busiest pod peaked at ${ev.memoryPeakPercent ?? 0}% of the recommended memory.`}
+          </p>
+        )}
+        <ImpactChart d={d} resource={resource} range={range} />
+      </section>
+
+      <CostSection d={d} />
+    </>
   );
 }
 
-/** One figure before and after the recommendation, with bars on a shared scale. */
-function ImpactCard({
+/** One figure now and with the recommendation, on a shared scale. */
+function BeforeAfter({
   icon,
   label,
   from,
@@ -650,11 +732,11 @@ function ImpactCard({
   to: number;
   fmt: (v: number) => string;
   delta: ReactNode;
-  note?: ReactNode;
+  note?: string;
 }) {
   const top = Math.max(from, to) || 1;
   return (
-    <div className="rz-impactcard">
+    <div className="rz-card rz-bacard">
       <span className="lbl">
         {icon} {label}
       </span>
@@ -662,67 +744,20 @@ function ImpactCard({
         <b>{fmt(to)}</b>
         {delta}
       </div>
-      {note && <span className="note">{note}</span>}
       <div className="bars">
-        <div className="bar">
-          <span className="k">Now</span>
-          <span className="track">
-            <i className="cur" style={{ width: `${(from / top) * 100}%` }} />
-          </span>
-          <span className="v">{fmt(from)}</span>
-        </div>
-        <div className="bar">
-          <span className="k">After</span>
-          <span className="track">
-            <i className="rec" style={{ width: `${(to / top) * 100}%` }} />
-          </span>
-          <span className="v">{fmt(to)}</span>
-        </div>
+        <span className="k">Now</span>
+        <span className="track">
+          <i className="cur" style={{ width: `${(from / top) * 100}%` }} />
+        </span>
+        <span className="v">{fmt(from)}</span>
+        <span className="k">After</span>
+        <span className="track">
+          <i className="rec" style={{ width: `${(to / top) * 100}%` }} />
+        </span>
+        <span className="v">{fmt(to)}</span>
       </div>
+      {note && <span className="note rz-dim rz-xs">{note}</span>}
     </div>
-  );
-}
-
-function ImpactTab({ d }: { d: Detail }) {
-  const [range, setRange] = useState<Range>("1h");
-  return (
-    <>
-      <div className="rz-sechd">
-        <h2>Projected impact</h2>
-        <Zoom value={range} onChange={setRange} />
-      </div>
-      <div className="rz-impact">
-        <ImpactCard
-          icon={<CircleDollarSign size={16} />}
-          label="Monthly cost"
-          from={d.current.monthlyCost}
-          to={d.recommended.monthlyCost}
-          fmt={fmtMoney}
-          delta={<Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />}
-          note={<CostNote d={d} />}
-        />
-        <ImpactCard
-          icon={<Cpu size={16} />}
-          label="CPU requested"
-          from={d.current.cpu}
-          to={d.recommended.cpu}
-          fmt={fmtCores}
-          delta={<Delta from={d.current.cpu} to={d.recommended.cpu} r="cpu" />}
-        />
-        <ImpactCard
-          icon={<MemoryStick size={16} />}
-          label="Memory requested"
-          from={d.current.memory}
-          to={d.recommended.memory}
-          fmt={fmtMem}
-          delta={<Delta from={d.current.memory} to={d.recommended.memory} r="memory" />}
-        />
-      </div>
-      <div className="rz-card pad">
-        <ImpactChart d={d} resource="cpu" range={range} />
-        <ImpactChart d={d} resource="memory" range={range} />
-      </div>
-    </>
   );
 }
 

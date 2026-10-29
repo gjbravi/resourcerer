@@ -55,6 +55,18 @@ export interface CostInfo {
   refresh?: string;
 }
 
+/** How the recommendation holds up against the usage history it was computed from. */
+export interface Evidence {
+  historySeconds: number;
+  learningSeconds: number;
+  cpuAbovePercent?: number;
+  memoryAbovePercent?: number;
+  cpuPeakPercent?: number;
+  memoryPeakPercent?: number;
+  /** p95 usage × average replicas; numbers are decimal strings like Totals in the CRD. */
+  used?: { cpu: string; memory: string; monthlyCost: string };
+}
+
 /** How a workload's costs were priced; factors multiply the configured rates and are decimal strings. */
 export interface Pricing {
   allocation: "cluster" | "node";
@@ -130,6 +142,28 @@ export interface ReliabilityReport {
   checks: Check[];
 }
 
+export interface PlacementUse {
+  requests: number;
+  cost: number;
+}
+
+/** Where a workload's requests ran over its learning period; shares are fractions, factors multiply the rates. */
+export interface Placement {
+  available: boolean;
+  reason?: string;
+  allocation: "cluster" | "node";
+  from?: number;
+  to?: number;
+  step?: number;
+  factor?: number;
+  clusterFactor: number;
+  coverage?: number;
+  capacity?: Record<string, PlacementUse>;
+  unpriced: PlacementUse;
+  types?: ({ name: string; capacity: string; factor: number } & PlacementUse)[];
+  timeline?: { t: number; requests: Record<string, number>; cost: Record<string, number> }[];
+}
+
 export type ReliabilityWindow = "learning" | "1d" | "6h" | "1h" | "15m";
 
 export interface Container {
@@ -154,6 +188,7 @@ export interface Detail extends Summary {
   /** Pods per capacity type of their Karpenter node. */
   capacity?: Record<string, number>;
   pricing?: Pricing;
+  evidence?: Evidence;
   nextScheduleAt?: string;
   containers: Container[] | null;
   hpaRecommendation?: { name: string; current: number; recommended: number; clamped: boolean };
@@ -221,6 +256,7 @@ export const api = {
     ),
   impact: (w: Ref, resource: Resource, range: Range) =>
     call<Series>("GET", `${path(w)}/impact?resource=${resource}&range=${range}`),
+  placement: (w: Ref) => call<Placement>("GET", `${path(w)}/placement`),
   reliability: (w: Ref, window: ReliabilityWindow) =>
     call<ReliabilityReport>("GET", `${path(w)}/reliability?window=${window}`),
   clusterSeries: (resource: Resource, range: Range) =>

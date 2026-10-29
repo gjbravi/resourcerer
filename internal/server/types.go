@@ -134,6 +134,8 @@ type Detail struct {
 	Summary
 	// Capacity counts the workload's pods per capacity type of their Karpenter node (spot, on-demand).
 	Capacity map[string]int `json:"capacity,omitempty"`
+	// Evidence is how the recommendation holds up against the usage history.
+	Evidence *v1alpha1.Evidence `json:"evidence,omitempty"`
 	// Pricing is how the workload's costs were priced.
 	Pricing         *v1alpha1.Pricing `json:"pricing,omitempty"`
 	NextScheduleAt  string            `json:"nextScheduleAt,omitempty"`
@@ -188,4 +190,42 @@ type ReliabilityReport struct {
 	Step        float64 `json:"step"`
 	GeneratedAt string  `json:"generatedAt"`
 	Checks      []Check `json:"checks"`
+}
+
+// Placement is where a workload's requests ran over its learning period. Shares are fractions of its requests or
+// of its cost; factors multiply the configured rates. Unavailable without Karpenter prices, with a reason.
+type Placement struct {
+	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
+	// Allocation is the configured cost.allocation: whether the workload's cost uses Factor or ClusterFactor.
+	Allocation    string                  `json:"allocation"`
+	From          float64                 `json:"from,omitempty"`
+	To            float64                 `json:"to,omitempty"`
+	Step          float64                 `json:"step,omitempty"`
+	Factor        float64                 `json:"factor,omitempty"`
+	ClusterFactor float64                 `json:"clusterFactor"`
+	Coverage      float64                 `json:"coverage,omitempty"`
+	Capacity      map[string]PlacementUse `json:"capacity,omitempty"`
+	Unpriced      PlacementUse            `json:"unpriced"`
+	Types         []PlacementType         `json:"types,omitempty"`
+	Timeline      []PlacementBucket       `json:"timeline,omitempty"`
+}
+
+type PlacementUse struct {
+	Requests float64 `json:"requests"`
+	Cost     float64 `json:"cost"`
+}
+
+type PlacementType struct {
+	Name     string  `json:"name"`
+	Capacity string  `json:"capacity"`
+	Factor   float64 `json:"factor"`
+	PlacementUse
+}
+
+// PlacementBucket shares requests and cost between capacity types, "unpriced" included, from T for one period.
+type PlacementBucket struct {
+	T        float64            `json:"t"`
+	Requests map[string]float64 `json:"requests"`
+	Cost     map[string]float64 `json:"cost"`
 }

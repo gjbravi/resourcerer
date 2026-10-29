@@ -253,6 +253,53 @@ spec:
                   - name
                   type: object
                 type: array
+              evidence:
+                description: Evidence is how the recommendation would have held up
+                  against the usage history it was computed from.
+                properties:
+                  cpuAbovePercent:
+                    description: Share of samples in which the busiest pod used more
+                      than the recommended request, worst container, in percent.
+                    format: int32
+                    type: integer
+                  cpuPeakPercent:
+                    description: Highest usage of the busiest pod as a percent of
+                      the recommended request, worst container.
+                    format: int32
+                    type: integer
+                  historySeconds:
+                    description: History is how much usage history the recommendation
+                      saw, and Learning the learning period, in seconds.
+                    format: int64
+                    type: integer
+                  learningSeconds:
+                    format: int64
+                    type: integer
+                  memoryAbovePercent:
+                    format: int32
+                    type: integer
+                  memoryPeakPercent:
+                    format: int32
+                    type: integer
+                  used:
+                    description: 'Used is p95 usage × average replicas, priced like
+                      the requests: what the workload needs.'
+                    properties:
+                      cpu:
+                        type: string
+                      memory:
+                        type: string
+                      monthlyCost:
+                        type: string
+                    required:
+                    - cpu
+                    - memory
+                    - monthlyCost
+                    type: object
+                required:
+                - historySeconds
+                - learningSeconds
+                type: object
               generatedAt:
                 format: date-time
                 type: string

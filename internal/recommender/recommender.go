@@ -253,6 +253,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		Recommended: totals(sum.Recommended),
 	}
 	rec.Status.Pricing = priced
+	rec.Status.Evidence = nil
+	if out.Phase != "Pending" && out.Phase != "Unsupported" {
+		ev := engine.Replay(in.Containers, out, avg, rates)
+		used := totals(ev.Used)
+		rec.Status.Evidence = &v1alpha1.Evidence{
+			HistorySeconds: int64(in.History.Seconds()), LearningSeconds: int64(eff.Duration(settings.LearningPeriod).Seconds()),
+			CPUAbovePercent: percent(ev.Above[engine.CPU]), MemoryAbovePercent: percent(ev.Above[engine.Memory]),
+			CPUPeakPercent: percent(ev.Peak[engine.CPU]), MemoryPeakPercent: percent(ev.Peak[engine.Memory]),
+			Used: &used,
+		}
+	}
 	since := now.Add(-eff.Duration(settings.LearningPeriod))
 	rec.Status.OOMKills = int32(r.oomKills(ctx, w, since))
 	rec.Status.Reliability = r.reliability(ctx, w, in.Containers, since)

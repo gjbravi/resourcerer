@@ -61,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}/series", s.series)
 	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}/impact", s.impact)
 	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}/reliability", s.reliability)
+	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}/placement", s.placement)
 	mux.HandleFunc("POST /api/v1/workloads/{ns}/{kind}/{name}/apply", s.write(s.apply))
 	mux.HandleFunc("POST /api/v1/workloads/{ns}/{kind}/{name}/revert", s.write(s.revert))
 	mux.HandleFunc("POST /api/v1/workloads/{ns}/{kind}/{name}/regenerate", s.write(s.regenerate))
@@ -316,6 +317,7 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 	d.Events = s.events(r.Context(), rec)
 	d.Capacity = s.capacity(r.Context(), rec)
 	d.Pricing = rec.Status.Pricing
+	d.Evidence = rec.Status.Evidence
 	writeJSON(w, d)
 }
 

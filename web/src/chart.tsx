@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import { Area, CartesianGrid, ComposedChart, Line as RLine, ReferenceLine, Tooltip, XAxis, YAxis } from "recharts";
 import type { Point, Series } from "./api";
 
-function useWidth() {
+export function useWidth() {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(800);
   useEffect(() => {
