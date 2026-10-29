@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/gjbravi/resourcerer/compare/v0.4.0...v0.5.0) (2026-10-29)
+
+
+### Features
+
+* **ui:** decision-first impact tab with placement and evidence ([#19](https://github.com/gjbravi/resourcerer/issues/19)) ([faf62fe](https://github.com/gjbravi/resourcerer/commit/faf62fe653825d2cb2723d127701eaab904c225f))
+
 ## [0.4.0](https://github.com/gjbravi/resourcerer/compare/v0.3.1...v0.4.0) (2026-10-29)
 
 
