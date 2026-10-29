@@ -17,11 +17,24 @@
     "defaults": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } },
     "cost": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "source": { "type": "string", "enum": ["auto", "karpenter", "static"] },
-        "refreshInterval": { "type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(ms|s|m|h))+$" },
-        "cpuCoreHour": { "type": "number", "minimum": 0 },
-        "memoryGiBHour": { "type": "number", "minimum": 0 }
+        "rates": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cpuCoreHour": { "type": "number", "minimum": 0 },
+            "memoryGiBHour": { "type": "number", "minimum": 0 }
+          }
+        },
+        "karpenter": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "refreshInterval": { "type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(ms|s|m|h))+$" }
+          }
+        }
       }
     },
     "auth": { "type": "object", "properties": { "strategy": { "type": "string", "enum": ["anonymous"] } } },

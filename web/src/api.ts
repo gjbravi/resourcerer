@@ -37,15 +37,18 @@ export interface Info {
 export interface CostInfo {
   cpuCoreHour: number;
   memoryGiBHour: number;
-  /** "karpenter": calibrated to node prices; "static": the configured rates. */
+  /** The configured cost.source. */
+  mode: "auto" | "karpenter" | "static";
+  /** The source in use: rates calibrated to Karpenter node prices, or the configured rates. */
   source: "karpenter" | "static";
+  state: "ok" | "stale" | "fallback" | "error";
   reason?: string;
   nodes?: number;
   spot?: number;
   onDemand?: number;
   hourlyCost?: number;
   onDemandHourlyCost?: number;
-  updatedAt?: string;
+  calibratedAt?: string;
   /** How often calibrated rates are recomputed, as a Go duration. */
   refresh?: string;
 }

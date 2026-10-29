@@ -42,17 +42,24 @@ defaults: {}
   # schedule: "@daily"
   # auto-deploy: Disabled
 
-# -- Rates for monthly cost estimates, in USD.
+# -- Monthly cost estimates: requests × average replicas × hourly rates × 730.
 cost:
-  # -- `auto` calibrates the rates below to what the nodes cost, from Karpenter's price estimates in Prometheus
-  # (spot and on-demand per node), and uses them as they are without Karpenter. `karpenter` and `static` force one.
+  # -- Where the rates come from.
+  # `static`: `rates` as they are.
+  # `karpenter`: `rates` scaled so the Karpenter nodes cost what Karpenter's price estimates say, spot or on-demand;
+  # the UI reports an error when the prices are missing or keep failing.
+  # `auto`: `karpenter` when its metrics are in Prometheus, `static` otherwise.
+  # A failed recalibration keeps the last good one instead of falling back to `rates`.
   source: auto
-  # -- How often rates are recalibrated from Karpenter prices (Go duration, at least 30s). Workload costs pick up
-  # new rates when their recommendation is next generated.
-  refreshInterval: 10m
-  # -- With Karpenter prices these set the CPU to memory ratio; otherwise they are the rates.
-  cpuCoreHour: 0.0316
-  memoryGiBHour: 0.0042
+  # -- With `static`, the rates in USD. With `karpenter`, the CPU to memory ratio, and the rates until the first
+  # calibration.
+  rates:
+    cpuCoreHour: 0.0316
+    memoryGiBHour: 0.0042
+  karpenter:
+    # -- How often the rates are recalibrated from node prices (Go duration, at least 30s). Workload costs pick
+    # up new rates when their recommendation is next generated.
+    refreshInterval: 10m
 
 auth:
   # -- Only `anonymous` for now: anyone who reaches the UI can use it, with the server's

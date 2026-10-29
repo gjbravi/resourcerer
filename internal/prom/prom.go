@@ -153,11 +153,14 @@ func (c *Client) Instant(ctx context.Context, q string, label string) (map[strin
 	return out, nil
 }
 
+// Karpenter metrics can reach Prometheus a minute late, through Thanos for example, so an instant query at
+// "now" can find none: these read the latest sample of the last few minutes.
+
 // karpenterNodes are the nodes Karpenter launched, one series each with its instance type, zone and capacity type.
-const karpenterNodes = `max by (node_name, instance_type, zone, capacity_type) (karpenter_nodes_allocatable{resource_type="cpu"})`
+const karpenterNodes = `max by (node_name, instance_type, zone, capacity_type) (last_over_time(karpenter_nodes_allocatable{resource_type="cpu"}[5m]))`
 
 // karpenterPrice is Karpenter's hourly price estimate per instance type, zone and capacity type.
-const karpenterPrice = `max by (instance_type, zone, capacity_type) (karpenter_cloudprovider_instance_type_offering_price_estimate)`
+const karpenterPrice = `max by (instance_type, zone, capacity_type) (last_over_time(karpenter_cloudprovider_instance_type_offering_price_estimate[5m]))`
 
 // KarpenterHourlyCost sums the hourly price of every Karpenter node at its own capacity type (spot or on-demand).
 func KarpenterHourlyCost() string {
@@ -166,13 +169,13 @@ func KarpenterHourlyCost() string {
 
 // KarpenterOnDemandHourlyCost prices the same nodes as if they all ran on demand.
 func KarpenterOnDemandHourlyCost() string {
-	return fmt.Sprintf(`sum(%s * 0 + on (instance_type, zone) group_left () max by (instance_type, zone) (karpenter_cloudprovider_instance_type_offering_price_estimate{capacity_type="on-demand"}))`, karpenterNodes)
+	return fmt.Sprintf(`sum(%s * 0 + on (instance_type, zone) group_left () max by (instance_type, zone) (last_over_time(karpenter_cloudprovider_instance_type_offering_price_estimate{capacity_type="on-demand"}[5m])))`, karpenterNodes)
 }
 
 // KarpenterCapacity is the allocatable CPU (cores) and memory (bytes) of the Karpenter nodes that have a price,
 // so cost and capacity cover the same nodes.
 func KarpenterCapacity() string {
-	return fmt.Sprintf(`sum by (resource_type) (max by (node_name, instance_type, zone, capacity_type, resource_type) (karpenter_nodes_allocatable{resource_type=~"cpu|memory"}) * on (instance_type, zone, capacity_type) group_left () (%s * 0 + 1))`, karpenterPrice)
+	return fmt.Sprintf(`sum by (resource_type) (max by (node_name, instance_type, zone, capacity_type, resource_type) (last_over_time(karpenter_nodes_allocatable{resource_type=~"cpu|memory"}[5m])) * on (instance_type, zone, capacity_type) group_left () (%s * 0 + 1))`, karpenterPrice)
 }
 
 // KarpenterNodeCounts counts Karpenter nodes per capacity type.
@@ -184,7 +187,7 @@ func KarpenterNodeCounts() string {
 func PodsByCapacity(r Ref) string {
 	return fmt.Sprintf(`count by (capacity_type) (
   max by (namespace, pod, node) (kube_pod_info{namespace="%s"}) * on (namespace, pod) group_left () %s
-  * on (node) group_left (capacity_type) label_replace(max by (node_name, capacity_type) (karpenter_nodes_allocatable{resource_type="cpu"}), "node", "$1", "node_name", "(.*)")
+  * on (node) group_left (capacity_type) label_replace(max by (node_name, capacity_type) (last_over_time(karpenter_nodes_allocatable{resource_type="cpu"}[5m])), "node", "$1", "node_name", "(.*)")
 )`, quote(r.Namespace), owner(r))
 }
 

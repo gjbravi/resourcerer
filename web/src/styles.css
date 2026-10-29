@@ -2398,6 +2398,12 @@ body:has(.rz.dark) {
   display: block;
   margin-top: 6px;
 }
+.rz-costsrc.stale {
+  color: var(--warn);
+}
+.rz-costsrc.error {
+  color: var(--bad);
+}
 .rz-costsrc:hover,
 .rz-impactcard .note a:hover {
   color: var(--accent);

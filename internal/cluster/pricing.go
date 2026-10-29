@@ -6,74 +6,139 @@ import (
 	"sync"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
 	"github.com/gjbravi/resourcerer/internal/engine"
 	"github.com/gjbravi/resourcerer/internal/prom"
 )
 
 // Cost sources: static uses the configured rates; karpenter scales them to what the nodes cost according to
-// Karpenter's price estimates; auto uses karpenter when its metrics are there and static otherwise.
+// Karpenter's price estimates and reports an error when it cannot; auto uses Karpenter when its metrics are
+// there and the configured rates otherwise.
 const (
 	CostStatic    = "static"
 	CostKarpenter = "karpenter"
 	CostAuto      = "auto"
 )
 
-// DefaultRefresh is how long calibrated rates are reused; MinRefresh keeps a short setting from loading Prometheus.
+// States of the pricing, from the configured source and the last calibration.
 const (
+	// PricingOK: the rates are what the source asks for, up to date.
+	PricingOK = "ok"
+	// PricingStale: the last recalibration failed, so the previous calibration is still used.
+	PricingStale = "stale"
+	// PricingFallback: auto found no Karpenter prices and uses the configured rates.
+	PricingFallback = "fallback"
+	// PricingError: karpenter was asked for but cannot be used, or has failed for too long.
+	PricingError = "error"
+)
+
+const (
+	// DefaultRefresh is how long a calibration is reused; MinRefresh keeps a short setting from loading Prometheus.
 	DefaultRefresh = 10 * time.Minute
 	MinRefresh     = 30 * time.Second
+	// staleFailures is how many failed recalibrations in a row turn a stale karpenter source into an error.
+	staleFailures = 3
+	// retryAfter is how soon a failed calibration is tried again, so a Prometheus that was briefly unreachable
+	// does not leave the rates wrong for a whole refresh interval.
+	retryAfter = time.Minute
 )
 
 // Pricing is the rates every cost estimate uses, and where they come from.
 type Pricing struct {
-	Rates  engine.Rates
-	Source string
-	// Reason explains why configured rates are used when Karpenter prices were asked for.
+	Rates engine.Rates
+	// Mode is the configured source; Source is the one in use, karpenter or static.
+	Mode, Source string
+	State        string
+	// Reason explains a state other than ok.
 	Reason string
 	// Fields below describe the Karpenter nodes behind calibrated rates.
 	Nodes, Spot, OnDemand int
 	HourlyCost            float64
 	OnDemandHourlyCost    float64
 	CPUCores, MemoryBytes float64
-	UpdatedAt             time.Time
-	// Refresh is how often calibrated rates are recomputed.
+	// CalibratedAt is when the rates were last calibrated successfully.
+	CalibratedAt time.Time
+	// Refresh is how often the rates are recalibrated.
 	Refresh time.Duration
 }
 
-// Pricer calibrates rates from Prometheus and caches them, since node prices change slowly.
+// Pricer calibrates rates from Prometheus and keeps the last good calibration, so a failed query does not swing
+// every cost back to the configured rates.
 type Pricer struct {
 	Prom *prom.Client
+	// fetch replaces the Prometheus queries in tests.
+	fetch func(context.Context) (Pricing, error)
 
-	mu     sync.Mutex
-	at     time.Time
-	cached Pricing
-	err    error
+	mu        sync.Mutex
+	attempted time.Time
+	good      *Pricing
+	err       error
+	failures  int
 }
 
-// Pricing returns rates for the configured source, recomputing calibrated ones once refresh has passed.
-func (p *Pricer) Pricing(ctx context.Context, static engine.Rates, source string, refresh time.Duration) Pricing {
-	if source == CostStatic || p == nil || p.Prom == nil {
-		return Pricing{Rates: static, Source: CostStatic}
+// Pricing returns the rates for the configured source, recalibrating once refresh has passed.
+func (p *Pricer) Pricing(ctx context.Context, static engine.Rates, mode string, refresh time.Duration) Pricing {
+	if mode != CostKarpenter && mode != CostAuto {
+		mode = CostStatic
+	}
+	if mode == CostStatic || p == nil || (p.Prom == nil && p.fetch == nil) {
+		return Pricing{Rates: static, Mode: mode, Source: CostStatic, State: PricingOK}
 	}
 	refresh = max(refresh, MinRefresh)
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if time.Since(p.at) > refresh {
-		p.cached, p.err = p.karpenter(ctx)
-		p.at = time.Now()
-	}
+	wait := refresh
 	if p.err != nil {
-		return Pricing{Rates: static, Source: CostStatic, Reason: p.err.Error(), Refresh: refresh}
+		wait = min(refresh, retryAfter)
 	}
-	out := p.cached
+	if time.Since(p.attempted) > wait {
+		p.attempted = time.Now()
+		fetch := p.fetch
+		if fetch == nil {
+			fetch = p.karpenter
+		}
+		got, err := fetch(ctx)
+		if err == nil {
+			got.CalibratedAt = p.attempted
+			p.good, p.err, p.failures = &got, nil, 0
+		} else {
+			p.err = err
+			p.failures++
+			lg := log.FromContext(ctx)
+			if mode == CostKarpenter {
+				lg.Error(err, "calibrate cost rates from Karpenter prices")
+			} else {
+				lg.V(1).Info("calibrate cost rates from Karpenter prices", "error", err.Error())
+			}
+		}
+	}
+
+	if p.good == nil {
+		out := Pricing{Rates: static, Mode: mode, Source: CostStatic, State: PricingFallback, Refresh: refresh}
+		if p.err != nil {
+			out.Reason = p.err.Error()
+		}
+		if mode == CostKarpenter {
+			out.State = PricingError
+		}
+		return out
+	}
+	out := *p.good
 	out.Rates = Calibrate(static, out.HourlyCost, out.CPUCores, out.MemoryBytes)
-	out.Source = CostKarpenter
-	out.Refresh = refresh
+	out.Mode, out.Source, out.State, out.Refresh = mode, CostKarpenter, PricingOK, refresh
+	if p.err != nil {
+		out.State, out.Reason = PricingStale, p.err.Error()
+		if mode == CostKarpenter && p.failures >= staleFailures {
+			out.State = PricingError
+		}
+	}
 	return out
 }
 
 func (p *Pricer) karpenter(ctx context.Context) (Pricing, error) {
-	out := Pricing{UpdatedAt: time.Now()}
+	var out Pricing
 	cost, err := p.Prom.Instant(ctx, prom.KarpenterHourlyCost(), "")
 	if err != nil {
 		return out, fmt.Errorf("query Karpenter prices: %w", err)

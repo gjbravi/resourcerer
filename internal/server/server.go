@@ -110,10 +110,11 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 }
 
 func costInfo(p cluster.Pricing) Cost {
-	c := Cost{CPUCoreHour: p.Rates.CPUCoreHour, MemoryGiBHour: p.Rates.MemoryGiBHour, Source: p.Source, Reason: p.Reason,
-		Nodes: p.Nodes, Spot: p.Spot, OnDemand: p.OnDemand, HourlyCost: p.HourlyCost, OnDemandHourlyCost: p.OnDemandHourlyCost}
-	if !p.UpdatedAt.IsZero() {
-		c.UpdatedAt = p.UpdatedAt.UTC().Format(time.RFC3339)
+	c := Cost{CPUCoreHour: p.Rates.CPUCoreHour, MemoryGiBHour: p.Rates.MemoryGiBHour, Mode: p.Mode, Source: p.Source,
+		State: p.State, Reason: p.Reason, Nodes: p.Nodes, Spot: p.Spot, OnDemand: p.OnDemand,
+		HourlyCost: p.HourlyCost, OnDemandHourlyCost: p.OnDemandHourlyCost}
+	if !p.CalibratedAt.IsZero() {
+		c.CalibratedAt = p.CalibratedAt.UTC().Format(time.RFC3339)
 	}
 	if p.Refresh > 0 {
 		c.Refresh = p.Refresh.String()

@@ -23,15 +23,18 @@ type Info struct {
 type Cost struct {
 	CPUCoreHour   float64 `json:"cpuCoreHour"`
 	MemoryGiBHour float64 `json:"memoryGiBHour"`
-	// Source is "karpenter" when the rates are calibrated to node prices, "static" for the configured rates.
-	Source             string  `json:"source"`
+	// Mode is the configured cost.source; Source is the one in use, karpenter or static.
+	Mode   string `json:"mode"`
+	Source string `json:"source"`
+	// State is ok, stale, fallback or error; Reason explains anything but ok.
+	State              string  `json:"state"`
 	Reason             string  `json:"reason,omitempty"`
 	Nodes              int     `json:"nodes,omitempty"`
 	Spot               int     `json:"spot,omitempty"`
 	OnDemand           int     `json:"onDemand,omitempty"`
 	HourlyCost         float64 `json:"hourlyCost,omitempty"`
 	OnDemandHourlyCost float64 `json:"onDemandHourlyCost,omitempty"`
-	UpdatedAt          string  `json:"updatedAt,omitempty"`
+	CalibratedAt       string  `json:"calibratedAt,omitempty"`
 	Refresh            string  `json:"refresh,omitempty"`
 }
 

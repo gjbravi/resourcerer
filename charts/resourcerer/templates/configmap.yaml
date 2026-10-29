@@ -10,6 +10,6 @@ data:
   {{ $k }}: {{ $v | toString | quote }}
   {{- end }}
   cost.source: {{ .Values.cost.source | quote }}
-  cost.refresh-interval: {{ .Values.cost.refreshInterval | quote }}
-  cost.cpu-core-hour: {{ .Values.cost.cpuCoreHour | toString | quote }}
-  cost.memory-gib-hour: {{ .Values.cost.memoryGiBHour | toString | quote }}
+  cost.cpu-core-hour: {{ .Values.cost.rates.cpuCoreHour | toString | quote }}
+  cost.memory-gib-hour: {{ .Values.cost.rates.memoryGiBHour | toString | quote }}
+  cost.karpenter.refresh-interval: {{ .Values.cost.karpenter.refreshInterval | quote }}

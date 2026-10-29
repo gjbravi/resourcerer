@@ -214,7 +214,7 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
                 cluster total · {fmtMoney(cur.cost)} → {fmtMoney(rec.cost)}
               </span>
               {info && (
-                <a className="rz-costsrc" href="#/settings" title="How costs are estimated">
+                <a className={`rz-costsrc ${info.cost.state}`} href="#/settings" title="How costs are estimated">
                   {costSource(info.cost)}
                 </a>
               )}

@@ -40,7 +40,7 @@ const (
 	costCPUKey     = "cost.cpu-core-hour"
 	costMemoryKey  = "cost.memory-gib-hour"
 	costSourceKey  = "cost.source"
-	costRefreshKey = "cost.refresh-interval"
+	costRefreshKey = "cost.karpenter.refresh-interval"
 )
 
 var DefaultRates = engine.Rates{CPUCoreHour: 0.0316, MemoryGiBHour: 0.0042}

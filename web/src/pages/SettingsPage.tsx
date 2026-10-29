@@ -3,6 +3,8 @@ import type { Info } from "../api";
 import { ago } from "../format";
 import { SettingsTable } from "./Details";
 
+const STATE_TONE: Record<Info["cost"]["state"], string> = { ok: "ok", stale: "warn", fallback: "info", error: "bad" };
+
 export function SettingsPage({ info }: { info: Info }) {
   const p = info.prometheus;
   const c = info.cost;
@@ -76,12 +78,20 @@ export function SettingsPage({ info }: { info: Info }) {
           <dl className="rz-dl">
             <dt>Source</dt>
             <dd>
-              {c.source === "karpenter" ? (
-                <span className="rz-badge t-ok">Karpenter node prices</span>
-              ) : (
-                <span className="rz-badge">Configured rates</span>
-              )}
+              <span className={`rz-badge t-${STATE_TONE[c.state]}`}>
+                {c.source === "karpenter" ? "Karpenter node prices" : "Configured rates"}
+                {c.state !== "ok" && ` · ${c.state}`}
+              </span>{" "}
+              <span className="rz-dim">
+                <code>cost.source: {c.mode}</code>
+              </span>
             </dd>
+            {c.reason && (
+              <>
+                <dt>{c.state === "fallback" ? "Why" : "Problem"}</dt>
+                <dd className={c.state === "fallback" ? "rz-dim" : `t-${STATE_TONE[c.state]}`}>{c.reason}</dd>
+              </>
+            )}
             <dt>CPU per core-hour</dt>
             <dd>${c.cpuCoreHour.toFixed(4)}</dd>
             <dt>Memory per GiB-hour</dt>
@@ -99,21 +109,15 @@ export function SettingsPage({ info }: { info: Info }) {
                     <span className="rz-dim"> (on-demand: ${(c.onDemandHourlyCost * 730).toFixed(0)}/mo)</span>
                   )}
                 </dd>
-                {c.updatedAt && (
+                {c.calibratedAt && (
                   <>
-                    <dt>Updated</dt>
+                    <dt>Calibrated</dt>
                     <dd>
-                      {ago(c.updatedAt)}
+                      {ago(c.calibratedAt)}
                       {c.refresh && <span className="rz-dim"> · every {c.refresh}</span>}
                     </dd>
                   </>
                 )}
-              </>
-            )}
-            {c.reason && (
-              <>
-                <dt>Why configured</dt>
-                <dd className="rz-dim">{c.reason}</dd>
               </>
             )}
           </dl>
@@ -126,8 +130,8 @@ export function SettingsPage({ info }: { info: Info }) {
               </>
             ) : (
               <>
-                Set with <code>cost.cpuCoreHour</code> and <code>cost.memoryGiBHour</code>. With Karpenter,{" "}
-                <code>cost.source: auto</code> calibrates them to node prices.
+                Set with <code>cost.rates</code>. With Karpenter, <code>cost.source: auto</code> calibrates them to node
+                prices.
               </>
             )}{" "}
             Monthly = hourly × 730, from requests × average replicas.

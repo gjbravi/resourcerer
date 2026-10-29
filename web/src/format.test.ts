@@ -23,13 +23,14 @@ describe("format", () => {
 });
 
 describe("costSource", () => {
-  it("names Karpenter prices with the node mix, or the configured rates", () => {
-    expect(costSource({ source: "karpenter", spot: 26, onDemand: 1 })).toBe(
-      "Karpenter node prices · 26 spot, 1 on-demand nodes",
+  it("names the source and says when it is degraded", () => {
+    const k = { source: "karpenter", spot: 26, onDemand: 1 };
+    expect(costSource({ ...k, state: "ok" })).toBe("Karpenter node prices · 26 spot, 1 on-demand nodes");
+    expect(costSource({ ...k, state: "stale" })).toBe(
+      "Karpenter node prices · 26 spot, 1 on-demand nodes · last calibration, refresh failing",
     );
-    expect(costSource({ source: "static" })).toBe("configured rates");
-    expect(costSource({ source: "static", reason: "no Karpenter node prices" })).toBe(
-      "configured rates (no Karpenter prices)",
-    );
+    expect(costSource({ source: "static", state: "ok" })).toBe("configured rates");
+    expect(costSource({ source: "static", state: "fallback" })).toBe("configured rates (no Karpenter in this cluster)");
+    expect(costSource({ source: "static", state: "error" })).toBe("configured rates · Karpenter prices unavailable");
   });
 });
