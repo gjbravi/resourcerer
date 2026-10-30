@@ -93,7 +93,7 @@ jobs:
             org.opencontainers.image.description=Rightsize Kubernetes requests from Prometheus usage history
             org.opencontainers.image.licenses=Apache-2.0
       # Carries the Go and npm cache mounts of the Dockerfile across runs; layers alone rebuild Go from scratch.
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         id: cache
         with:
           path: buildkit-cache
