@@ -44,6 +44,9 @@ One image, three components, each with its own ServiceAccount:
 The applier is the only component that changes workloads; disable it (`applier.enabled=false`) for a recommend-only
 install, or set `readOnly=true` to make the UI read-only.
 
+How each component works, how recommendations are computed, priced and applied, with diagrams:
+[docs/architecture.md](docs/architecture.md).
+
 Authentication is `anonymous` for now, like Kiali's anonymous strategy: anyone who reaches the UI can use it. Keep the
 Service internal (port-forward) or put an authenticating proxy in front.
 

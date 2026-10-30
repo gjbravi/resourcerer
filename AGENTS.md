@@ -1,7 +1,8 @@
 # AGENTS.md
 
 Guidance for coding agents (and humans) working on resourcerer. Read this first; the skills in `.agents/skills/`
-cover the recurring tasks step by step.
+cover the recurring tasks step by step, and [docs/architecture.md](docs/architecture.md) explains how the
+components work under the hood, with diagrams.
 
 ## What resourcerer is
 
@@ -30,7 +31,7 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 | `charts/resourcerer` | Helm chart; `values.schema.json` rejects unknown keys |
 | `hack/` | kind environment: cluster, Prometheus, demo workloads, a fake Karpenter exporter |
 | `test/e2e/run.sh` | End-to-end checks against kind |
-| `docs/` | User docs (for example `reliability-signals.md`) |
+| `docs/` | `architecture.md` (components, data flow, diagrams) and user docs such as `reliability-signals.md` |
 
 ## Commands
 

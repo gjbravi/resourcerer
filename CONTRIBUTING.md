@@ -13,6 +13,7 @@ Thanks for your interest in resourcerer.
 
 ## Code guidelines
 
+[docs/architecture.md](docs/architecture.md) explains how the components work, with diagrams.
 [AGENTS.md](AGENTS.md) describes the layout, commands, conventions and design decisions in more detail, and
 `.agents/skills/` has step-by-step guides for recurring tasks (dev loop on kind, PromQL, UI, CRD and API changes,
 chart values, releases, design issues). They are written for coding agents and are just as useful to people.
