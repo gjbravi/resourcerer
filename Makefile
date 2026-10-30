@@ -26,7 +26,7 @@ generate: ## Generate deepcopy code and the CRD into the chart
 	$(CONTROLLER_GEN) object paths=./api/... crd paths=./api/... output:crd:artifacts:config=charts/resourcerer/crds
 
 .PHONY: lint
-lint: lint-workflows ## Run linters
+lint: lint-workflows lint-docs ## Run linters
 	go vet ./...
 	go tool golangci-lint run
 	cd web && npm run lint && npm run typecheck
@@ -35,6 +35,10 @@ lint: lint-workflows ## Run linters
 .PHONY: lint-workflows
 lint-workflows: ## Lint GitHub Actions workflows
 	$(ACTIONLINT)
+
+.PHONY: lint-docs
+lint-docs: ## Check that docs and agent skills match the repository (MERMAID=1 also renders diagrams)
+	./hack/lint-docs.sh
 
 .PHONY: verify-generate
 verify-generate: generate ## Fail when generated code or the CRD is out of date

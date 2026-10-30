@@ -25,6 +25,8 @@ description: Open, check and merge pull requests in resourcerer, and cut or reco
 - `passed` uploads that artifact, and on `workflow_dispatch` runs also sets the commit statuses `go`, `web`, `chart`
   and `e2e`, so dispatched runs can satisfy the branch rules.
 - e2e builds the image in the background while kind starts.
+- `docs` runs on every change, docs-only ones included: `make lint-docs` with `MERMAID=1` checks that paths, make
+  targets and skills mentioned in the docs exist and that the Mermaid diagrams render.
 
 ## Releases (release-please)
 

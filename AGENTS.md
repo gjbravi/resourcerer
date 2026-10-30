@@ -36,7 +36,8 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 ## Commands
 
 ```bash
-make lint            # golangci-lint, actionlint, eslint, prettier, tsc, helm lint
+make lint            # golangci-lint, actionlint, eslint, prettier, tsc, helm lint, lint-docs
+make lint-docs       # docs and skills match the repository; MERMAID=1 also renders the diagrams
 make test            # Go and UI unit tests
 make generate        # deepcopy + CRD into the chart; run after changing api/
 make verify-generate # fails when generated files are stale (compares with git: commit first)
@@ -58,7 +59,9 @@ A redeploy replaces the pods, so restart the port-forward afterwards.
    behaviour when it can be observed in kind (`test/e2e/run.sh`, using `pass`/`fail`/`wait_for`).
 3. UI changes: checked in the browser against kind, light and dark themes.
 4. Docs, chart values (`values.yaml` comments, schema, chart README table) and `hack/resourcerer-values.yaml` updated
-   when behaviour or configuration changed.
+   when behaviour or configuration changed; `docs/architecture.md`, this file and the skills updated when a
+   component, flow or convention they describe changed (`make lint-docs` catches stale paths and targets, not stale
+   explanations).
 
 ## Conventions
 
@@ -127,6 +130,28 @@ Design issues describe the next steps; read the relevant one before working in t
 reliability signals as custom resources (#28), `ApplyPolicy` (#29), `OptimizationPolicy` (#30), `CostProfile` (#27),
 decision models with Jev/decider (#26), shimmer skeletons (#31).
 
+## Glossary
+
+Words the code and the UI use with a specific meaning:
+
+| Term | Meaning |
+|---|---|
+| **Learning period** | The history a recommendation is computed from (`learning-period`, default `P7D`). |
+| **Busiest pod** | Usage is taken per container from the pod using the most at each step, not the average: the pod that would be throttled or OOM-killed first. |
+| **Goal** | `Savings`, `Balanced` or `Reliability`: the percentile and margin applied to usage, per resource. |
+| **Phase** | How far a recommendation can be trusted: `Pending` (not enough samples), `Learning` (preliminary), `Ready`, `Warning` (cannot apply now), `Unsupported`, `Error`. |
+| **Pending** (status field) | The recommendation differs from the current requests by more than `auto-deploy.threshold`. Not the same as the `Pending` phase. |
+| **Hash** | Identity of a set of recommended values; an apply carries the hash the user reviewed. |
+| **Basis** | The per-value explanation shown in the UI ("p95 + 10% over 7d"). |
+| **Evidence** | The replay of usage against the recommendation (`status.evidence`): peak and time above it, p95 usage priced. |
+| **Verdict** | The Impact tab's answer on whether to apply, from phase, evidence and reliability signals. |
+| **Signal** | A reliability check, built-in (throttling, memory headroom, restarts…) or declared as a PromQL template. "Fixed by apply" when the recommendation itself addresses it. |
+| **Cluster factor** | Calibrated rates over the configured rates: what capacity costs on this cluster relative to `cost.rates`. |
+| **Workload factor** | The same for one workload's nodes, under `cost.allocation: node`. |
+| **Coverage** | The share of a workload's requests that ran on nodes with a known price. |
+| **Placement** | Where a workload's requests ran over the learning period: capacity types and instance types over time. |
+| **Auto-deploy** | The applier applying `Ready`, pending recommendations without a click, once per hash. |
+
 ## Skills
 
 | Skill | Use it to |
@@ -134,6 +159,8 @@ decision models with Jev/decider (#26), shimmer skeletons (#31).
 | `resourcerer-dev-loop` | Run the kind environment, deploy a change, run e2e, troubleshoot kind |
 | `resourcerer-promql` | Write or change a Prometheus query |
 | `resourcerer-ui` | Change the web UI |
+| `resourcerer-engine` | Change how recommendations are computed |
+| `resourcerer-settings` | Add or change a per-workload setting |
 | `resourcerer-api-change` | Add a field to the CRD status or the HTTP API |
 | `resourcerer-chart-values` | Add or change a chart value |
 | `resourcerer-release` | Open, merge and release changes; recover a failed release |

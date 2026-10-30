@@ -17,7 +17,8 @@ concurrency:
 
 jobs:
   # Decides whether the change needs testing at all:
-  # - a change that only touches docs or repository metadata does not change the binary, image or chart;
+  # - a change that only touches docs, agent skills or repository metadata does not change the binary, image or
+  #   chart;
   # - a push to main whose tree already passed CI in the pull request that was squash-merged is not tested
   #   again: the ruleset requires pull requests to be up to date, so the tree is the same.
   # Skipped jobs count as passed for the required checks.
@@ -49,7 +50,7 @@ jobs:
           if [ -n "$base" ] && git cat-file -e "$base" 2>/dev/null; then
             git diff --name-only "$base" HEAD > changed.txt
             echo "changed files:"; cat changed.txt
-            if [ -s changed.txt ] && ! grep -qvE '(\.md$|^docs/|^LICENSE$|^\.github/CODEOWNERS$|^\.github/ISSUE_TEMPLATE/|^\.github/pull_request_template\.md$)' changed.txt; then
+            if [ -s changed.txt ] && ! grep -qvE '(\.md$|^docs/|^\.agents/|^\.claude/|^LICENSE$|^\.github/CODEOWNERS$|^\.github/ISSUE_TEMPLATE/|^\.github/pull_request_template\.md$)' changed.txt; then
               echo "only docs and metadata changed"
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
@@ -64,6 +65,19 @@ jobs:
             fi
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
+
+  # Runs on every change, docs-only ones included: it is what keeps the contributor and agent docs in step with the
+  # code.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - run: make lint-docs
+        env:
+          MERMAID: "1"
 
   go:
     needs: gate
