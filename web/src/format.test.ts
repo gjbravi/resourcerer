@@ -1,4 +1,4 @@
-import { ago, fmtCpu, fmtMem, pct, quantity, costSource } from "./format";
+import { ago, fmtCpu, fmtMem, isoSeconds, pct, quantity, costSource } from "./format";
 
 describe("format", () => {
   it("keeps CPU in millicores and memory in MiB/GiB", () => {
@@ -32,5 +32,17 @@ describe("costSource", () => {
     expect(costSource({ source: "static", state: "ok" })).toBe("configured rates");
     expect(costSource({ source: "static", state: "fallback" })).toBe("configured rates (no Karpenter in this cluster)");
     expect(costSource({ source: "static", state: "error" })).toBe("configured rates · Karpenter prices unavailable");
+  });
+});
+
+describe("isoSeconds", () => {
+  it("reads the durations settings use", () => {
+    expect(isoSeconds("P7D")).toBe(7 * 86400);
+    expect(isoSeconds("PT15M")).toBe(900);
+    expect(isoSeconds("P1W")).toBe(7 * 86400);
+    expect(isoSeconds("P1DT12H")).toBe(36 * 3600);
+  });
+  it("is 0 when it does not parse", () => {
+    for (const v of [undefined, "", "7d", "P", "PT"]) expect(isoSeconds(v)).toBe(0);
   });
 });

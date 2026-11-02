@@ -30,9 +30,12 @@ They must be scoped, deduplicated and bounded.
 4. **Refuse partial results where it matters.** Thanos returns warnings instead of errors when a store is down. Use
    `Client.RangeComplete` for values that get stored or drive decisions (node allocation, placement); `Range` is fine
    for charts.
-5. **Bound the cost.** Cap the window (node allocation reads at most 7 days with at most 336 points), derive the step
+5. **Bound the cost.** Cap the points (node allocation reads its learning period in at most 336 points), derive the step
    from the window (`prom.Step`, `max(window/points, minStep)`), set a context timeout (10–30s), and cache live server
-   queries (`s.cache.get(key, ttl, ...)`).
+   queries (`s.cache.get(key, ttl, ...)`). Watch for wide metrics a join only needs a few series of:
+   `karpenter_cloudprovider_instance_type_offering_price_estimate` has a series per offering of the region (tens of
+   thousands), so range queries narrow it to the instance types the nodes had (`LabelValues` first). Run independent
+   range queries in parallel.
 6. **Missing is not zero.** An empty result usually means "does not apply" (a workload without Istio has no 5xx
    series). Return nil or skip, and make the UI say so; never store 0.
 7. **Joins with optional sides.** `a + b` drops series missing on either side. To sum CPU and memory requests where

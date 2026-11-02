@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/gjbravi/resourcerer/internal/engine"
 	"github.com/gjbravi/resourcerer/internal/prom"
 )
@@ -20,9 +22,8 @@ const (
 )
 
 const (
-	// allocationWindow caps the history read for node allocation, and allocationPoints the samples in it, so
-	// long learning periods do not load Prometheus.
-	allocationWindow  = 7 * 24 * time.Hour
+	// allocationPoints caps the samples node allocation reads over the learning period, so long learning periods
+	// do not load Prometheus.
 	allocationPoints  = 336
 	allocationTimeout = 30 * time.Second
 	// topInstanceTypes is how many instance types an allocation lists.
@@ -71,21 +72,33 @@ type history struct {
 }
 
 func fetch(ctx context.Context, p *prom.Client, ref prom.Ref, static engine.Rates, window time.Duration, end time.Time, minStep time.Duration) (history, error) {
-	window = min(window, allocationWindow)
 	h := history{step: max(window/allocationPoints, minStep).Truncate(time.Second), start: end.Add(-window), end: end}
 	ctx, cancel := context.WithTimeout(ctx, allocationTimeout)
 	defer cancel()
-	var err error
-	if h.cost, err = p.RangeComplete(ctx, prom.WorkloadNodeCost(ref, static.CPUCoreHour, static.MemoryGiBHour, false), h.start, end, h.step, "key"); err != nil {
-		return h, fmt.Errorf("query node prices of the workload's pods: %w", err)
+	types, err := p.LabelValues(ctx, "instance_type", prom.KarpenterNodeSeries, h.start, end)
+	if err != nil {
+		return h, fmt.Errorf("query the instance types of Karpenter nodes: %w", err)
 	}
-	if h.priced, err = p.RangeComplete(ctx, prom.WorkloadNodeCost(ref, static.CPUCoreHour, static.MemoryGiBHour, true), h.start, end, h.step, "key"); err != nil {
-		return h, fmt.Errorf("query the workload's priced requests: %w", err)
-	}
-	if h.total, err = p.RangeComplete(ctx, prom.WorkloadRequestValue(ref, static.CPUCoreHour, static.MemoryGiBHour), h.start, end, h.step, ""); err != nil {
-		return h, fmt.Errorf("query the workload's requests: %w", err)
-	}
-	return h, nil
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() (err error) {
+		if h.cost, err = p.RangeComplete(ctx, prom.WorkloadNodeCost(ref, static.CPUCoreHour, static.MemoryGiBHour, false, types), h.start, end, h.step, "key"); err != nil {
+			return fmt.Errorf("query node prices of the workload's pods: %w", err)
+		}
+		return nil
+	})
+	g.Go(func() (err error) {
+		if h.priced, err = p.RangeComplete(ctx, prom.WorkloadNodeCost(ref, static.CPUCoreHour, static.MemoryGiBHour, true, types), h.start, end, h.step, "key"); err != nil {
+			return fmt.Errorf("query the workload's priced requests: %w", err)
+		}
+		return nil
+	})
+	g.Go(func() (err error) {
+		if h.total, err = p.RangeComplete(ctx, prom.WorkloadRequestValue(ref, static.CPUCoreHour, static.MemoryGiBHour), h.start, end, h.step, ""); err != nil {
+			return fmt.Errorf("query the workload's requests: %w", err)
+		}
+		return nil
+	})
+	return h, g.Wait()
 }
 
 // combine turns request-weighted sums into an allocation. cost and priced are keyed "capacity_type|instance_type":

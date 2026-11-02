@@ -5,7 +5,6 @@ import {
   ChevronUp,
   Cpu,
   Flame,
-  Info,
   MemoryStick,
   PiggyBank,
   Search,
@@ -15,7 +14,18 @@ import {
 import { useState, type ReactNode } from "react";
 import type { Summary } from "../api";
 import { NoteArt, WandArt } from "../art";
-import { Delta, FitBar, Metric, Money, PHASE_NAMES, phaseTone, Ring, StatusBadge, WlCell } from "../components";
+import {
+  Delta,
+  FitBar,
+  InfoTip,
+  Metric,
+  Money,
+  PHASE_NAMES,
+  phaseTone,
+  Ring,
+  StatusBadge,
+  WlCell,
+} from "../components";
 import { costSource, fmtCores, fmtMem, fmtMoney } from "../format";
 import { navigate, useInfo, workloadHash } from "../hooks";
 import { ClusterTimeline } from "./ClusterTimeline";
@@ -203,7 +213,15 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
         <Metric
           label={
             <>
-              Reclaimable <Info size={15} aria-label="Sum of savings where requests are above the recommendation" />
+              Reclaimable{" "}
+              <InfoTip label="What reclaimable means">
+                <b>What applying every recommendation that lowers requests would save each month.</b>
+                <span>
+                  The sum over workloads of current minus recommended monthly cost, counting only the ones that go down;
+                  workloads that need more capacity are not subtracted.
+                </span>
+                <span className="rz-dim">Costs are requests × average replicas × the rates in Settings × 730 h.</span>
+              </InfoTip>
             </>
           }
           art={<NoteArt />}
@@ -226,8 +244,15 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
         <Metric
           label={
             <>
-              Fit score{" "}
-              <Info size={15} aria-label="How closely current requests match the recommendations, weighted by cost" />
+              Rightsizing score{" "}
+              <InfoTip label="How the rightsizing score works">
+                <b>How close the cluster's requests are to the recommendations, from 0 to 100.</b>
+                <span>
+                  Each workload scores the smaller of current and recommended requests over the larger, for CPU and
+                  memory; too high and too low both lower it.
+                </span>
+                <span>The cluster score averages the workloads, weighted by their recommended monthly cost.</span>
+              </InfoTip>
             </>
           }
           art={<WandArt />}
@@ -303,7 +328,7 @@ export function Overview({ rows, cluster }: { rows: Summary[]; cluster: string }
             empty="Nothing to reclaim."
             cols={[
               ["Workload", (w) => <WlCell w={w} />],
-              ["Fit", (w) => <Ring value={w.score?.overall} size={30} stroke={3.5} />],
+              ["Score", (w) => <Ring value={w.score?.overall} size={30} stroke={3.5} />],
               ["Per month", (w) => <Delta from={w.current.monthlyCost} to={w.recommended.monthlyCost} money />],
             ]}
           />

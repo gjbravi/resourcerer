@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gjbravi/resourcerer/api/v1alpha1"
 	"github.com/gjbravi/resourcerer/internal/cluster"
 	"github.com/gjbravi/resourcerer/internal/prom"
 	"github.com/gjbravi/resourcerer/internal/settings"
@@ -13,6 +14,21 @@ import (
 // placementCache keeps a placement for a while: it covers the whole learning period, so it barely moves.
 const placementCache = 5 * time.Minute
 
+// learning is the workload's learning period, as the controller last resolved it, or the cluster default.
+// Without rec, it is the cluster default.
+func (s *Server) learning(r *http.Request, rec *v1alpha1.Recommendation) time.Duration {
+	if rec != nil {
+		if v, err := settings.ParseDuration(rec.Status.Settings[settings.LearningPeriod].Value); err == nil && v > 0 {
+			return v
+		}
+	}
+	defaults, _ := s.Cluster.Defaults(r.Context(), s.Client)
+	if v := settings.Resolve(defaults, nil, nil).Duration(settings.LearningPeriod); v > 0 {
+		return v
+	}
+	return 7 * 24 * time.Hour
+}
+
 // placement shows where the workload's requests ran over its learning period and what each part cost. It is
 // computed on request from the same queries as node allocation, so the status stays small.
 func (s *Server) placement(w http.ResponseWriter, r *http.Request) {
@@ -20,19 +36,14 @@ func (s *Server) placement(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defaults, pricing := s.Cluster.Defaults(r.Context(), s.Client)
+	_, pricing := s.Cluster.Defaults(r.Context(), s.Client)
 	out := Placement{Allocation: pricing.Allocation, ClusterFactor: pricing.ClusterFactor()}
 	if pricing.Source != cluster.CostKarpenter {
 		out.Reason = "Node prices need Karpenter; costs use the configured rates."
 		writeJSON(w, out)
 		return
 	}
-	win := 7 * 24 * time.Hour
-	if v, err := settings.ParseDuration(rec.Status.Settings[settings.LearningPeriod].Value); err == nil {
-		win = v
-	} else if v := settings.Resolve(defaults, nil, nil).Duration(settings.LearningPeriod); v > 0 {
-		win = v
-	}
+	win := s.learning(r, rec)
 	end := time.Now().Truncate(max(s.MinStep, time.Minute))
 	key := strings.Join([]string{"placement", rec.Namespace, rec.Name, end.Truncate(placementCache).String()}, "|")
 	ref := prom.Ref{Namespace: rec.Namespace, Kind: rec.Spec.TargetRef.Kind, Name: rec.Spec.TargetRef.Name}

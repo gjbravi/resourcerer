@@ -116,8 +116,8 @@ cluster") and fictional examples (`payments/checkout`, `demo/api`). Grep the dif
 - **Costs** are requests × average replicas × hourly rates × 730. With `cost.source: karpenter` the rates are
   calibrated to Karpenter's price estimates; with `cost.allocation: node` each workload is priced at the nodes it ran
   on (time- and request-weighted over the learning period), falling back to the cluster average.
-- **The Impact tab leads with a verdict** ("Safe to apply", "Review before applying", "Apply to fix reliability", …)
-  built from history coverage, a replay of usage against the recommendation (`status.evidence`) and reliability
+- **The workload page shows a verdict under the apply button** ("Safe to apply", "Review before applying", "Apply to
+  fix reliability", …) built from history coverage, a replay of usage against the recommendation (`status.evidence`) and reliability
   signals. Signals the recommendation itself fixes (OOM kills, CPU throttling from 25%) count for applying.
 - **Reliability signals** are built-in or declared as PromQL templates (`docs/reliability-signals.md`). A signal with
   no data does not apply to a workload.
@@ -149,7 +149,7 @@ Words the code and the UI use with a specific meaning:
 | **Cluster factor** | Calibrated rates over the configured rates: what capacity costs on this cluster relative to `cost.rates`. |
 | **Workload factor** | The same for one workload's nodes, under `cost.allocation: node`. |
 | **Coverage** | The share of a workload's requests that ran on nodes with a known price. |
-| **Placement** | Where a workload's requests ran over the learning period: capacity types and instance types over time. |
+| **Placement** | Where a workload's requests ran over the learning period: capacity types and instance types, with what each cost. |
 | **Auto-deploy** | The applier applying `Ready`, pending recommendations without a click, once per hash. |
 
 ## Skills

@@ -74,3 +74,11 @@ export function costSource(c: { source: string; state?: string; spot?: number; o
   }
   return c.source === "karpenter" ? nodes : "configured rates";
 }
+
+/** Seconds in an ISO 8601 duration as the settings write it (P7D, PT15M, P1W); 0 when it does not parse. */
+export function isoSeconds(v?: string): number {
+  const m = /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(v ?? "");
+  if (!m || v === "P" || v?.endsWith("T")) return 0;
+  const [w, d, h, min, s] = m.slice(1).map((x) => Number(x ?? 0));
+  return (((w * 7 + d) * 24 + h) * 60 + min) * 60 + s;
+}

@@ -247,7 +247,8 @@ export interface Series {
   lines: Record<string, Point[]>;
 }
 
-export type Range = "1h" | "1d" | "1w" | "2w" | "1m";
+/** Chart ranges; "learning" is the workload's learning period, the window its numbers come from. */
+export type Range = "learning" | "1h" | "1d" | "1w" | "2w" | "1m";
 
 export interface Ref {
   namespace: string;

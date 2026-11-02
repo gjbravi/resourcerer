@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Point, Range, Resource, Series } from "../api";
 import { at, TimeChart, type Line } from "../chart";
 import { ErrorBox } from "../components";
-import { fmtCores, fmtMem, fmtMoney, Gi } from "../format";
+import { fmtMem, Gi, isoSeconds } from "../format";
 import { useClusterSeries, useInfo } from "../hooks";
 import { Zoom } from "./Details";
 
@@ -20,14 +20,14 @@ function costLine(cpu: Point[], mem: Point[], rates: { cpuCoreHour: number; memo
   return cpu.map((p) => ({ t: p.t, v: p.v * rates.cpuCoreHour + ((at(mem, p.t)?.v ?? 0) / Gi) * rates.memoryGiBHour }));
 }
 
-const last = (pts?: Point[]) => (pts?.length ? pts[pts.length - 1].v : 0);
-
 export function ClusterTimeline() {
-  const [range, setRange] = useState<Range>("1d");
+  const [range, setRange] = useState<Range>("learning");
   const [mode, setMode] = useState<Mode>("cpu");
   const cpu = useClusterSeries("cpu", range);
   const mem = useClusterSeries("memory", range);
-  const rates = useInfo().data?.cost ?? { cpuCoreHour: 0, memoryGiBHour: 0 };
+  const info = useInfo().data;
+  const rates = info?.cost ?? { cpuCoreHour: 0, memoryGiBHour: 0 };
+  const learning = isoSeconds(info?.defaults.find((x) => x.key === "learning-period")?.value) || 7 * 86400;
   const cur = mode === "memory" ? mem : cpu;
   const l = (s: Series | undefined, k: string) => s?.lines[k] ?? [];
 
@@ -73,12 +73,6 @@ export function ClusterTimeline() {
     unit = mode === "cpu" ? "Cores" : "GiB";
   }
 
-  const alloc = last(l(cur.data, "allocatable"));
-  const used = last(l(cur.data, "usage"));
-  const req = last(l(cur.data, "requested"));
-  const fmt = mode === "memory" ? fmtMem : fmtCores;
-  const hourly = (k: string) => last(costLine(l(cpu.data, k), l(mem.data, k), rates).slice(-1)) * 730;
-
   return (
     <section className="rz-card">
       <div className="rz-cardhd">
@@ -86,7 +80,7 @@ export function ClusterTimeline() {
           <LineChart size={17} className="t-accent" /> Cluster timeline
         </h2>
         <div className="rz-ctl">
-          <Zoom value={range} onChange={setRange} />
+          <Zoom value={range} onChange={setRange} learning={learning} />
           <span className="rz-seg">
             {MODES.map(([m, label]) => (
               <button key={m} aria-pressed={mode === m} onClick={() => setMode(m)}>
@@ -95,41 +89,6 @@ export function ClusterTimeline() {
             ))}
           </span>
         </div>
-      </div>
-      <div className="rz-cluster-kpis">
-        {mode === "cost" ? (
-          <>
-            <div>
-              <span>Requested / mo</span>
-              <b>{fmtMoney(hourly("requested"))}</b>
-            </div>
-            <div>
-              <span>With recommendations / mo</span>
-              <b className={hourly("withRecommendations") > hourly("requested") ? "t-bad" : "t-save"}>
-                {fmtMoney(hourly("withRecommendations"))}
-              </b>
-            </div>
-            <div>
-              <span>Used / mo</span>
-              <b>{fmtMoney(hourly("usage"))}</b>
-            </div>
-          </>
-        ) : (
-          <div className="rz-eff">
-            <span>
-              {mode === "cpu" ? "CPU" : "Memory"} efficiency · {fmt(used)} used, {fmt(req)} requested of {fmt(alloc)}{" "}
-              allocatable
-            </span>
-            <div className="bar">
-              <i className="u" style={{ width: `${alloc ? (used / alloc) * 100 : 0}%` }} />
-              <i className="r" style={{ width: `${alloc ? (Math.max(0, req - used) / alloc) * 100 : 0}%` }} />
-            </div>
-            <div className="lbl">
-              <span>{alloc ? Math.round((used / alloc) * 100) : 0}% used</span>
-              <span>{alloc ? Math.round((req / alloc) * 100) : 0}% requested</span>
-            </div>
-          </div>
-        )}
       </div>
       <div className="rz-cluster-chart">
         <ErrorBox error={cur.error ?? (mode === "cost" ? mem.error : null)} />

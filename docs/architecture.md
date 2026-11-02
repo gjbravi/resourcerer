@@ -231,11 +231,15 @@ stateDiagram-v2
 
 - **Node allocation** values each pod's requests at the configured rates, multiplies them by the factor of the node
   it ran on (node price ÷ the node's capacity at the same rates; reserved capacity priced as on-demand), and averages
-  over the learning period (at most 7 days, 336 points). Requests on nodes without a price count at the cluster
+  over the learning period (at most 336 points). Requests on nodes without a price count at the cluster
   factor. The result, with the capacity mix and top instance types, is stored in `status.pricing`, and the same
-  factor prices both the current and the recommended requests, so savings stay comparable.
-- **Placement** (`GET .../placement`) reuses the same queries to show where the workload ran over time, by capacity
-  type and instance type, computed on request and cached for 5 minutes.
+  factor prices both the current and the recommended requests, so savings stay comparable. Karpenter prices every
+  offering of the region (tens of thousands of series), so the node prices are read only for the instance types the
+  nodes had in the window, and the three range queries run in parallel.
+- **Placement** (`GET .../placement`) reuses the same queries to show where the workload ran over its learning
+  period, by capacity type and instance type, computed on request and cached for 5 minutes.
+- **Chart ranges**: the workload's charts open on its learning period (`range=learning`), so what they show matches
+  the numbers above them; fixed zooms (1h to 1m) stay available.
 
 ## Reliability
 
@@ -257,7 +261,7 @@ At each regeneration the engine replays the usage history against the recommende
 busiest pod's peak and the share of samples above the recommendation, per resource, and the p95 usage × replicas
 priced like the requests (what the workload actually needs). It is stored in `status.evidence`.
 
-The Impact tab turns phase, history coverage, evidence and open reliability signals into a verdict
+The workload page, right under the apply button, turns phase, history coverage, evidence and open reliability signals into a verdict
 (`web/src/verdict.ts`): "Safe to apply", "Review before applying", "Apply to fix reliability", "Already
 right-sized", or a waiting or error state. Signals the recommendation itself fixes (OOM kills, CPU throttling from
 25%, where it raises the limit) count for applying; others ask for a review.

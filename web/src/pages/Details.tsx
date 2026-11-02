@@ -2,7 +2,6 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
-  Boxes,
   ChevronLeft,
   CircleCheck,
   CircleDollarSign,
@@ -31,6 +30,7 @@ import {
   Delta,
   ErrorBox,
   FitBar,
+  InfoTip,
   Metric,
   Modal,
   Money,
@@ -38,7 +38,9 @@ import {
   StatusBadge,
   phaseTone,
 } from "../components";
-import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, Mi, quantity } from "../format";
+import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, isoSeconds, Mi, quantity } from "../format";
+import { autoDeploy } from "../autodeploy";
+import { fmtWindow } from "../placement";
 import { toast, useAction, useImpact, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
 import { resolved, signals, type Signal } from "../reliability";
 import { verdict } from "../verdict";
@@ -54,6 +56,16 @@ const TABS = [
   ["settings", "Settings"],
 ] as const;
 const RANGES: Range[] = ["1h", "1d", "1w", "2w", "1m"];
+const RANGE_SECONDS: Record<Range, number> = {
+  learning: 0,
+  "1h": 3600,
+  "1d": 86400,
+  "1w": 7 * 86400,
+  "2w": 14 * 86400,
+  "1m": 30 * 86400,
+};
+const learningSeconds = (d: Detail) =>
+  isoSeconds(d.settings?.find((x) => x.key === "learning-period")?.value) || d.evidence?.learningSeconds || 7 * 86400;
 const fmtCpuAxis = (v: number) => `${Math.round(v * 1000)}m`;
 const fmtMemAxis = (v: number) => (v >= Gi ? `${(v / Gi).toFixed(1)}GiB` : `${Math.round(v / Mi)}MiB`);
 
@@ -98,20 +110,42 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
       </a>
       <div className="rz-titlerow">
         <h1>{d.name}</h1>
-        <span className="rz-dim">
-          {d.namespace} · {d.kind}
+        <span className="rz-dim" title="Costs are priced at the average replicas over the learning period">
+          {d.namespace} · {d.kind} · {d.replicas} {d.replicas === 1 ? "replica" : "replicas"} (
+          {d.avgReplicas.toFixed(1)} avg) ·{" "}
+          {d.hpaRecommendation ? `HPA ${d.hpaRecommendation.name} at ${d.hpaRecommendation.current}% CPU` : "no HPA"}
         </span>
       </div>
+
+      <ReliabilityAlert d={d} sig={sig} />
 
       <section className="rz-metrics">
         <Metric
           label={
             <>
               {net >= 0 ? "Estimated savings" : "Extra capacity needed"}{" "}
-              <Info size={15} aria-label="Requests × average replicas, priced with the cost rates in Settings" />
+              <InfoTip label="How the savings are estimated">
+                <b>
+                  What the recommendation {net >= 0 ? "saves" : "adds"} each month, from what the requests reserve, not
+                  from usage.
+                </b>
+                <span>
+                  Requests summed over containers × {d.avgReplicas.toFixed(1)} average replicas × the hourly rates × 730
+                  h, now and with the recommendation; the difference is this number.
+                </span>
+                <span>
+                  Rates:{" "}
+                  {d.pricing?.allocation === "node"
+                    ? "the prices of the nodes it ran on over the learning period."
+                    : "the cluster's average rates (Settings)."}
+                </span>
+                <span className="rz-dim">
+                  The full calculation is in How the cost is calculated, in the Impact tab.
+                </span>
+              </InfoTip>
             </>
           }
-          art={sig.length > 0 || net < -0.005 ? <Art kind="shield" size={128} /> : <NoteArt />}
+          art={<NoteArt />}
           trend={
             <>
               <Delta from={d.current.monthlyCost} to={d.recommended.monthlyCost} money />{" "}
@@ -124,7 +158,19 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
           <Money value={Math.abs(net)} tone={net >= 0 ? "save" : "cost"} />
         </Metric>
         <Metric
-          label="Fit score"
+          label={
+            <>
+              Rightsizing score{" "}
+              <InfoTip label="How the rightsizing score works">
+                <b>How close the current requests are to the recommendation, from 0 to 100.</b>
+                <span>
+                  For CPU and for memory: the smaller of current and recommended requests over the larger, so requests
+                  that are too high and too low both lower it.
+                </span>
+                <span>The score weights CPU and memory by what they cost. 100 means the requests already match.</span>
+              </InfoTip>
+            </>
+          }
           art={<WandArt />}
           trend={
             <span className="rz-dim">
@@ -141,79 +187,48 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
       </section>
 
       <div className="rz-actionsrow">
-        <div className="rz-recactions" style={{ marginTop: 0 }}>
-          <button
-            className="rz-btn primary"
-            disabled={!canApply}
-            onClick={() => setConfirm(true)}
-            title={
-              readOnly ? "Read-only" : !d.pending ? "Current requests already match the recommendation" : d.message
-            }
-          >
-            <Sparkles size={15} /> Apply recommendation
-          </button>
-          <button
-            className="rz-btn ghost"
-            disabled={readOnly || d.phase === "Unsupported" || regenerate.isPending}
-            onClick={() =>
-              regenerate.mutate(undefined, {
-                onSuccess: () =>
-                  toast({
-                    kind: "info",
-                    title: "Regeneration requested",
-                    body: "The controller recomputes from the latest history.",
-                  }),
-              })
-            }
-          >
-            <RefreshCw size={14} /> Regenerate
-          </button>
-        </div>
-        <div className="rz-recmeta" style={{ marginTop: 0 }}>
-          <StatusBadge phase={d.phase} title={d.message} />
-          <span>
-            Generated <b>{ago(d.generatedAt)}</b>
-          </span>
-          <span>
-            Next <b>{ago(d.nextScheduleAt)}</b>
-          </span>
-          <span>
-            {d.autoDeploy ? <Zap size={12} className="t-accent" /> : <ZapOff size={12} />} Auto-deploy{" "}
-            <b>{d.autoDeploy ? "on" : "off"}</b>
-          </span>
+        <div className="rz-actleft">
+          <div className="rz-recactions" style={{ marginTop: 0 }}>
+            <button
+              className="rz-btn primary"
+              disabled={!canApply}
+              onClick={() => setConfirm(true)}
+              title={
+                readOnly ? "Read-only" : !d.pending ? "Current requests already match the recommendation" : d.message
+              }
+            >
+              <Sparkles size={15} /> Apply recommendation
+            </button>
+            <button
+              className="rz-btn ghost"
+              disabled={readOnly || d.phase === "Unsupported" || regenerate.isPending}
+              onClick={() =>
+                regenerate.mutate(undefined, {
+                  onSuccess: () =>
+                    toast({
+                      kind: "info",
+                      title: "Regeneration requested",
+                      body: "The controller recomputes from the latest history.",
+                    }),
+                })
+              }
+            >
+              <RefreshCw size={14} /> Regenerate
+            </button>
+            <StatusBadge phase={d.phase} title={d.message} />
+          </div>
           {lastApply && (
-            <span>
-              Applied <b>{ago(lastApply.time)}</b> by {lastApply.by}
+            <span className="rz-recmeta" style={{ marginTop: 0 }}>
+              <span>
+                Last applied <b>{ago(lastApply.time)}</b> by {lastApply.by}
+              </span>
             </span>
           )}
         </div>
+        <AutoDeployCard d={d} readOnly={readOnly} />
       </div>
 
-      <section className="rz-card rz-kpis">
-        <div className="rz-kpi">
-          <span>
-            <ShieldCheck size={15} /> Reliability
-          </span>
-          <b className={sig.length ? `t-${sig[0].tone}` : ""}>
-            {sig.length ? `${sig.length} ${sig.length === 1 ? "signal" : "signals"}` : "Healthy"}
-          </b>
-          <span className="rz-dim rz-xs">
-            {sig.length ? sig[0].title : "no throttling, OOM kills or restarts in the learning period"}
-          </span>
-        </div>
-        <div className="rz-kpi">
-          <span>
-            <Boxes size={15} /> Replicas
-          </span>
-          <b>
-            {d.replicas}
-            <span className="rz-dim rz-xs">now · {d.avgReplicas.toFixed(1)} avg</span>
-          </b>
-          <span className="rz-dim rz-xs">
-            {d.hpaRecommendation ? `HPA ${d.hpaRecommendation.name} at ${d.hpaRecommendation.current}% CPU` : "no HPA"}
-          </span>
-        </div>
-      </section>
+      <Verdict d={d} />
 
       {d.phase !== "Ready" && d.message && (
         <div className={`rz-alert t-${phaseTone(d.phase)}`}>
@@ -240,8 +255,6 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
           {w}
         </div>
       ))}
-
-      <ReliabilityAlert d={d} sig={sig} />
 
       <nav className="rz-tabbar" role="tablist">
         {TABS.map(([id, label]) => (
@@ -390,13 +403,25 @@ export function applyDescription(d: Pick<Detail, "kind" | "name" | "templateKind
   return `Server-side apply on the ${d.kind} with field manager resourcerer, followed by a rolling update.`;
 }
 
-export function Zoom({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
+/** Chart ranges; with learning (seconds), the learning period comes first, labeled with its length. */
+export function Zoom({ value, onChange, learning }: { value: Range; onChange: (r: Range) => void; learning?: number }) {
+  // The learning period takes its place by length, and replaces a fixed range of the same length.
+  const zooms = [
+    ...RANGES.filter((z) => RANGE_SECONDS[z] !== learning).map((z) => ({ z, s: RANGE_SECONDS[z], label: z })),
+    ...(learning ? [{ z: "learning" as Range, s: learning, label: fmtWindow(learning) }] : []),
+  ].sort((a, b) => a.s - b.s);
   return (
-    <div className="rz-zoom">
-      <span className="rz-dim rz-xs">Zoom:</span>
-      {RANGES.map((z) => (
-        <button key={z} aria-pressed={value === z} onClick={() => onChange(z)}>
-          {z.toUpperCase()}
+    <div className="rz-seg" role="group" aria-label="Time range">
+      {zooms.map(({ z, label }) => (
+        <button
+          key={z}
+          aria-pressed={value === z}
+          onClick={() => onChange(z)}
+          title={
+            z === "learning" ? "The learning period: the history the recommendation and the costs come from" : undefined
+          }
+        >
+          {label.toUpperCase()}
         </button>
       ))}
     </div>
@@ -456,13 +481,13 @@ function RecommendationTab({ d }: { d: Detail }) {
       containers.findIndex((c) => !c.skipped),
     ),
   );
-  const [range, setRange] = useState<Range>("1h");
+  const [range, setRange] = useState<Range>("learning");
   const sel = containers[ci];
   return (
     <>
       <div className="rz-sechd">
         <h2>Containers</h2>
-        <Zoom value={range} onChange={setRange} />
+        <Zoom value={range} onChange={setRange} learning={learningSeconds(d)} />
       </div>
       <div className="rz-recgrid">
         <div className="rz-conts">
@@ -606,55 +631,59 @@ function ReliabilityAlert({ d, sig }: { d: Detail; sig: Signal[] }) {
   );
 }
 
-function ImpactTab({ d }: { d: Detail }) {
-  const [range, setRange] = useState<Range>("1h");
-  const [resource, setResource] = useState<Resource>("cpu");
+function Verdict({ d }: { d: Detail }) {
   const recent = useReliability(d, "15m", true).data;
   const v = verdict(
     d,
     signals(d).filter((x) => !resolved(x, recent)),
   );
+  return (
+    <section className={`rz-card rz-verdict t-${v.tone}`}>
+      <span className="ic">
+        {v.tone === "ok" ? (
+          <CircleCheck size={20} />
+        ) : v.tone === "wait" ? (
+          <Hourglass size={20} />
+        ) : v.tone === "bad" ? (
+          <CircleX size={20} />
+        ) : (
+          <TriangleAlert size={20} />
+        )}
+      </span>
+      <div>
+        <h2>
+          {v.title}
+          {v.effect && <span className="eff"> · {v.effect}</span>}
+        </h2>
+        <ul className="rz-reasons">
+          {v.reasons
+            .filter((r) => r.text)
+            .map((r) => (
+              <li key={r.text} className={r.tone}>
+                {r.text}
+              </li>
+            ))}
+        </ul>
+      </div>
+      <span
+        className="rz-soon"
+        title="Statistical models that estimate the chance of peaks beyond the usage history are on the way."
+      >
+        <Sparkles size={12} /> Decision models coming soon
+      </span>
+    </section>
+  );
+}
+
+function ImpactTab({ d }: { d: Detail }) {
+  const [range, setRange] = useState<Range>("learning");
+  const [resource, setResource] = useState<Resource>("cpu");
   const used = d.evidence?.used;
   const usedCost = used ? Number(used.monthlyCost) : undefined;
   const idle = usedCost != null ? d.current.monthlyCost - usedCost : undefined;
   const ev = d.evidence;
   return (
     <>
-      <section className={`rz-card rz-verdict t-${v.tone}`}>
-        <span className="ic">
-          {v.tone === "ok" ? (
-            <CircleCheck size={20} />
-          ) : v.tone === "wait" ? (
-            <Hourglass size={20} />
-          ) : v.tone === "bad" ? (
-            <CircleX size={20} />
-          ) : (
-            <TriangleAlert size={20} />
-          )}
-        </span>
-        <div>
-          <h2>
-            {v.title}
-            {v.effect && <span className="eff"> · {v.effect}</span>}
-          </h2>
-          <ul className="rz-reasons">
-            {v.reasons
-              .filter((r) => r.text)
-              .map((r) => (
-                <li key={r.text} className={r.tone}>
-                  {r.text}
-                </li>
-              ))}
-          </ul>
-        </div>
-        <span
-          className="rz-soon"
-          title="Statistical models that estimate the chance of peaks beyond the usage history are on the way."
-        >
-          <Sparkles size={12} /> Decision models coming soon
-        </span>
-      </section>
-
       <div className="rz-ba-grid">
         <BeforeAfter
           icon={<CircleDollarSign size={15} />}
@@ -691,14 +720,14 @@ function ImpactTab({ d }: { d: Detail }) {
         <div className="rz-sechd">
           <h2>Usage against the recommendation</h2>
           <div className="rz-ba-ctl">
-            <div className="rz-zoom" role="group" aria-label="Resource">
+            <div className="rz-seg" role="group" aria-label="Resource">
               {(["cpu", "memory"] as const).map((r) => (
                 <button key={r} aria-pressed={resource === r} onClick={() => setResource(r)}>
                   {r === "cpu" ? "CPU" : "Memory"}
                 </button>
               ))}
             </div>
-            <Zoom value={range} onChange={setRange} />
+            <Zoom value={range} onChange={setRange} learning={learningSeconds(d)} />
           </div>
         </div>
         {ev && (
@@ -943,13 +972,70 @@ function SettingsTab({ d, readOnly }: { d: Detail; readOnly: boolean }) {
   );
 }
 
-function EditSetting({ d, setting, onClose }: { d: Detail; setting: SettingInfo; onClose: () => void }) {
+/** Auto-deploy at a glance: on or off, where that is set, what it does with this recommendation, and a switch. */
+function AutoDeployCard({ d, readOnly }: { d: Detail; readOnly: boolean }) {
+  const [edit, setEdit] = useState(false);
+  const a = autoDeploy(d);
+  const setting = d.settings?.find((s) => s.key === "auto-deploy");
+  const from =
+    a.source === "workload"
+      ? "set on this workload"
+      : a.source === "namespace"
+        ? "set on the namespace"
+        : "cluster default";
+  return (
+    <div className={`rz-autocard ${a.tone}`}>
+      <span className="ic">{a.on ? <Zap size={16} /> : <ZapOff size={16} />}</span>
+      <span className="main">
+        <span>
+          <b>Auto-deploy {a.on ? "on" : "off"}</b> <span className="rz-dim rz-xs">· {from}</span>
+        </span>
+        <span className="rz-dim rz-xs">{a.text}</span>
+      </span>
+      <button
+        className="rz-switch"
+        role="switch"
+        aria-checked={a.on}
+        aria-label="Auto-deploy"
+        disabled={readOnly || !setting}
+        title={readOnly ? "Read-only" : a.on ? "Turn auto-deploy off" : "Turn auto-deploy on"}
+        onClick={() => setEdit(true)}
+      >
+        <i />
+      </button>
+      {edit && setting && (
+        <EditSetting
+          d={d}
+          setting={setting}
+          initial={a.on ? "Disabled" : "Enabled"}
+          workloadOnly
+          onClose={() => setEdit(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditSetting({
+  d,
+  setting,
+  initial,
+  workloadOnly,
+  onClose,
+}: {
+  d: Detail;
+  setting: SettingInfo;
+  initial?: string;
+  /** Set the value on this workload only, without offering the namespace. */
+  workloadOnly?: boolean;
+  onClose: () => void;
+}) {
   const m = meta(setting.key);
   const choices = setting.options ?? m.suggestions ?? [];
   const [scope, setScope] = useState<"workload" | "namespace">(
-    setting.source === "namespace" ? "namespace" : "workload",
+    setting.source === "namespace" && !workloadOnly ? "namespace" : "workload",
   );
-  const [value, setValue] = useState(setting.value);
+  const [value, setValue] = useState(initial ?? setting.value);
   const save = useAction(d, (v: string | null) =>
     scope === "workload"
       ? api.setWorkloadSetting(d, setting.key, v)
@@ -991,15 +1077,26 @@ function EditSetting({ d, setting, onClose }: { d: Detail; setting: SettingInfo;
         </>
       }
     >
-      <div className="rz-scope rz-zoom" role="radiogroup" aria-label="Scope">
-        <span className="rz-dim rz-xs">Set on:</span>
-        <button aria-pressed={scope === "workload"} onClick={() => setScope("workload")}>
-          This {d.kind}
-        </button>
-        <button aria-pressed={scope === "namespace"} onClick={() => setScope("namespace")}>
-          Namespace {d.namespace}
-        </button>
-      </div>
+      {workloadOnly && (
+        <p className="rz-dim rz-xs">
+          On this {d.kind} only. To set it for the whole namespace, use the{" "}
+          <a href={workloadHash(d, "settings")} onClick={onClose}>
+            Settings tab
+          </a>
+          .
+        </p>
+      )}
+      {!workloadOnly && (
+        <div className="rz-scope rz-zoom" role="radiogroup" aria-label="Scope">
+          <span className="rz-dim rz-xs">Set on:</span>
+          <button aria-pressed={scope === "workload"} onClick={() => setScope("workload")}>
+            This {d.kind}
+          </button>
+          <button aria-pressed={scope === "namespace"} onClick={() => setScope("namespace")}>
+            Namespace {d.namespace}
+          </button>
+        </div>
+      )}
       <div className="rz-radios" role="radiogroup">
         {choices.map((o) => (
           <label key={o} className={`rz-radio${value === o ? " on" : ""}`}>

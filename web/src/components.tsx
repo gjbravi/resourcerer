@@ -14,7 +14,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Phase, Resource, Summary } from "./api";
 import { fmt, fmtCores, fmtMem, fmtMoney, Mi } from "./format";
 import { dismiss, useToasts, workloadHash } from "./hooks";
@@ -261,7 +261,43 @@ export function Metric({
   );
 }
 
-/** Themed progress bar for the fit score; high scores glow and shimmer. */
+/** An "i" that explains a number: opens on hover, focus or tap, closes on Escape or a tap outside. */
+export function InfoTip({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  return (
+    <span ref={ref} className="rz-infotip" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+      >
+        <Info size={15} />
+      </button>
+      {open && (
+        <span className="pop" role="tooltip">
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Themed progress bar for the rightsizing score; high scores glow and shimmer. */
 export function FitBar({ value }: { value?: number }) {
   const v = value == null ? 0 : Math.max(0, Math.min(100, value));
   const level = value == null ? "none" : v >= 80 ? "high" : v >= 50 ? "mid" : "low";
@@ -272,7 +308,7 @@ export function FitBar({ value }: { value?: number }) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={value == null ? undefined : Math.round(v)}
-      aria-label="Fit score"
+      aria-label="Rightsizing score"
     >
       <span className="fill" style={{ width: `${Math.max(v, value == null ? 0 : 3)}%` }}>
         {level === "high" && <i className="spark" />}

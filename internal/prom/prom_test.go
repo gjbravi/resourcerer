@@ -36,8 +36,9 @@ func TestRolloutOwnerUsesReplicaSets(t *testing.T) {
 }
 
 func TestWorkloadNodeCost(t *testing.T) {
-	q := WorkloadNodeCost(Ref{Namespace: "demo", Kind: "StatefulSet", Name: "cache"}, 0.0316, 0.0042, false)
+	q := WorkloadNodeCost(Ref{Namespace: "demo", Kind: "StatefulSet", Name: "cache"}, 0.0316, 0.0042, false, []string{"m5.large", "c7i-flex.xlarge"})
 	for _, want := range []string{
+		`offering_price_estimate{instance_type=~"m5\\.large|c7i-flex\\.xlarge"}[5m]`,
 		`kube_pod_container_resource_requests{namespace="demo", resource="cpu"} * 0.0316`,
 		`topk by (namespace, pod) (1,`,
 		`topk by (node_name) (1,`,
@@ -48,7 +49,23 @@ func TestWorkloadNodeCost(t *testing.T) {
 			t.Errorf("node cost query lacks %s:\n%s", want, q)
 		}
 	}
-	if p := WorkloadNodeCost(Ref{Namespace: "demo", Kind: "StatefulSet", Name: "cache"}, 0.0316, 0.0042, true); !strings.Contains(p, "* 0 + 1)") {
-		t.Errorf("priced query must leave the factor out:\n%s", p)
+	if p := WorkloadNodeCost(Ref{Namespace: "demo", Kind: "StatefulSet", Name: "cache"}, 0.0316, 0.0042, true, nil); !strings.Contains(p, "* 0 + 1)") || !strings.Contains(p, "offering_price_estimate[5m]") {
+		t.Errorf("priced query must leave the factor out, and read every offering without types:\n%s", p)
+	}
+}
+
+func TestClusterUsageCoversTheStep(t *testing.T) {
+	c := &Client{RateWindow: "5m"}
+	if q := c.ClusterUsage("cpu", time.Minute); !strings.Contains(q, "[5m]") {
+		t.Errorf("a short step keeps the rate window:\n%s", q)
+	}
+	if q := c.ClusterUsage("cpu", 2*time.Hour); !strings.Contains(q, "[2h]") {
+		t.Errorf("a long step rates over the whole step:\n%s", q)
+	}
+	if q := c.ClusterUsage("memory", time.Minute); strings.Contains(q, "avg_over_time") {
+		t.Errorf("a short step reads memory as is:\n%s", q)
+	}
+	if q := c.ClusterUsage("memory", 2*time.Hour); !strings.Contains(q, "avg_over_time(container_memory_working_set_bytes{container!=\"\", container!=\"POD\"}[2h])") {
+		t.Errorf("a long step averages memory over the step:\n%s", q)
 	}
 }
