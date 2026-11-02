@@ -1,0 +1,34 @@
+{{- if eq .Values.auth.strategy "oidc" }}
+{{- /*
+Authentication parameters live here rather than in the -defaults ConfigMap because -defaults is read fail-open: a
+missing or unreadable ConfigMap falls back to the built-in defaults, and for authentication that fallback would be
+"anonymous". Only keys the user set are rendered: the server parses this document strictly, and an empty or null
+value would be a configuration error rather than an unset one.
+*/ -}}
+{{- $oidc := .Values.auth.oidc }}
+{{- $config := dict }}
+{{- with $oidc.issuer }}{{ $_ := set $config "issuer" . }}{{ end }}
+{{- with $oidc.clientID }}{{ $_ := set $config "clientID" . }}{{ end }}
+{{- with $oidc.redirectURL }}{{ $_ := set $config "redirectURL" . }}{{ end }}
+{{- with $oidc.scopes }}{{ $_ := set $config "scopes" . }}{{ end }}
+{{- with $oidc.usernameClaim }}{{ $_ := set $config "usernameClaim" . }}{{ end }}
+{{- with $oidc.groupsClaim }}{{ $_ := set $config "groupsClaim" . }}{{ end }}
+{{- with $oidc.allowedGroups }}{{ $_ := set $config "allowedGroups" . }}{{ end }}
+{{- with $oidc.sessionTTL }}{{ $_ := set $config "sessionTTL" . }}{{ end }}
+{{- $roles := dict }}
+{{- with $oidc.roles.editorGroups }}{{ $_ := set $roles "editorGroups" . }}{{ end }}
+{{- if kindIs "bool" $oidc.roles.anyAuthenticatedIsViewer }}
+{{- $_ := set $roles "anyAuthenticatedIsViewer" $oidc.roles.anyAuthenticatedIsViewer }}
+{{- end }}
+{{- if $roles }}{{ $_ := set $config "roles" $roles }}{{ end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "resourcerer.fullname" . }}-auth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "resourcerer.labels" . | nindent 4 }}
+data:
+  oidc.yaml: |
+    {{- toYaml $config | nindent 4 }}
+{{- end }}

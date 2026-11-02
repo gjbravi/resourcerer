@@ -1,17 +1,37 @@
 {{- if not (has .Values.selection (list "all" "label")) }}
 {{- fail "selection must be \"all\" or \"label\"" }}
 {{- end }}
-{{- if ne .Values.auth.strategy "anonymous" }}
-{{- fail "auth.strategy: only \"anonymous\" is supported" }}
-{{- end }}
 {{ include "resourcerer.deployment" (dict "root" . "component" "controller" "values" .Values.controller
   "args" (list "--metrics-bind-address=:8081") "ports" (list (dict "name" "metrics" "port" 8081))) }}
 ---
-{{ $serverArgs := list "--http-bind-address=:8080" "--metrics-bind-address=0" }}
+{{- /* Authentication is the server's alone: only its container gets the flags and the secret material, and an
+      anonymous install renders neither, so its pod spec is the one every existing install already runs. */ -}}
+{{- $serverArgs := list "--http-bind-address=:8080" "--metrics-bind-address=0" }}
+{{- $serverEnv := list }}
 {{- if .Values.readOnly }}{{ $serverArgs = append $serverArgs "--read-only" }}{{ end }}
 {{- if not .Values.server.ui }}{{ $serverArgs = append $serverArgs "--disable-ui" }}{{ end }}
+{{- if ne .Values.auth.strategy "anonymous" }}
+{{- $auth := .Values.auth }}
+{{- /* Helm reads an unquoted `true` as a boolean, and `default` would swallow it, so normalise without truthiness. */}}
+{{- $secure := "" }}
+{{- if hasKey $auth "cookieSecure" }}{{ $secure = $auth.cookieSecure | toString }}{{ end }}
+{{- if eq $secure "" }}{{ $secure = "auto" }}{{ end }}
+{{- $serverArgs = concat $serverArgs (list
+  (printf "--auth-strategy=%s" $auth.strategy)
+  (printf "--auth-config-configmap=%s/%s-auth" .Release.Namespace (include "resourcerer.fullname" .))
+  (printf "--auth-cookie-secure=%s" $secure)) }}
+{{- $serverEnv = append $serverEnv (include "resourcerer.secretEnv"
+  (dict "name" "RESOURCERER_OIDC_CLIENT_SECRET" "ref" $auth.oidc.clientSecretSecretRef)) }}
+{{- $serverEnv = append $serverEnv (include "resourcerer.secretEnv"
+  (dict "name" "RESOURCERER_SESSION_KEY" "ref" $auth.session.keySecretRef)) }}
+{{- $previous := $auth.session.keyPreviousSecretRef | default dict }}
+{{- if and $previous.name $previous.key }}
+{{- $serverEnv = append $serverEnv (include "resourcerer.secretEnv"
+  (dict "name" "RESOURCERER_SESSION_KEY_PREVIOUS" "ref" $previous)) }}
+{{- end }}
+{{- end }}
 {{- include "resourcerer.deployment" (dict "root" . "component" "server" "values" .Values.server
-  "args" $serverArgs "ports" (list (dict "name" "http" "port" 8080))) }}
+  "args" $serverArgs "ports" (list (dict "name" "http" "port" 8080)) "env" $serverEnv) }}
 {{- if .Values.applier.enabled }}
 ---
 {{ include "resourcerer.deployment" (dict "root" . "component" "applier" "values" .Values.applier

@@ -96,7 +96,47 @@
         }
       }
     },
-    "auth": { "type": "object", "properties": { "strategy": { "type": "string", "enum": ["anonymous"] } } },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": { "type": "string", "enum": ["anonymous", "oidc"] },
+        "cookieSecure": {
+          "oneOf": [{ "type": "string", "enum": ["auto", "true", "false"] }, { "type": "boolean" }]
+        },
+        "oidc": { "$ref": "#/definitions/oidcConfig" },
+        "session": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "keySecretRef": { "$ref": "#/definitions/secretRefOrUnset" },
+            "keyPreviousSecretRef": { "$ref": "#/definitions/secretRefOrUnset" }
+          }
+        }
+      },
+      "oneOf": [
+        { "properties": { "strategy": { "enum": ["anonymous"] } } },
+        {
+          "properties": {
+            "strategy": { "enum": ["oidc"] },
+            "oidc": {
+              "required": ["issuer", "clientID", "clientSecretSecretRef"],
+              "properties": {
+                "issuer": { "pattern": "^https?://" },
+                "clientID": { "minLength": 1 },
+                "scopes": { "anyOf": [{ "maxItems": 0 }, { "contains": { "const": "openid" } }] },
+                "clientSecretSecretRef": { "$ref": "#/definitions/secretRef" }
+              }
+            },
+            "session": {
+              "required": ["keySecretRef"],
+              "properties": { "keySecretRef": { "$ref": "#/definitions/secretRef" } }
+            }
+          },
+          "required": ["oidc", "session"]
+        }
+      ]
+    },
     "readOnly": { "type": "boolean" },
     "controller": { "$ref": "#/definitions/component" },
     "applier": { "$ref": "#/definitions/component" },
@@ -130,6 +170,40 @@
         "extraArgs": { "type": "array", "items": { "type": "string" } },
         "podLabels": { "type": "object", "additionalProperties": { "type": "string" } },
         "podAnnotations": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "groups": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "secretRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "key"],
+      "properties": { "name": { "type": "string", "minLength": 1 }, "key": { "type": "string", "minLength": 1 } }
+    },
+    "secretRefOrUnset": {
+      "type": "object",
+      "oneOf": [{ "additionalProperties": { "enum": [""] } }, { "$ref": "#/definitions/secretRef" }]
+    },
+    "oidcConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "issuer": { "type": "string", "pattern": "^$|^https?://" },
+        "clientID": { "type": "string" },
+        "redirectURL": { "type": "string", "pattern": "^$|^https?://" },
+        "scopes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "usernameClaim": { "type": "string" },
+        "groupsClaim": { "type": "string" },
+        "allowedGroups": { "$ref": "#/definitions/groups" },
+        "clientSecretSecretRef": { "$ref": "#/definitions/secretRefOrUnset" },
+        "roles": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "editorGroups": { "$ref": "#/definitions/groups" },
+            "anyAuthenticatedIsViewer": { "type": "boolean" }
+          }
+        },
+        "sessionTTL": { "type": "string", "pattern": "^$|^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$" }
       }
     }
   }

@@ -15,10 +15,33 @@ Open the UI:
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "resourcerer.fullname" . }} 8080:{{ .Values.server.service.port }}
   open http://localhost:8080
 
+{{- if eq .Values.auth.strategy "anonymous" }}
+
 Authentication is anonymous: anyone who can reach the UI can apply recommendations
 {{- if .Values.readOnly }} (read-only mode is on, so the UI cannot change anything){{ end }}.
 {{- if and .Values.server.ingress.enabled (not .Values.readOnly) }}
 WARNING: the Ingress exposes the UI without authentication. Put an authenticating proxy in front, or set readOnly=true.
+{{- end }}
+{{- else }}
+
+Authentication is {{ .Values.auth.strategy }}: the UI signs in at {{ .Values.auth.oidc.issuer }}
+as client {{ .Values.auth.oidc.clientID }}, and the session is a sealed cookie, so no replica holds sessions.
+{{- if not .Values.auth.oidc.roles.editorGroups }}
+No auth.oidc.roles.editorGroups is set, so nobody may apply yet. Name the groups allowed to change workloads.
+{{- else if not .Values.auth.oidc.allowedGroups }}
+auth.oidc.allowedGroups is empty, so every user the provider authenticates gets read access. Name the groups that
+may use resourcerer to narrow it.
+{{- end }}
+{{- if not .Values.server.ingress.tls }}
+WARNING: nothing here serves TLS (server.ingress.tls is empty), so the session cookie is only marked Secure when a
+proxy in front declares X-Forwarded-Proto: https. Behind a TLS-terminating proxy set auth.cookieSecure=true; over
+plain HTTP the session crosses the wire in clear text, so keep this install reachable only from inside the cluster.
+{{- end }}
+Parameters live in ConfigMap {{ .Release.Namespace }}/{{ include "resourcerer.fullname" . }}-auth under oidc.yaml:
+editing it takes effect within 30s without a restart, and changing issuer or clientID signs every session out.
+WARNING: write access to that ConfigMap is admin access to resourcerer, because its issuer can be repointed at an
+Identity Provider an attacker controls, which then issues a login resourcerer accepts as an editor. Limit who may
+write ConfigMaps in this namespace.
 {{- end }}
 {{- if not .Values.applier.enabled }}
 The applier is disabled: recommendations are never applied to workloads.
