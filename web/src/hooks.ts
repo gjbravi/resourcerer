@@ -1,9 +1,28 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { api, refKey, type Range, type Ref, type ReliabilityWindow, type Resource } from "./api";
+import { sendToSignIn } from "./session";
 
-export const useInfo = () => useQuery({ queryKey: ["info"], queryFn: api.info, refetchInterval: 60_000 });
-export const useWorkloads = () => useQuery({ queryKey: ["workloads"], queryFn: api.list, refetchInterval: 15_000 });
+/**
+ * Who is calling, from `GET /api/v1/me`: the only call the server answers without a session, so the app asks it
+ * before anything else. It is rechecked when the window regains focus, which is how a session that ended while the
+ * page sat there is noticed; a caller who is gone from it is sent back to the provider.
+ */
+export const useSession = () =>
+  useQuery({
+    queryKey: ["me"],
+    queryFn: async () => {
+      const s = await api.me();
+      if (!s.authenticated) sendToSignIn();
+      return s;
+    },
+  });
+
+/** The cluster's configuration; nothing to ask for until someone is signed in to ask as. */
+export const useInfo = (enabled = true) =>
+  useQuery({ queryKey: ["info"], queryFn: api.info, refetchInterval: 60_000, enabled });
+export const useWorkloads = (enabled = true) =>
+  useQuery({ queryKey: ["workloads"], queryFn: api.list, refetchInterval: 15_000, enabled });
 export const useWorkload = (w: Ref) =>
   useQuery({ queryKey: ["workload", refKey(w)], queryFn: () => api.get(w), refetchInterval: 5_000 });
 export const useSeries = (w: Ref, container: string, resource: Resource, range: Range) =>

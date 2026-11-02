@@ -359,11 +359,17 @@ flowchart LR
 - **Who controls authentication.** Anyone who can write the auth ConfigMap can point `issuer` at an IdP they run and
   sign in as an editor: write access to ConfigMaps in the release namespace is admin access to resourcerer. Grant it
   accordingly.
-- **Writes** go through `s.write`: refused to everyone in read-only mode (`403`, `"reason": "read-only"`), otherwise
-  allowed to editors only (`403`, `"reason": "editor-required"`). The requester recorded on an apply or revert is
-  the authenticated user, never a value from the request.
-- **The UI** is embedded in the binary (`web.FS()`) and served as a single-page app. React Query polls the workload
-  every 5s, the list every 15s and charts every 30s; expensive views fetch only when shown.
+- **Writes** go through `s.write`: refused under `oidc` unless the request carries the header the UI sends and a body
+  typed as JSON (`403`, `"reason": "ajax-required"`), which is the CSRF guard — a page on another origin can make the
+  browser send the session cookie, but not that header, since the API allows no cross-origin call. `anonymous` needs no
+  guard: there is no session to ride, and scripts and the e2e checks post to it directly. Then refused to everyone in
+  read-only mode (`403`, `"reason": "read-only"`), otherwise allowed to editors only (`403`,
+  `"reason": "editor-required"`). The requester recorded on an apply or revert is the authenticated user, never a value
+  from the request.
+- **The UI** is embedded in the binary (`web.FS()`) and served as a single-page app. It asks `me` before anything else,
+  because that is the one call served without a session, and sends anyone the server does not know to `/auth/login` with
+  the page they were on; everything it can only show an editor is disabled and says why rather than hiding. React Query
+  polls the workload every 5s, the list every 15s and charts every 30s; expensive views fetch only when shown.
 
 ## Deployment
 

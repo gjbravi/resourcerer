@@ -10,7 +10,7 @@ import {
   Flame,
   Hourglass,
   Info,
-  Lock,
+  Lock as LockIcon,
   MemoryStick,
   Pencil,
   RefreshCw,
@@ -46,6 +46,7 @@ import { fmtWindow } from "../placement";
 import { toast, useAction, useImpact, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
 import { resolved, signals, type Signal } from "../reliability";
 import { verdict } from "../verdict";
+import type { Lock } from "../session";
 import { CostSection } from "./Placement";
 import { ReliabilityTab } from "./ReliabilityTab";
 import { meta } from "../settings";
@@ -71,7 +72,7 @@ const learningSeconds = (d: Detail) =>
 const fmtCpuAxis = (v: number) => `${Math.round(v * 1000)}m`;
 const fmtMemAxis = (v: number) => (v >= Gi ? `${(v / Gi).toFixed(1)}GiB` : `${Math.round(v / Mi)}MiB`);
 
-export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readOnly: boolean }) {
+export function Details({ wref, tab, lock }: { wref: Ref; tab: string; lock: Lock }) {
   const { data: d, error, isLoading } = useWorkload(wref);
   const [confirm, setConfirm] = useState(false);
   const apply = useAction(wref, (hash: string) => api.apply(wref, hash));
@@ -92,7 +93,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
   const containers = d.containers ?? [];
   const held = manualHold(d);
   const canApply =
-    !readOnly && !!d.hash && d.pending && (d.phase === "Ready" || d.phase === "Learning") && !held.blocked;
+    lock.write && !!d.hash && d.pending && (d.phase === "Ready" || d.phase === "Learning") && !held.blocked;
   const lastApply = d.history.find((h) => h.action === "Apply");
   const net = d.current.monthlyCost - d.recommended.monthlyCost;
   const sig = signals(d);
@@ -198,8 +199,8 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
               disabled={!canApply}
               onClick={() => setConfirm(true)}
               title={
-                readOnly
-                  ? "Read-only"
+                !lock.write
+                  ? lock.reason
                   : !d.pending
                     ? "Current requests already match the recommendation"
                     : held.blocked
@@ -207,11 +208,12 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
                       : d.message
               }
             >
-              {held.blocked ? <Lock size={15} /> : <Sparkles size={15} />} Apply recommendation
+              {held.blocked ? <LockIcon size={15} /> : <Sparkles size={15} />} Apply recommendation
             </button>
             <button
               className="rz-btn ghost"
-              disabled={readOnly || d.phase === "Unsupported" || regenerate.isPending}
+              disabled={!lock.write || d.phase === "Unsupported" || regenerate.isPending}
+              title={lock.reason}
               onClick={() =>
                 regenerate.mutate(undefined, {
                   onSuccess: () =>
@@ -229,7 +231,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
           </div>
           {held.blocked && (
             <span className="rz-recmeta" style={{ marginTop: 0 }} title={held.policy}>
-              <Lock size={13} /> {holdText(held)}
+              <LockIcon size={13} /> {holdText(held)}
             </span>
           )}
           {lastApply && (
@@ -240,7 +242,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
             </span>
           )}
         </div>
-        <AutoDeployCard d={d} readOnly={readOnly} />
+        <AutoDeployCard d={d} lock={lock} />
       </div>
 
       <Verdict d={d} />
@@ -284,7 +286,7 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
       {tab === "recommendation" && <RecommendationTab d={d} />}
       {tab === "patches" && <PatchesTab d={d} />}
       {tab === "reliability" && <ReliabilityTab d={d} />}
-      {tab === "settings" && <SettingsTab d={d} readOnly={readOnly} />}
+      {tab === "settings" && <SettingsTab d={d} lock={lock} />}
 
       <section className="rz-card">
         <div className="rz-cardhd">
@@ -301,8 +303,13 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
                 <span className="rz-dim rz-xs">{ago(e.time)}</span>
                 <div className="rz-dim rz-xs">{e.message}</div>
               </div>
-              {i === d.events.findIndex((x) => x.reason === "RecommendationApplied") && lastApply && !readOnly && (
-                <button className="rz-btn ghost small" onClick={doRevert} disabled={revert.isPending}>
+              {i === d.events.findIndex((x) => x.reason === "RecommendationApplied") && lastApply && !lock.readOnly && (
+                <button
+                  className="rz-btn ghost small"
+                  onClick={doRevert}
+                  disabled={!lock.write || revert.isPending}
+                  title={lock.reason}
+                >
                   <RotateCcw size={13} /> Revert
                 </button>
               )}
@@ -914,10 +921,13 @@ export function SettingsTable({
   values,
   onEdit,
   showSource = true,
+  lock,
 }: {
   values: SettingInfo[];
   onEdit?: (s: SettingInfo) => void;
   showSource?: boolean;
+  /** When the caller can read but not write, the edit action stays visible and explains itself. */
+  lock?: Lock;
 }) {
   const groups = [...new Set(values.map((s) => meta(s.key).group))];
   return (
@@ -955,7 +965,13 @@ export function SettingsTable({
                 <td className="rz-dim rz-xs rz-mono">{s.annotation}</td>
                 <td>
                   {onEdit && (
-                    <button className="rz-icon" aria-label={`Edit ${meta(s.key).label}`} onClick={() => onEdit(s)}>
+                    <button
+                      className="rz-icon"
+                      aria-label={`Edit ${meta(s.key).label}`}
+                      disabled={!!lock && !lock.write}
+                      title={lock?.reason}
+                      onClick={() => onEdit(s)}
+                    >
                       <Pencil size={14} />
                     </button>
                   )}
@@ -968,7 +984,7 @@ export function SettingsTable({
   );
 }
 
-function SettingsTab({ d, readOnly }: { d: Detail; readOnly: boolean }) {
+function SettingsTab({ d, lock }: { d: Detail; lock: Lock }) {
   const [edit, setEdit] = useState<SettingInfo | null>(null);
   return (
     <section className="rz-card">
@@ -981,14 +997,18 @@ function SettingsTab({ d, readOnly }: { d: Detail; readOnly: boolean }) {
           </p>
         </div>
       </div>
-      <SettingsTable values={d.settings ?? []} onEdit={readOnly ? undefined : setEdit} />
+      <SettingsTable
+        values={d.settings ?? []}
+        onEdit={lock.readOnly ? undefined : setEdit}
+        lock={lock.write ? undefined : lock}
+      />
       {edit && <EditSetting d={d} setting={edit} onClose={() => setEdit(null)} />}
     </section>
   );
 }
 
 /** Auto-deploy at a glance: on or off, where that is set, what it does with this recommendation, and a switch. */
-function AutoDeployCard({ d, readOnly }: { d: Detail; readOnly: boolean }) {
+function AutoDeployCard({ d, lock }: { d: Detail; lock: Lock }) {
   const [edit, setEdit] = useState(false);
   const a = autoDeploy(d);
   const setting = d.settings?.find((s) => s.key === "auto-deploy");
@@ -1012,8 +1032,8 @@ function AutoDeployCard({ d, readOnly }: { d: Detail; readOnly: boolean }) {
         role="switch"
         aria-checked={a.on}
         aria-label="Auto-deploy"
-        disabled={readOnly || !setting}
-        title={readOnly ? "Read-only" : a.on ? "Turn auto-deploy off" : "Turn auto-deploy on"}
+        disabled={!lock.write || !setting}
+        title={lock.reason ?? (a.on ? "Turn auto-deploy off" : "Turn auto-deploy on")}
         onClick={() => setEdit(true)}
       >
         <i />

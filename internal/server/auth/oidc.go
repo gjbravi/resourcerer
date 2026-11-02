@@ -54,10 +54,10 @@ var logger = log.Log.WithName("auth")
 // identity in a sealed cookie. Tokens from the IdP never reach the browser and are not kept: at the end of the
 // session the user signs in again, usually without a prompt while the IdP's own session lasts.
 //
-// Cookies are SameSite=Lax, so a cross-site form cannot carry the session into a mutation; that is the defence
-// against CSRF until the UI sends a header the server can require. Until then a same-site sibling origin can still
-// post a JSON body as text/plain, because the API's decoders do not check Content-Type; requiring the header and
-// application/json on mutations closes it.
+// Cookies are SameSite=Lax, so a cross-site form cannot carry the session into a mutation. Mutations must also carry
+// the header the UI sends and a body declared as JSON, which closes what Lax leaves open: a page on a sibling origin
+// posting a JSON body as text/plain, since the API's decoders do not look at Content-Type. The server skips that
+// check for a strategy that issues no cookie, because there is no session there for another page to borrow.
 type OIDC struct {
 	config       configSource
 	codec        *Codec
@@ -115,6 +115,9 @@ func (p *OIDC) Run(ctx context.Context) error {
 }
 
 func (p *OIDC) Strategy() string { return StrategyOIDC }
+
+// The session lives in a cookie, so the server guards mutations against another page borrowing it.
+func (p *OIDC) UsesSessionCookie() bool { return true }
 
 func (p *OIDC) Status() Status {
 	st := p.config.current()

@@ -27,22 +27,27 @@ import (
 	"github.com/gjbravi/resourcerer/internal/server/auth"
 )
 
-// stub answers with a fixed identity, or none.
+// stub answers with a fixed identity, or none. cookie marks a strategy that authenticates with a session cookie,
+// like oidc; the name stays "stub" so a test can show the server does not special-case strategy names.
 type stub struct {
-	id auth.Identity
-	ok bool
+	id     auth.Identity
+	ok     bool
+	cookie bool
 }
 
 func (stub) Strategy() string                               { return "stub" }
 func (p stub) Identify(*http.Request) (auth.Identity, bool) { return p.id, p.ok }
 func (stub) Handle(http.ResponseWriter, *http.Request) bool { return false }
 func (stub) Status() auth.Status                            { return auth.Status{} }
+func (p stub) UsesSessionCookie() bool                      { return p.cookie }
 
 var (
 	nobody = stub{}
 	viewer = stub{id: auth.Identity{User: "vera", Viewer: true}, ok: true}
 	editor = stub{id: auth.Identity{User: "eddie", Viewer: true, Editor: true}, ok: true}
 	denied = stub{id: auth.Identity{User: "dana"}, ok: true}
+	// cookieEditor is a provider that authenticates with a cookie, so mutations must come from the UI.
+	cookieEditor = stub{id: auth.Identity{User: "eddie", Viewer: true, Editor: true}, ok: true, cookie: true}
 )
 
 func path(pattern string) (method, p string) {

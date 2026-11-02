@@ -59,12 +59,20 @@ type Provider interface {
 	// Handle serves the strategy's endpoints under /auth/ and returns false for paths it does not own.
 	Handle(w http.ResponseWriter, r *http.Request) bool
 	Status() Status
+	// UsesSessionCookie reports that the strategy recognizes a caller by a cookie the browser attaches on its own.
+	// Only those have a cross-site request to defend against: a browser sends a same-site cookie whether or not the
+	// page making the request is one we trust, while a header or token a proxy or the caller sets is not something a
+	// foreign page can produce. The server requires mutations to prove they came from the UI when this is true.
+	UsesSessionCookie() bool
 }
 
 // Anonymous trusts every caller with every permission, like Kiali's anonymous strategy.
 type Anonymous struct{}
 
 func (Anonymous) Strategy() string { return StrategyAnonymous }
+
+// Anonymous never issues a cookie, so there is no session for another page to borrow.
+func (Anonymous) UsesSessionCookie() bool { return false }
 
 func (Anonymous) Identify(*http.Request) (Identity, bool) {
 	return Identity{User: "anonymous", Viewer: true, Editor: true}, true

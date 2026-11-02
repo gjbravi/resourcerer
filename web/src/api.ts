@@ -1,3 +1,5 @@
+import { ajaxHeader, ajaxValue, signInURL } from "./session";
+
 /** Types mirror internal/server/types.go. CPU is in cores and memory in bytes. */
 export type Resource = "cpu" | "memory";
 export type Resources = Partial<Record<Resource, number>>;
@@ -21,6 +23,31 @@ export interface PrometheusStatus {
   checks: { name: string; metric: string; ok: boolean }[] | null;
   missing?: string[];
 }
+
+/** The caller's role: editor changes things, viewer reads, none is signed in without access. */
+export type Role = "editor" | "viewer" | "none";
+
+/** GET /api/v1/me for a signed-in caller. */
+export interface Me {
+  authenticated: true;
+  user: string;
+  groups: string[];
+  role: Role;
+  strategy: string;
+  impersonating: boolean;
+  /** The auth configuration could not be reread and the previous one still applies. */
+  configStale: boolean;
+  configError?: string;
+  expiresAt?: string;
+}
+
+/** GET /api/v1/me for a caller who is not signed in: the strategy, and nothing else. */
+export interface Unauthenticated {
+  authenticated: false;
+  strategy: string;
+}
+
+export type Session = Me | Unauthenticated;
 
 export interface Info {
   version: string;
@@ -282,19 +309,31 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** Why a 401 or 403 happened, when the server said: unauthenticated, forbidden, editor-required, read-only. */
+    public reason?: string,
   ) {
     super(message);
   }
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { [ajaxHeader]: ajaxValue };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(`/api/v1${path}`, {
     method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText);
+  const data = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };
+  if (!res.ok) {
+    // A session that ended while the page was open: go and sign in again rather than leave an error on screen. The
+    // first sign-in is not here — /me answers 200 — and the app starts it once it knows who is calling.
+    if (res.status === 401 && data.reason === "unauthenticated") {
+      const to = signInURL(window.location);
+      if (to) window.location.assign(to);
+    }
+    throw new ApiError(res.status, data.error ?? res.statusText, data.reason);
+  }
   return data as T;
 }
 
@@ -302,6 +341,7 @@ export const refKey = (w: Ref) => `${w.namespace}/${w.kind}/${w.name}`;
 const path = (w: Ref) => `/workloads/${encodeURIComponent(w.namespace)}/${w.kind}/${encodeURIComponent(w.name)}`;
 
 export const api = {
+  me: () => call<Session>("GET", "/me"),
   info: () => call<Info>("GET", "/info"),
   list: () => call<Summary[]>("GET", "/workloads"),
   get: (w: Ref) => call<Detail>("GET", path(w)),

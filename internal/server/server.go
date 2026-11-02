@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"mime"
 	"net/http"
 	"slices"
 	"sort"
@@ -650,9 +651,42 @@ func bands(pts []prom.Point, start, end time.Time) []Band {
 
 /* ── Mutations ─────────────────────────────────────────────────────────── */
 
-// write gates every mutation: nobody on a read-only install, otherwise editors only.
+const (
+	// ajaxHeader names a request as coming from resourcerer's own UI; ajaxValue is the only value it takes. A foreign
+	// page cannot set either: a custom header makes the browser ask the server to allow the origin first, and the API
+	// grants none.
+	ajaxHeader = "X-Resourcerer-Request"
+	ajaxValue  = "1"
+)
+
+// explicitMutation reports whether a mutation carries what a browser will not attach from another origin: the
+// header the UI sends, and a body declared as JSON, so a decoder is never handed a body a form posted. A mutation
+// with no body has nothing to parse and only needs the header.
+func explicitMutation(r *http.Request) bool {
+	if r.Header.Get(ajaxHeader) != ajaxValue {
+		return false
+	}
+	if r.ContentLength == 0 {
+		return true
+	}
+	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	return err == nil && media == "application/json"
+}
+
+// write gates every mutation: a cookie strategy first asks for proof it came from the UI, then nobody on a
+// read-only install, otherwise editors only.
+//
+// Handler wraps every mutating route in this, so the request here changes something. A strategy that authenticates
+// with a cookie is asked first to prove the request came from the UI: the browser would otherwise send the session
+// cookie to a request a page on another origin started. Strategies without a cookie are not asked, since a header
+// or token the proxy or the caller sets cannot be forged that way; that also keeps curl working against an
+// anonymous install, where there is no session to steal.
 func (s *Server) write(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if s.Auth.UsesSessionCookie() && !explicitMutation(r) {
+			writeReason(w, http.StatusForbidden, "ajax-required", "changes must be made from the resourcerer UI")
+			return
+		}
 		if s.ReadOnly {
 			writeReason(w, http.StatusForbidden, "read-only", "resourcerer is read-only")
 			return
