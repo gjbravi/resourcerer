@@ -80,23 +80,29 @@ spec:
 
 ## What the UI and `kubectl` show
 
-The applier records its decision on every Recommendation:
+The applier records its decision on every Recommendation. The two kinds of apply are decided apart, because a policy
+commonly holds auto-deploy back while leaving a person free, or the other way around:
 
 ```yaml
 status:
   applyPolicy:
-    state: Blocked                  # Allowed | Blocked
-    blockedBy: when.windows         # the policy field that blocks
-    policy: ApplyPolicy/payments/checkout
-    reason: outside the apply windows
-    nextAllowed: "2026-11-03T14:00:00Z"
-    wouldBlock: []                  # what Audit-mode policies would have blocked
+    auto:
+      state: Blocked                # Allowed | Blocked
+      policy: ApplyPolicy/payments/checkout
+      blockedBy: when.windows       # the policy field that blocks
+      reason: outside the apply windows
+      nextAllowed: "2026-11-03T14:00:00Z"
+      wouldBlock: []                # what Audit-mode policies would have blocked
+    manual:
+      state: Allowed
     evaluatedAt: "2026-11-02T18:00:00Z"
 ```
 
-`blockedBy` is a field path, so the UI points at the rule instead of asking you to parse a message. A blocked apply
-is reconsidered when the policy changes and when `nextAllowed` arrives, so a window opening does not wait for the next
-regeneration of the recommendation.
+`blockedBy` is a field path, so a client can name the rule instead of parsing a message. The API refuses an apply or a
+revert that a policy holds with `409` and the reason (`ApplyPolicy/payments/checkout holds this apply: frozen: …`), which
+is what the UI shows when someone clicks; the auto-deploy card says when a policy holds the automatic apply. A blocked
+apply is reconsidered when the policy changes and when `nextAllowed` arrives, so a window opening does not wait for the
+next regeneration of the recommendation.
 
 ```bash
 kubectl get clusterapplypolicies

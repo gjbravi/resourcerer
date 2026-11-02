@@ -233,6 +233,26 @@ export interface Detail extends Summary {
   applyMethod: string;
   templateKind?: string;
   templateName?: string;
+  /** What the apply policies decided, one per kind of apply. Server-side only; the applier writes it. */
+  applyPolicy?: ApplyPolicyStatus;
+}
+
+/** What a policy decided for one kind of apply, as `internal/policy` and the applier record it. */
+export interface ApplyDecision {
+  state: "Allowed" | "Blocked";
+  policy?: string;
+  /** The policy field that blocks, such as `when.windows`. */
+  blockedBy?: string;
+  reason?: string;
+  nextAllowed?: string;
+  /** What Audit-mode policies would have blocked. */
+  wouldBlock?: string[];
+}
+
+export interface ApplyPolicyStatus {
+  auto: ApplyDecision;
+  manual: ApplyDecision;
+  evaluatedAt?: string;
 }
 
 export interface Point {

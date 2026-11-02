@@ -177,6 +177,9 @@ type Detail struct {
 	Events          []Event           `json:"events"`
 	LastApplyResult *ApplyResult      `json:"lastApplyResult,omitempty"`
 	ApplyMethod     string            `json:"applyMethod"`
+	// ApplyPolicy is what the apply policies decided for this workload: when an apply of either kind
+	// may start, and which policy holds it back otherwise.
+	ApplyPolicy *v1alpha1.ApplyPolicyStatus `json:"applyPolicy,omitempty"`
 	// TemplateKind and TemplateName name where resources are applied, when not the workload itself.
 	TemplateKind string `json:"templateKind,omitempty"`
 	TemplateName string `json:"templateName,omitempty"`

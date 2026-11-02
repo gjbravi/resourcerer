@@ -328,8 +328,11 @@ outside a window. A policy resourcerer cannot interpret, such as an unknown time
 read must not open the door.
 
 The applier evaluates on every `Recommendation` it reconciles and records the answer in
-`status.applyPolicy: {state, blockedBy, policy, reason, nextAllowed, wouldBlock}`. `blockedBy` is a field path such as
-`when.windows`, so the UI can point at the policy line instead of parsing a message. It also watches the policy kinds,
+`status.applyPolicy`, once per kind of apply (`auto`, `manual`: state, blockedBy, policy, reason, nextAllowed,
+wouldBlock), so a policy that holds auto-deploy back while a person is free reads as such. The server also passes the
+decision through: an apply or a revert the manual decision holds is refused with `409` and the reason, so the click gets
+its answer from the API instead of from a rejected apply a moment later. `blockedBy` is a field path such as
+`when.windows`, which lets a client name the rule instead of parsing a message. It also watches the policy kinds,
 so lifting a freeze or opening a window re-decides at once instead of waiting for the next regeneration, and it
 requeues for `nextAllowed` (at most an hour ahead) while a blocked apply is otherwise due.
 

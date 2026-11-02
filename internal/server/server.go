@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"slices"
@@ -312,6 +313,7 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 	st := rec.Status
 	d := Detail{Summary: summarize(rec, s.replicas(r.Context(), rec)), Warnings: st.Warnings, History: []History{}, Events: []Event{}}
 	d.ApplyMethod = st.Settings[settings.ApplyMethod].Value
+	d.ApplyPolicy = st.ApplyPolicy
 	if t := st.TemplateRef; t != nil {
 		d.TemplateKind, d.TemplateName = t.Kind, t.Name
 	}
@@ -605,6 +607,20 @@ func (s *Server) patchSpec(w http.ResponseWriter, r *http.Request, mutate func(*
 	writeJSON(w, map[string]string{"status": "accepted"})
 }
 
+// heldByPolicy refuses a change the applier would refuse anyway: the status already says whether a policy holds the
+// button, so the answer reaches the click instead of arriving a moment later as a rejected apply.
+func heldByPolicy(rec *v1alpha1.Recommendation) error {
+	d := rec.Status.ApplyPolicy
+	if d == nil || d.Manual.State != v1alpha1.PolicyStateBlocked {
+		return nil
+	}
+	by := d.Manual.Policy
+	if by == "" {
+		by = "an apply policy"
+	}
+	return fmt.Errorf("%s holds this apply: %s", by, d.Manual.Reason)
+}
+
 func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Hash string `json:"hash"`
@@ -614,6 +630,9 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.patchSpec(w, r, func(rec *v1alpha1.Recommendation) error {
+		if err := heldByPolicy(rec); err != nil {
+			return err
+		}
 		if rec.Status.Hash != body.Hash {
 			return errors.New("the recommendation changed since it was displayed; reload and review it again")
 		}
@@ -624,6 +643,9 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) revert(w http.ResponseWriter, r *http.Request) {
 	s.patchSpec(w, r, func(rec *v1alpha1.Recommendation) error {
+		if err := heldByPolicy(rec); err != nil {
+			return err
+		}
 		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionRevert, RequestedBy: User, RequestedAt: metav1.NewTime(time.Now())}
 		return nil
 	})

@@ -27,6 +27,19 @@ describe("autoDeploy", () => {
   it("applies a Ready, pending recommendation", () => {
     expect(autoDeploy(base)).toMatchObject({ on: true, tone: "on", source: "namespace", threshold: "15%" });
   });
+  it("explains what holds it back when a policy blocks it", () => {
+    const frozen = {
+      ...base,
+      applyPolicy: {
+        auto: { state: "Blocked", policy: "ApplyPolicy/demo/freeze", blockedBy: "when.freezes", reason: "frozen" },
+        manual: { state: "Allowed" },
+      },
+    } as unknown as Detail;
+    const a = autoDeploy(frozen);
+    expect(a).toMatchObject({ on: true, tone: "wait" });
+    expect(a.text).toContain("Held by ApplyPolicy/demo/freeze");
+    expect(a.text).toContain("frozen");
+  });
   it("waits for a Ready recommendation", () => {
     expect(autoDeploy({ ...base, phase: "Learning" }).tone).toBe("wait");
     expect(autoDeploy({ ...base, phase: "Warning" }).text).toBe("Paused while the recommendation is Warning.");

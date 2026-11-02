@@ -1,4 +1,5 @@
 import type { Detail } from "./api";
+import { blockedRule, until } from "./policy";
 
 export type AutoTone = "on" | "off" | "wait" | "done";
 
@@ -32,6 +33,18 @@ export function autoDeploy(d: Detail): AutoDeploy {
   if (seen?.action === "Revert") return { ...base, tone: "wait", text: "Skips this recommendation: it was reverted." };
   if (seen) return { ...base, tone: "done", text: seen.by === AUTO_USER ? "Applied it automatically." : "Applied." };
   if (!d.pending) return { ...base, tone: "done", text: `Nothing to apply: requests are within ${threshold}.` };
+  const held = d.applyPolicy?.auto;
+  if (held?.state === "Blocked") {
+    const at = until(held.nextAllowed);
+    const why = held.reason || `blocked by ${blockedRule(held.blockedBy)}`;
+    return {
+      ...base,
+      tone: "wait",
+      text:
+        [`Held by ${held.policy ?? "an apply policy"}: ${why}`, at && `may apply ${at}`].filter(Boolean).join(" · ") +
+        ".",
+    };
+  }
   if (d.phase === "Ready") return { ...base, tone: "on", text: "Applies this recommendation in a moment." };
   if (d.phase === "Learning" || d.phase === "Pending")
     return { ...base, tone: "wait", text: "Applies it once the recommendation is Ready." };

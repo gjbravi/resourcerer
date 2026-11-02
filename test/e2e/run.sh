@@ -135,7 +135,7 @@ wait_for "auto-deploy applies a Ready recommendation" 300 bash -c \
 # until it is gone. Auto-deploy starts off and the history was cleared above, so a rerun checks the same
 # thing instead of finding the apply of the previous run.
 wait_for "the chart renders a cluster apply policy" 60 k get cap resourcerer-platform
-[[ "$(rec_field demo deployment-worker '{.status.applyPolicy.state}')" == Allowed ]] \
+[[ "$(rec_field demo deployment-worker '{.status.applyPolicy.auto.state}')" == Allowed ]] \
   && pass "an audit policy reports the apply as allowed" || fail "an audit policy reports the apply as allowed"
 k apply -f - >/dev/null <<'EOF'
 apiVersion: resourcerer.io/v1alpha1
@@ -155,19 +155,23 @@ spec:
 EOF
 k -n demo annotate deploy worker resourcerer.io/auto-deploy=Enabled resourcerer.io/learning-period=PT2M --overwrite >/dev/null
 wait_for "a freeze blocks the automatic apply and says why" 300 bash -c \
-  "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.applyPolicy.state}') == Blocked \
-     && \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.applyPolicy.blockedBy}') == when.freezes \
-     && \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.applyPolicy.policy}') == ApplyPolicy/demo/e2e-freeze ]]"
-[[ -n "$(rec_field demo deployment-worker '{.status.applyPolicy.nextAllowed}')" ]] \
+  "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.applyPolicy.auto.state}') == Blocked \
+     && \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.applyPolicy.auto.blockedBy}') == when.freezes \
+     && \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.applyPolicy.auto.policy}') == ApplyPolicy/demo/e2e-freeze ]]"
+[[ -n "$(rec_field demo deployment-worker '{.status.applyPolicy.auto.nextAllowed}')" ]] \
   && pass "a blocked apply records when it may start" || fail "a blocked apply records when it may start"
 [[ -z "$(rec_field demo deployment-worker '{.status.history}')" ]] \
   && pass "a frozen workload is not applied" || fail "a frozen workload is not applied"
+curl -fs "$API/workloads/demo/Deployment/worker" | jq -e '.applyPolicy.auto.state == "Blocked" and .applyPolicy.manual.state == "Blocked"' >/dev/null \
+  && pass "the API carries what the policies decided" || fail "the API carries what the policies decided"
 hash=$(rec_field demo deployment-worker '{.status.hash}')
-curl -fs -X POST "$API/workloads/demo/Deployment/worker/apply" -d "{\"hash\":\"$hash\"}" >/dev/null
-wait_for "a policy blocks the Apply button too" 60 bash -c \
-  "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.lastApplyResult.result}') == Rejected ]]"
-k -n demo get rec deployment-worker -o jsonpath='{.status.lastApplyResult.message}' | grep -q "apply policy" \
-  && pass "the refusal says which policy blocks it" || fail "the refusal says which policy blocks it"
+resp=$(curl -s -w '\n%{http_code}' -X POST "$API/workloads/demo/Deployment/worker/apply" -d "{\"hash\":\"$hash\"}")
+[[ "${resp##*$'\n'}" == 409 ]] \
+  && pass "the API refuses an apply a policy holds" || fail "the API refuses an apply a policy holds (got ${resp##*$'\n'})"
+[[ "${resp%$'\n'*}" == *"ApplyPolicy/demo/e2e-freeze holds this apply"* ]] \
+  && pass "the refusal names the policy" || fail "the refusal names the policy (got ${resp%$'\n'*})"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/worker/revert")" == 409 ]] \
+  && pass "a frozen workload cannot be reverted either" || fail "a frozen workload cannot be reverted either"
 k -n demo delete applypolicy e2e-freeze >/dev/null
 wait_for "lifting the freeze lets auto-deploy apply" 300 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.history[0].by}') == auto-deploy ]]"
