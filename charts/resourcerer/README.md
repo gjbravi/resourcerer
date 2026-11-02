@@ -10,6 +10,10 @@ helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <ver
   --set prometheus.url=http://prometheus-server.monitoring.svc
 ```
 
+Helm does not upgrade the CRDs in `crds/`, so an upgrade that adds one, such as the apply policies in this version,
+needs them applied first: `kubectl apply -f charts/resourcerer/crds`, then restart the applier. Without them the
+applier keeps working and logs that applies are not gated by a policy.
+
 | Value | Default | Description |
 |---|---|---|
 | `prometheus.url` | `http://prometheus-server.monitoring.svc` | Prometheus-compatible API. |

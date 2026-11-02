@@ -74,7 +74,9 @@ spec:
 - **`mode: Audit`** lets the apply through and records what the policy would have blocked. Use it to try a policy on
   real traffic before enforcing it.
 - A policy resourcerer cannot interpret, such as an unknown time zone, blocks: a policy that cannot be read must not
-  open the door.
+  open the door. If the policies cannot be read at all (a malformed duration, say), no apply of either kind goes
+  through until the problem is fixed, the reason is recorded on every recommendation, and the applier retries every
+  minute instead of stopping.
 
 ## What the UI and `kubectl` show
 
@@ -101,6 +103,10 @@ kubectl get clusterapplypolicies
 kubectl get applypolicies -A
 kubectl -n payments get rec deployment-checkout -o jsonpath='{.status.applyPolicy}'
 ```
+
+The kinds ship in the chart's `crds/`, which Helm installs on a fresh install but **not** on an upgrade: apply
+`charts/resourcerer/crds` first, then restart the applier. Without them the applier runs and logs that applies are
+not gated, instead of refusing to start.
 
 ## What it does not do
 
