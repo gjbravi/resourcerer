@@ -50,10 +50,21 @@ wait_for "server answers" 30 curl -fs "$API/info"
 k apply --server-side --force-conflicts -f "$(dirname "$0")/../../hack/demo.yaml" >/dev/null
 k -n demo annotate deploy worker resourcerer.io/memory.optimization-goal- >/dev/null 2>&1 || true
 k -n payments annotate deploy checkout resourcerer.io/learning-period- >/dev/null 2>&1 || true
+# Only the learning period is cleared: payments enables auto-deploy on the namespace, so the workload's own
+# Disabled annotation has to stay.
+k -n payments annotate deploy ledger resourcerer.io/learning-period- >/dev/null 2>&1 || true
+k -n demo annotate deploy worker resourcerer.io/auto-deploy=Disabled resourcerer.io/learning-period- --overwrite >/dev/null 2>&1 || true
+for ns in demo payments; do k -n "$ns" delete applypolicy e2e-freeze --ignore-not-found >/dev/null 2>&1 || true; done
+# The applier decides auto-deploy from the status an earlier run left behind, and the recommender only refreshes it
+# on its schedule, so the history goes too: a leftover apply would fail the checks below for the wrong reason.
+k -n payments patch rec deployment-ledger --subresource=status --type=merge -p '{"status":{"history":null}}' >/dev/null 2>&1 || true
+k -n demo patch rec deployment-worker --subresource=status --type=merge -p '{"status":{"history":null}}' >/dev/null 2>&1 || true
 
 rec_field() { k -n "$1" get rec "$2" -o jsonpath="$3"; }
 api_cpu() { k -n demo get deploy api -o jsonpath='{.spec.template.spec.containers[?(@.name=="api")].resources.requests.cpu}'; }
 
+wait_for "the reset settings reach the status" 180 bash -c \
+  "[[ \$(kubectl --context $CTX -n payments get rec deployment-ledger -o jsonpath='{.status.settings.auto-deploy.value}') == Disabled ]]"
 wait_for "creates a Recommendation per workload" 60 k -n demo get rec deployment-api deployment-worker statefulset-cache daemonset-log-agent deployment-web deployment-indexer
 wait_for "recommendations leave Pending once history exists" 360 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.phase}') =~ ^(Learning|Ready)$ ]]"
@@ -120,39 +131,42 @@ wait_for "auto-deploy applies a Ready recommendation" 300 bash -c \
 [[ -z "$(rec_field payments deployment-ledger '{.status.history}')" ]] \
   && pass "workload annotation turns auto-deploy off for ledger" || fail "workload annotation turns auto-deploy off for ledger"
 
-# ApplyPolicy: the chart renders one in Audit mode, and an enforcing freeze on ledger must hold the
-# automatic apply until it is gone.
+# ApplyPolicy: the chart renders one in Audit mode, and an enforcing freeze must hold an automatic apply
+# until it is gone. Auto-deploy starts off and the history was cleared above, so a rerun checks the same
+# thing instead of finding the apply of the previous run.
 wait_for "the chart renders a cluster apply policy" 60 k get cap resourcerer-platform
-k -n payments get rec deployment-ledger -o jsonpath='{.status.applyPolicy.state}' | grep -q Allowed \
+[[ "$(rec_field demo deployment-worker '{.status.applyPolicy.state}')" == Allowed ]] \
   && pass "an audit policy reports the apply as allowed" || fail "an audit policy reports the apply as allowed"
 k apply -f - >/dev/null <<'EOF'
 apiVersion: resourcerer.io/v1alpha1
 kind: ApplyPolicy
 metadata:
   name: e2e-freeze
-  namespace: payments
+  namespace: demo
 spec:
   appliesTo: [Auto]
   mode: Enforce
-  workloadSelector: { matchLabels: { app: ledger } }
+  workloadSelector: { matchLabels: { app: worker } }
   when:
     freezes:
       - from: "2020-01-01T00:00:00Z"
         to: "2030-01-01T00:00:00Z"
         reason: e2e freeze
 EOF
-k -n payments annotate deploy ledger resourcerer.io/auto-deploy=Enabled resourcerer.io/learning-period=PT2M --overwrite >/dev/null
+k -n demo annotate deploy worker resourcerer.io/auto-deploy=Enabled resourcerer.io/learning-period=PT2M --overwrite >/dev/null
 wait_for "a freeze blocks the automatic apply and says why" 300 bash -c \
-  "[[ \$(kubectl --context $CTX -n payments get rec deployment-ledger -o jsonpath='{.status.applyPolicy.state}') == Blocked \
-     && \$(kubectl --context $CTX -n payments get rec deployment-ledger -o jsonpath='{.status.applyPolicy.blockedBy}') == when.freezes \
-     && \$(kubectl --context $CTX -n payments get rec deployment-ledger -o jsonpath='{.status.applyPolicy.policy}') == ApplyPolicy/payments/e2e-freeze ]]"
-[[ -n "$(rec_field payments deployment-ledger '{.status.applyPolicy.nextAllowed}')" ]] \
+  "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.applyPolicy.state}') == Blocked \
+     && \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.applyPolicy.blockedBy}') == when.freezes \
+     && \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.applyPolicy.policy}') == ApplyPolicy/demo/e2e-freeze ]]"
+[[ -n "$(rec_field demo deployment-worker '{.status.applyPolicy.nextAllowed}')" ]] \
   && pass "a blocked apply records when it may start" || fail "a blocked apply records when it may start"
-[[ -z "$(rec_field payments deployment-ledger '{.status.history}')" ]] \
+[[ -z "$(rec_field demo deployment-worker '{.status.history}')" ]] \
   && pass "a frozen workload is not applied" || fail "a frozen workload is not applied"
-k -n payments delete applypolicy e2e-freeze >/dev/null
+k -n demo delete applypolicy e2e-freeze >/dev/null
 wait_for "lifting the freeze lets auto-deploy apply" 300 bash -c \
-  "[[ \$(kubectl --context $CTX -n payments get rec deployment-ledger -o jsonpath='{.status.history[0].by}') == auto-deploy ]]"
+  "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.history[0].by}') == auto-deploy ]]"
+k -n demo annotate deploy worker resourcerer.io/auto-deploy=Disabled resourcerer.io/learning-period- --overwrite >/dev/null
+
 
 # Argo Rollouts: one with its own template, one taking it from a Deployment via spec.workloadRef.
 wait_for "creates Recommendations for Rollouts" 60 k -n demo get rec rollout-storefront rollout-billing
