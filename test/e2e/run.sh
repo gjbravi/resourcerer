@@ -135,6 +135,16 @@ wait_for "auto-deploy applies a Ready recommendation" 300 bash -c \
 # until it is gone. Auto-deploy starts off and the history was cleared above, so a rerun checks the same
 # thing instead of finding the apply of the previous run.
 wait_for "the chart renders a cluster apply policy" 60 k get cap resourcerer-platform
+out=$(k apply --dry-run=server -f - 2>&1 <<'EOF'
+apiVersion: resourcerer.io/v1alpha1
+kind: ApplyPolicy
+metadata: { name: e2e-never, namespace: demo }
+spec: { when: { windows: [{ from: "10:00", to: "10:00" }] } }
+EOF
+) || true
+[[ "$out" == *"cannot open and close at the same time"* ]] \
+  && pass "a window that never opens is rejected at admission" \
+  || fail "a window that never opens is rejected at admission (got $out)"
 [[ "$(rec_field demo deployment-worker '{.status.applyPolicy.auto.state}')" == Allowed ]] \
   && pass "an audit policy reports the apply as allowed" || fail "an audit policy reports the apply as allowed"
 k apply -f - >/dev/null <<'EOF'

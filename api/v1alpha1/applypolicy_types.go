@@ -32,9 +32,11 @@ type ApplyWhen struct {
 	// Windows are the periods an apply may start in. Empty: any time. Windows are a union: inside any
 	// of them the apply may start, and freezes still apply.
 	// +optional
+	// +kubebuilder:validation:MaxItems=32
 	Windows []ApplyWindow `json:"windows,omitempty"`
 	// Freezes are periods nothing may be applied in, windows or not.
 	// +optional
+	// +kubebuilder:validation:MaxItems=64
 	Freezes []ApplyFreeze `json:"freezes,omitempty"`
 }
 
@@ -48,10 +50,12 @@ type ApplyWindow struct {
 	Days []string `json:"days,omitempty"`
 	// From is the time the window opens, HH:MM in UTC.
 	// +kubebuilder:validation:Pattern=`^([01][0-9]|2[0-3]):[0-5][0-9]$`
+	// +kubebuilder:validation:MaxLength=5
 	From string `json:"from"`
 	// To is the time the window closes, HH:MM in UTC, exclusive. Equal to From is invalid; earlier than
 	// From crosses midnight.
 	// +kubebuilder:validation:Pattern=`^([01][0-9]|2[0-3]):[0-5][0-9]$`
+	// +kubebuilder:validation:MaxLength=5
 	To string `json:"to"`
 }
 

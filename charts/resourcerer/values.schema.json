@@ -87,8 +87,8 @@
           "maxItems": 2,
           "items": { "type": "string", "enum": ["Auto", "Manual"] }
         },
-        "windows": { "type": "array", "items": { "$ref": "#/definitions/applyWindow" } },
-        "freezes": { "type": "array", "items": { "$ref": "#/definitions/applyFreeze" } },
+        "windows": { "type": "array", "maxItems": 32, "items": { "$ref": "#/definitions/applyWindow" } },
+        "freezes": { "type": "array", "maxItems": 64, "items": { "$ref": "#/definitions/applyFreeze" } },
         "cooldown": { "type": "string", "pattern": "^$|^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$" }
       }
     },

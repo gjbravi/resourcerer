@@ -127,10 +127,10 @@ server read may be a moment old. A block whose `nextAllowed` has passed is left 
 | `priority` | integer | `0` | Which policy is named when more than one blocks: the highest, then cluster policies before namespaced ones, then by name. It never makes a policy stronger or weaker. |
 | `appliesTo` | `Auto`, `Manual` | `[Auto]` | Kinds of apply the policy governs. See above. |
 | `mode` | `Enforce`, `Audit` | `Enforce` | `Audit` lets the apply through and records what it would have blocked. |
-| `when.windows` | list | any time | The periods an apply may start in. A union: one is enough. |
+| `when.windows` | list | any time | The periods an apply may start in, at most 32. A union: one is enough. |
 | `when.windows[].days` | `Mon`…`Sun` | every day | Days the window opens on, in UTC. An overnight window belongs to the day it opens. |
 | `when.windows[].from`, `.to` | `HH:MM` | required | Times in UTC; `to` is exclusive, earlier than `from` crosses midnight, equal is rejected. |
-| `when.freezes` | list | none | Periods nothing is applied in, windows or not. |
+| `when.freezes` | list | none | Periods nothing is applied in, windows or not, at most 64. |
 | `when.freezes[].from`, `.to` | RFC 3339 | required | Absolute instants; `to` is exclusive and has to be after `from`. |
 | `when.freezes[].reason` | string | none | Shown in the decision and in the UI: `frozen: Sales event (until …)`. |
 | `limits.cooldown` | duration | none | Minimum time between two changes to the same workload, counted from the last apply or revert of any hash. |
