@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/gjbravi/resourcerer/compare/v0.6.0...v0.7.0) (2026-11-02)
+
+
+### Features
+
+* **ui:** clearer workload page and faster node price queries ([#35](https://github.com/gjbravi/resourcerer/issues/35)) ([b2ae756](https://github.com/gjbravi/resourcerer/commit/b2ae75629fcb6a1c31eb94a621a5815c1cd8d900))
+
 ## [0.6.0](https://github.com/gjbravi/resourcerer/compare/v0.5.0...v0.6.0) (2026-10-29)
 
 
