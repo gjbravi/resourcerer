@@ -272,6 +272,10 @@ type RecommendationStatus struct {
 	LastHandledRequestAt *metav1.Time `json:"lastHandledRequestAt,omitempty"`
 	// +optional
 	LastApplyResult *ApplyResult `json:"lastApplyResult,omitempty"`
+	// ApplyPolicy is what the ApplyPolicy objects governing this workload decided: when an apply may
+	// start, and which policy blocks it otherwise.
+	// +optional
+	ApplyPolicy *ApplyDecision `json:"applyPolicy,omitempty"`
 }
 
 // Recommendation holds the resource recommendation for one workload.

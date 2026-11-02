@@ -19,10 +19,12 @@ import (
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
-	"github.com/gjbravi/resourcerer/internal/settings"
+	"github.com/gjbravi/resourcerer/internal/policy"
 	"github.com/gjbravi/resourcerer/internal/workload"
 )
 
@@ -62,13 +64,42 @@ func (r *Reconciler) remember(key, id string) {
 
 func Setup(mgr ctrl.Manager) error {
 	r := &Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("resourcerer-applier"), Now: time.Now}
-	return ctrl.NewControllerManagedBy(mgr).Named("applier").For(&v1alpha1.Recommendation{}).Complete(r)
+	return ctrl.NewControllerManagedBy(mgr).
+		Named("applier").
+		For(&v1alpha1.Recommendation{}).
+		// A policy change re-decides every workload: a freeze ending or a window opening must not wait
+		// for the next regeneration of the recommendation it governs.
+		Watches(&v1alpha1.ClusterApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.allRecommendations)).
+		Watches(&v1alpha1.ApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.allRecommendations)).
+		Complete(r)
+}
+
+func (r *Reconciler) allRecommendations(ctx context.Context, _ client.Object) []reconcile.Request {
+	var recs v1alpha1.RecommendationList
+	if err := r.List(ctx, &recs); err != nil {
+		log.FromContext(ctx).Error(err, "list recommendations after a policy change")
+		return nil
+	}
+	out := make([]reconcile.Request, 0, len(recs.Items))
+	for i := range recs.Items {
+		out = append(out, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: recs.Items[i].Namespace, Name: recs.Items[i].Name}})
+	}
+	return out
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	rec := &v1alpha1.Recommendation{}
 	if err := r.Get(ctx, req.NamespacedName, rec); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	decided, err := r.decideFor(ctx, rec)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	// Recorded before acting, so the UI shows the same reason the applier used, including when a
+	// policy only audited and the apply goes ahead.
+	if err := r.recordDecision(ctx, rec, decided); err != nil {
+		return ctrl.Result{}, err
 	}
 	key := req.String()
 	if ar := rec.Spec.ApplyRequest; ar != nil && ar.ID != "" && ar.ID != rec.Status.LastHandledRequestID {
@@ -77,9 +108,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{}, nil
 		}
 		r.remember(key, id)
-		return ctrl.Result{}, r.handle(ctx, rec, *ar)
+		return ctrl.Result{}, r.handle(ctx, rec, *ar, decided.manual)
 	}
-	if r.autoDue(rec) {
+	if r.autoDue(rec, decided.auto) {
 		id := "auto:" + rec.Status.Hash
 		if r.seen(key, id) {
 			return ctrl.Result{}, nil
@@ -87,12 +118,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		r.remember(key, id)
 		return ctrl.Result{}, r.apply(ctx, rec, AutoDeployUser, nil)
 	}
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: r.requeueFor(rec, decided.auto)}, nil
 }
 
-func (r *Reconciler) autoDue(rec *v1alpha1.Recommendation) bool {
+func (r *Reconciler) autoDue(rec *v1alpha1.Recommendation, d policy.Decision) bool {
 	st := rec.Status
-	if st.Settings[settings.AutoDeploy].Value != "Enabled" || st.Phase != v1alpha1.PhaseReady || !st.Pending || st.Hash == "" {
+	if !d.Allowed || !r.autoCandidate(rec) {
 		return false
 	}
 	// Do not re-apply a recommendation that was already applied, or reverted by someone.
@@ -104,9 +135,12 @@ func (r *Reconciler) autoDue(rec *v1alpha1.Recommendation) bool {
 	return true
 }
 
-func (r *Reconciler) handle(ctx context.Context, rec *v1alpha1.Recommendation, ar v1alpha1.ApplyRequest) error {
+func (r *Reconciler) handle(ctx context.Context, rec *v1alpha1.Recommendation, ar v1alpha1.ApplyRequest, manual policy.Decision) error {
 	switch ar.Action {
 	case v1alpha1.ActionApply:
+		if !manual.Allowed {
+			return r.finish(ctx, rec, &ar, "Rejected", "an apply policy blocks this apply: "+manual.Reason+" ("+manual.BlockedBy+")")
+		}
 		if ar.Hash != rec.Status.Hash {
 			return r.finish(ctx, rec, &ar, "Rejected", "the recommendation changed since it was reviewed; reload and review it again")
 		}
