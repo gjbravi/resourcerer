@@ -38,23 +38,21 @@ type ApplyWhen struct {
 	Freezes []ApplyFreeze `json:"freezes,omitempty"`
 }
 
-// ApplyWindow is a recurring period, in a time zone, an apply may start in.
+// ApplyWindow is a recurring period, in UTC, an apply may start in.
+// +kubebuilder:validation:XValidation:rule="self.from != self.to",message="a window cannot open and close at the same time"
 type ApplyWindow struct {
-	// Days are the weekdays the window opens on, Mon to Sun. Empty: every day. An overnight window
+	// Days are the weekdays the window opens on, Mon to Sun, in UTC. Empty: every day. An overnight window
 	// opens on its From day and closes on the next one.
 	// +optional
 	// +kubebuilder:validation:items:Enum=Mon;Tue;Wed;Thu;Fri;Sat;Sun
 	Days []string `json:"days,omitempty"`
-	// From is the local time the window opens, HH:MM.
+	// From is the time the window opens, HH:MM in UTC.
 	// +kubebuilder:validation:Pattern=`^([01][0-9]|2[0-3]):[0-5][0-9]$`
 	From string `json:"from"`
-	// To is the local time the window closes, HH:MM, exclusive. Equal to From is invalid; earlier than
+	// To is the time the window closes, HH:MM in UTC, exclusive. Equal to From is invalid; earlier than
 	// From crosses midnight.
 	// +kubebuilder:validation:Pattern=`^([01][0-9]|2[0-3]):[0-5][0-9]$`
 	To string `json:"to"`
-	// TimeZone is an IANA name such as America/Sao_Paulo. Empty: UTC.
-	// +optional
-	TimeZone string `json:"timeZone,omitempty"`
 }
 
 // ApplyFreeze is a period nothing may be applied in.
@@ -83,7 +81,8 @@ type ApplyRules struct {
 	// and its pod template's. Empty: every workload in scope.
 	// +optional
 	WorkloadSelector *metav1.LabelSelector `json:"workloadSelector,omitempty"`
-	// Priority breaks ties between policies that block for the same reason: the highest is reported.
+	// Priority decides which policy is reported when more than one blocks: the highest, then cluster
+	// policies before namespaced ones, then by name. It never makes a policy stronger or weaker.
 	// +optional
 	Priority int32 `json:"priority,omitempty"`
 	// AppliesTo is the kinds of apply the policy governs. Empty: Auto, so a policy never blocks a
@@ -153,7 +152,7 @@ type ApplyDecision struct {
 	// NextAllowed is when an apply may start again; the applier requeues for it.
 	// +optional
 	NextAllowed *metav1.Time `json:"nextAllowed,omitempty"`
-	// WouldBlock lists what Audit-mode policies would have blocked, most specific first.
+	// WouldBlock lists what Audit-mode policies would have blocked, in the order Priority reports them.
 	// +optional
 	WouldBlock []string `json:"wouldBlock,omitempty"`
 }

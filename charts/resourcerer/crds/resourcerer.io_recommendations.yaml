@@ -149,7 +149,7 @@ spec:
                         type: string
                       wouldBlock:
                         description: WouldBlock lists what Audit-mode policies would
-                          have blocked, most specific first.
+                          have blocked, in the order Priority reports them.
                         items:
                           type: string
                         type: array
@@ -190,7 +190,7 @@ spec:
                         type: string
                       wouldBlock:
                         description: WouldBlock lists what Audit-mode policies would
-                          have blocked, most specific first.
+                          have blocked, in the order Priority reports them.
                         items:
                           type: string
                         type: array

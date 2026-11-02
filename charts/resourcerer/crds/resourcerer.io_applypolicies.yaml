@@ -89,8 +89,9 @@ spec:
                 - Audit
                 type: string
               priority:
-                description: 'Priority breaks ties between policies that block for
-                  the same reason: the highest is reported.'
+                description: |-
+                  Priority decides which policy is reported when more than one blocks: the highest, then cluster
+                  policies before namespaced ones, then by name. It never makes a policy stronger or weaker.
                 format: int32
                 type: integer
               when:
@@ -127,12 +128,12 @@ spec:
                       Windows are the periods an apply may start in. Empty: any time. Windows are a union: inside any
                       of them the apply may start, and freezes still apply.
                     items:
-                      description: ApplyWindow is a recurring period, in a time zone,
-                        an apply may start in.
+                      description: ApplyWindow is a recurring period, in UTC, an apply
+                        may start in.
                       properties:
                         days:
                           description: |-
-                            Days are the weekdays the window opens on, Mon to Sun. Empty: every day. An overnight window
+                            Days are the weekdays the window opens on, Mon to Sun, in UTC. Empty: every day. An overnight window
                             opens on its From day and closes on the next one.
                           items:
                             enum:
@@ -146,16 +147,13 @@ spec:
                             type: string
                           type: array
                         from:
-                          description: From is the local time the window opens, HH:MM.
+                          description: From is the time the window opens, HH:MM in
+                            UTC.
                           pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
-                          type: string
-                        timeZone:
-                          description: 'TimeZone is an IANA name such as America/Sao_Paulo.
-                            Empty: UTC.'
                           type: string
                         to:
                           description: |-
-                            To is the local time the window closes, HH:MM, exclusive. Equal to From is invalid; earlier than
+                            To is the time the window closes, HH:MM in UTC, exclusive. Equal to From is invalid; earlier than
                             From crosses midnight.
                           pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
                           type: string
@@ -163,6 +161,9 @@ spec:
                       - from
                       - to
                       type: object
+                      x-kubernetes-validations:
+                      - message: a window cannot open and close at the same time
+                        rule: self.from != self.to
                     type: array
                 type: object
               workloadSelector:
