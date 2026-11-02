@@ -139,7 +139,8 @@
           "items": { "type": "string", "enum": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] }
         },
         "from": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
-        "to": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+        "to": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+        "timeZone": { "type": "string", "maxLength": 64 }
       }
     },
     "applyFreeze": {

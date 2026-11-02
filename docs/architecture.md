@@ -321,11 +321,11 @@ records what a policy would have blocked in `status.applyPolicy.wouldBlock` whil
 a policy on real traffic before enforcing it.
 
 `Evaluate` in `internal/policy` is the whole rule set, a pure function of the moment, the action, the workload's labels,
-the last change and the policies: freezes, windows (in UTC, a `to` that is exclusive, overnight windows
+the last change and the policies: freezes, windows (their own time zone, a `to` that is exclusive, overnight windows
 and days) and the `cooldown` counted from `status.history[0]`. It also answers *when* an apply may start —
 `nextAllowed` — by jumping to the instant each blocker stops blocking and evaluating again, since a freeze can end
-outside a window. A policy resourcerer cannot interpret, such as a malformed selector, blocks: a policy that cannot be
-read must not open the door.
+outside a window. A policy resourcerer cannot interpret, such as an unknown time zone or a malformed selector,
+blocks: a policy that cannot be read must not open the door.
 
 The applier evaluates on every `Recommendation` it reconciles, from its cache, and again from the API server right
 before it applies, so a policy created a moment ago still stops the apply. It records the answer in

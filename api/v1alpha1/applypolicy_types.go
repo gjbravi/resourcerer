@@ -40,23 +40,28 @@ type ApplyWhen struct {
 	Freezes []ApplyFreeze `json:"freezes,omitempty"`
 }
 
-// ApplyWindow is a recurring period, in UTC, an apply may start in.
+// ApplyWindow is a recurring period, in a time zone, an apply may start in.
 // +kubebuilder:validation:XValidation:rule="self.from != self.to",message="a window cannot open and close at the same time"
 type ApplyWindow struct {
-	// Days are the weekdays the window opens on, Mon to Sun, in UTC. Empty: every day. An overnight window
+	// Days are the weekdays the window opens on, Mon to Sun, in TimeZone. Empty: every day. An overnight window
 	// opens on its From day and closes on the next one.
 	// +optional
 	// +kubebuilder:validation:items:Enum=Mon;Tue;Wed;Thu;Fri;Sat;Sun
 	Days []string `json:"days,omitempty"`
-	// From is the time the window opens, HH:MM in UTC.
+	// From is the local time the window opens, HH:MM.
 	// +kubebuilder:validation:Pattern=`^([01][0-9]|2[0-3]):[0-5][0-9]$`
 	// +kubebuilder:validation:MaxLength=5
 	From string `json:"from"`
-	// To is the time the window closes, HH:MM in UTC, exclusive. Equal to From is invalid; earlier than
+	// To is the local time the window closes, HH:MM, exclusive. Equal to From is invalid; earlier than
 	// From crosses midnight.
 	// +kubebuilder:validation:Pattern=`^([01][0-9]|2[0-3]):[0-5][0-9]$`
 	// +kubebuilder:validation:MaxLength=5
 	To string `json:"to"`
+	// TimeZone is an IANA name such as America/Sao_Paulo; the window follows its daylight saving.
+	// Empty: UTC.
+	// +optional
+	// +kubebuilder:validation:MaxLength=64
+	TimeZone string `json:"timeZone,omitempty"`
 }
 
 // ApplyFreeze is a period nothing may be applied in.

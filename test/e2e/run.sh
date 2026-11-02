@@ -145,6 +145,16 @@ EOF
 [[ "$out" == *"cannot open and close at the same time"* ]] \
   && pass "a window that never opens is rejected at admission" \
   || fail "a window that never opens is rejected at admission (got $out)"
+# A field missing from the CRD would be pruned without a word, and the window read in UTC.
+tz=$(k apply --dry-run=server -o jsonpath='{.spec.when.windows[0].timeZone}' -f - <<'EOF'
+apiVersion: resourcerer.io/v1alpha1
+kind: ApplyPolicy
+metadata: { name: e2e-tz, namespace: demo }
+spec: { when: { windows: [{ from: "10:00", to: "16:00", timeZone: America/Sao_Paulo }] } }
+EOF
+) || true
+[[ "$tz" == America/Sao_Paulo ]] \
+  && pass "a window keeps its time zone" || fail "a window keeps its time zone (got $tz)"
 [[ "$(rec_field demo deployment-worker '{.status.applyPolicy.auto.state}')" == Allowed ]] \
   && pass "an audit policy reports the apply as allowed" || fail "an audit policy reports the apply as allowed"
 k apply -f - >/dev/null <<'EOF'

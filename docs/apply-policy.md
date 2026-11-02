@@ -25,6 +25,7 @@ spec:
       - days: [Mon, Tue, Wed, Thu, Fri]
         from: "10:00"
         to: "16:00"
+        timeZone: Europe/Lisbon
     freezes:
       - from: "2026-11-20T00:00:00Z"
         to: "2026-12-02T00:00:00Z"
@@ -50,6 +51,7 @@ spec:
       - days: [Tue, Wed, Thu]
         from: "14:00"
         to: "17:00"
+        timeZone: Europe/Lisbon
     freezes:
       - { from: "2026-11-10T00:00:00Z", to: "2026-11-12T00:00:00Z", reason: Checkout v5 launch }
   limits:
@@ -73,9 +75,13 @@ means `Auto` on purpose: a policy written to hold back the automatic apply must 
 ## Rules
 
 - **Windows** are the periods an apply may start in. They are a union: inside any of them an apply may start. `from`,
-  `to` and `days` are in **UTC**, so a window written for local business hours moves by an hour where the clocks
-  change for daylight saving. `to` is exclusive, `days` empty means every day, and a window whose `to` is earlier than
-  its `from` crosses midnight and belongs to the day it opens on. `from` equal to `to` is rejected.
+  `to` and `days` are read in the window's `timeZone`, an IANA name (UTC when empty), so a window follows the local
+  daylight saving. `to` is exclusive, `days` empty means every day, and a window whose `to` is earlier than its `from`
+  crosses midnight and belongs to the day it opens on. `from` equal to `to` is rejected.
+- **The day the clocks change** works as in KEDA's cron scaler: a window is the instants Go's `time.Date` gives for its
+  `from` and `to` on each day. A time in the hour the clocks skip moves an hour earlier or later, depending on the
+  zone, and a time in the hour they repeat is its first occurrence. Avoid `from` and `to` between 00:00 and 03:00 if
+  that day matters.
 - **Freezes** are periods nothing is applied in, whatever the windows say. `to` is exclusive. An apply that is due
   waits for the freeze to end, and then still has to be inside a window.
 - **Cooldown** is the minimum time between two changes to the same workload, counted from the last apply or revert.
@@ -87,7 +93,7 @@ means `Auto` on purpose: a policy written to hold back the automatic apply must 
   between 14:00 and 16:00.
 - **`mode: Audit`** lets the apply through and records what the policy would have blocked. Use it to try a policy on
   real traffic before enforcing it.
-- A policy resourcerer cannot interpret, such as a malformed selector, blocks and the decision says so
+- A policy resourcerer cannot interpret, such as an unknown time zone or a malformed selector, blocks and the decision says so
   (`blockedBy: policy` and the error as the reason); in `Audit` mode it is only reported in `wouldBlock`. If the policies cannot even be read (a malformed object, a
   duration the API server accepted under an older CRD), no apply of either kind goes through until the problem is
   fixed: the reason is recorded on every recommendation and the applier retries every minute instead of stopping.
@@ -128,8 +134,9 @@ server read may be a moment old. A block whose `nextAllowed` has passed is left 
 | `appliesTo` | `Auto`, `Manual` | `[Auto]` | Kinds of apply the policy governs. See above. |
 | `mode` | `Enforce`, `Audit` | `Enforce` | `Audit` lets the apply through and records what it would have blocked. |
 | `when.windows` | list | any time | The periods an apply may start in, at most 32. A union: one is enough. |
-| `when.windows[].days` | `Mon`…`Sun` | every day | Days the window opens on, in UTC. An overnight window belongs to the day it opens. |
-| `when.windows[].from`, `.to` | `HH:MM` | required | Times in UTC; `to` is exclusive, earlier than `from` crosses midnight, equal is rejected. |
+| `when.windows[].days` | `Mon`…`Sun` | every day | Days the window opens on, in its time zone. An overnight window belongs to the day it opens. |
+| `when.windows[].from`, `.to` | `HH:MM` | required | Local times; `to` is exclusive, earlier than `from` crosses midnight, equal is rejected. |
+| `when.windows[].timeZone` | IANA name | `UTC` | Time zone of the window's wall clock, so it follows the local daylight saving. An unknown name blocks. |
 | `when.freezes` | list | none | Periods nothing is applied in, windows or not, at most 64. |
 | `when.freezes[].from`, `.to` | RFC 3339 | required | Absolute instants; `to` is exclusive and has to be after `from`. |
 | `when.freezes[].reason` | string | none | Shown in the decision and in the UI: `frozen: Sales event (until …)`. |
@@ -142,7 +149,7 @@ The applier writes the decision to `status.applyPolicy`:
 | `auto`, `manual` | One decision per kind of apply, computed apart. |
 | `state` | `Allowed` or `Blocked`. |
 | `policy` | `Kind/namespace/name` of the policy that blocks, when one does. |
-| `blockedBy` | The policy field that blocks: `when.freezes`, `when.windows`, `limits.cooldown`, or `policy` when the rule cannot be interpreted (a malformed selector) or could not be read. |
+| `blockedBy` | The policy field that blocks: `when.freezes`, `when.windows`, `limits.cooldown`, or `policy` when the rule cannot be interpreted (an unknown time zone, a malformed selector) or could not be read. |
 | `reason` | The same in words, for people: `outside the apply windows`, `frozen: … (until …)`, `changed less than 24h0m0s ago, cooling down until …`. |
 | `nextAllowed` | When the block ends, from the end of the last blocker: a freeze ending outside a window resolves to when that window opens. |
 | `wouldBlock` | What `Audit`-mode policies would have blocked, in the order `priority` names them, as `<policy>: <reason>`. |

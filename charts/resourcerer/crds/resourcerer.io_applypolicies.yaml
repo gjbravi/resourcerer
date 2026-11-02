@@ -129,12 +129,12 @@ spec:
                       Windows are the periods an apply may start in. Empty: any time. Windows are a union: inside any
                       of them the apply may start, and freezes still apply.
                     items:
-                      description: ApplyWindow is a recurring period, in UTC, an apply
-                        may start in.
+                      description: ApplyWindow is a recurring period, in a time zone,
+                        an apply may start in.
                       properties:
                         days:
                           description: |-
-                            Days are the weekdays the window opens on, Mon to Sun, in UTC. Empty: every day. An overnight window
+                            Days are the weekdays the window opens on, Mon to Sun, in TimeZone. Empty: every day. An overnight window
                             opens on its From day and closes on the next one.
                           items:
                             enum:
@@ -148,14 +148,19 @@ spec:
                             type: string
                           type: array
                         from:
-                          description: From is the time the window opens, HH:MM in
-                            UTC.
+                          description: From is the local time the window opens, HH:MM.
                           maxLength: 5
                           pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
                           type: string
+                        timeZone:
+                          description: |-
+                            TimeZone is an IANA name such as America/Sao_Paulo; the window follows its daylight saving.
+                            Empty: UTC.
+                          maxLength: 64
+                          type: string
                         to:
                           description: |-
-                            To is the time the window closes, HH:MM in UTC, exclusive. Equal to From is invalid; earlier than
+                            To is the local time the window closes, HH:MM, exclusive. Equal to From is invalid; earlier than
                             From crosses midnight.
                           maxLength: 5
                           pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$

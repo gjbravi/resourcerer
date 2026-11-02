@@ -187,6 +187,37 @@ func TestEvaluate(t *testing.T) {
 			allowed: true,
 		},
 		{
+			name: "an unknown time zone blocks instead of opening the door",
+			in: Input{Now: mondayNoon, Rules: []Rules{
+				rules("ApplyPolicy/ns/a", v1alpha1.ApplyRules{When: &v1alpha1.ApplyWhen{
+					Windows: []v1alpha1.ApplyWindow{{From: "10:00", To: "16:00", TimeZone: "Nowhere/Nothing"}},
+				}}),
+			}},
+			blockedBy: "policy",
+			policy:    "ApplyPolicy/ns/a",
+			inReason:  "unknown time zone",
+		},
+		{
+			name: "a window in a time zone",
+			in: Input{Now: mondayNoon, Rules: []Rules{
+				rules("ApplyPolicy/ns/a", v1alpha1.ApplyRules{When: &v1alpha1.ApplyWhen{
+					Windows: []v1alpha1.ApplyWindow{{Days: []string{"Mon"}, From: "13:00", To: "18:00", TimeZone: "America/Sao_Paulo"}},
+				}}),
+			}},
+			blockedBy: "when.windows",
+			policy:    "ApplyPolicy/ns/a",
+			next:      time.Date(2026, 11, 2, 16, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "an overnight window in a time zone, in its tail",
+			in: Input{Now: time.Date(2026, 11, 3, 1, 0, 0, 0, time.UTC), Rules: []Rules{
+				rules("ApplyPolicy/ns/a", v1alpha1.ApplyRules{When: &v1alpha1.ApplyWhen{
+					Windows: []v1alpha1.ApplyWindow{{Days: []string{"Mon"}, From: "20:00", To: "23:00", TimeZone: "America/Sao_Paulo"}},
+				}}),
+			}},
+			allowed: true,
+		},
+		{
 			name: "a window that cannot be read blocks instead of opening the door",
 			in: Input{Now: mondayNoon, Rules: []Rules{
 				rules("ApplyPolicy/ns/a", v1alpha1.ApplyRules{When: &v1alpha1.ApplyWhen{
@@ -447,6 +478,77 @@ func withNow(in Input, t time.Time) Input {
 	return in
 }
 
+// A window follows the daylight saving of its zone, and a time the clocks skip is what time.Date makes
+// of it, as with KEDA's cron scaler. New York springs forward on 2026-03-08 at 02:00 (to 03:00) and
+// time.Date moves a skipped time an hour back; Berlin springs forward on 2026-03-29 and moves it an
+// hour on. Both fall back on a Sunday in late October or early November. Santiago springs forward at
+// midnight on 2026-09-06, so a skipped time there lands on the day before.
+func TestEvaluateAcrossDaylightSaving(t *testing.T) {
+	in := func(zone string, days []string, from, to string) []Rules {
+		return []Rules{rules("ApplyPolicy/ns/a", v1alpha1.ApplyRules{When: &v1alpha1.ApplyWhen{
+			Windows: []v1alpha1.ApplyWindow{{Days: days, From: from, To: to, TimeZone: zone}},
+		}})}
+	}
+	sun := []string{"Sun"}
+	tests := []struct {
+		name string
+		now  time.Time
+		in   []Rules
+		next time.Time
+	}{
+		{
+			name: "a window after the jump keeps its wall clock",
+			now:  time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC),
+			in:   in("America/New_York", sun, "09:00", "10:00"),
+			next: time.Date(2026, 3, 8, 13, 0, 0, 0, time.UTC), // 09:00 EDT
+		},
+		{
+			name: "a skipped opening moves an hour back in New York",
+			now:  time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC),
+			in:   in("America/New_York", sun, "02:30", "04:00"),
+			next: time.Date(2026, 3, 8, 6, 30, 0, 0, time.UTC), // 01:30 EST
+		},
+		{
+			name: "a skipped opening moves an hour on in Berlin",
+			now:  time.Date(2026, 3, 28, 12, 0, 0, 0, time.UTC),
+			in:   in("Europe/Berlin", sun, "02:30", "04:00"),
+			next: time.Date(2026, 3, 29, 1, 30, 0, 0, time.UTC), // 03:30 CEST
+		},
+		{
+			name: "a window the jump swallows still opens, moved",
+			now:  time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC),
+			in:   in("America/New_York", sun, "02:00", "02:30"),
+			next: time.Date(2026, 3, 8, 6, 0, 0, 0, time.UTC), // 01:00 EST
+		},
+		{
+			name: "a skipped opening moved back across midnight belongs to its own day",
+			now:  time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC),
+			in:   in("America/Santiago", sun, "00:30", "02:00"),
+			next: time.Date(2026, 9, 6, 3, 30, 0, 0, time.UTC), // Saturday 23:30 -04, before the jump at midnight
+		},
+		{
+			name: "a repeated time opens the first time round",
+			now:  time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC),
+			in:   in("America/New_York", sun, "01:30", "03:00"),
+			next: time.Date(2026, 11, 1, 5, 30, 0, 0, time.UTC), // 01:30 EDT
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Evaluate(Input{Now: tt.now, Rules: tt.in})
+			if got.Allowed {
+				t.Fatal("allowed, want blocked outside the window")
+			}
+			if !got.NextAllowed.Equal(tt.next) {
+				t.Errorf("NextAllowed = %s, want %s", got.NextAllowed.UTC().Format(time.RFC3339), tt.next.UTC().Format(time.RFC3339))
+			}
+			if !Evaluate(Input{Now: tt.next, Rules: tt.in}).Allowed {
+				t.Errorf("blocked at NextAllowed")
+			}
+		})
+	}
+}
+
 // The decision a reconcile records must not change while nothing changes: one that moved with the clock
 // would be written to the status on every pass, and every write is another reconcile.
 func TestNextAllowedDoesNotMoveWithTheClock(t *testing.T) {
@@ -469,9 +571,14 @@ func TestNextAllowedDoesNotMoveWithTheClock(t *testing.T) {
 }
 
 // nextAllowed jumps from blocker to blocker; the walk tries every minute. They have to agree on random
-// policies mixing windows, overnight ones included, freezes, cooldowns and audit.
+// policies mixing windows in several zones, overnight ones included, freezes, cooldowns and audit,
+// around daylight saving changes and the ends of months and years.
 func TestNextAllowedMatchesAMinuteByMinuteWalk(t *testing.T) {
+	zones := []string{"", "America/Sao_Paulo", "America/New_York", "Europe/Berlin", "Asia/Kolkata", "Australia/Lord_Howe"}
 	starts := []time.Time{
+		time.Date(2026, 3, 6, 0, 0, 0, 0, time.UTC),   // before New York springs forward
+		time.Date(2026, 3, 27, 0, 0, 0, 0, time.UTC),  // before Berlin springs forward
+		time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC), // before Berlin and New York fall back
 		time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC),  // across the end of a month
 		time.Date(2026, 12, 29, 0, 0, 0, 0, time.UTC), // across the end of a year
 		mondayNoon,
@@ -487,7 +594,7 @@ func TestNextAllowedMatchesAMinuteByMinuteWalk(t *testing.T) {
 		for j := range 1 + rng.IntN(3) {
 			spec := v1alpha1.ApplyRules{When: &v1alpha1.ApplyWhen{}}
 			for range rng.IntN(3) {
-				w := v1alpha1.ApplyWindow{From: hhmm(), To: hhmm()}
+				w := v1alpha1.ApplyWindow{From: hhmm(), To: hhmm(), TimeZone: zones[rng.IntN(len(zones))]}
 				if w.From == w.To {
 					continue
 				}
@@ -567,7 +674,7 @@ func describe(rs []Rules) string {
 	for _, r := range rs {
 		fmt.Fprintf(&b, "\n  %s mode=%s", r.Name, r.Spec.Mode)
 		for _, w := range r.Spec.When.Windows {
-			fmt.Fprintf(&b, " window=%v %s-%s", w.Days, w.From, w.To)
+			fmt.Fprintf(&b, " window=%v %s-%s %s", w.Days, w.From, w.To, w.TimeZone)
 		}
 		for _, f := range r.Spec.When.Freezes {
 			fmt.Fprintf(&b, " freeze=%s..%s", f.From.UTC().Format(time.RFC3339), f.To.UTC().Format(time.RFC3339))
@@ -588,6 +695,7 @@ func TestCompileWindowRejects(t *testing.T) {
 		{"equal endpoints", v1alpha1.ApplyWindow{From: "10:00", To: "10:00"}, "never opens"},
 		{"a time that is not one", v1alpha1.ApplyWindow{From: "9am", To: "10:00"}, "not a time of day"},
 		{"an unknown day", v1alpha1.ApplyWindow{Days: []string{"Monday"}, From: "09:00", To: "10:00"}, "not a day"},
+		{"an unknown zone", v1alpha1.ApplyWindow{From: "09:00", To: "10:00", TimeZone: "Mars/Olympus"}, "unknown time zone"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := compileWindow(tt.w); err == nil || !strings.Contains(err.Error(), tt.want) {
@@ -597,12 +705,12 @@ func TestCompileWindowRejects(t *testing.T) {
 	}
 }
 
-// A weekly window, decided right after it closed: the longest search, and what every
+// A weekly window in a named zone, decided right after it closed: the longest search, and what every
 // reconcile pays for a workload such a policy holds.
 func BenchmarkEvaluateWeeklyWindow(b *testing.B) {
 	in := Input{Now: mondayNoon, Rules: []Rules{
 		rules("ApplyPolicy/ns/a", v1alpha1.ApplyRules{When: &v1alpha1.ApplyWhen{
-			Windows: []v1alpha1.ApplyWindow{{Days: []string{"Mon"}, From: "05:00", To: "06:00"}},
+			Windows: []v1alpha1.ApplyWindow{{Days: []string{"Mon"}, From: "02:00", To: "03:00", TimeZone: "America/Sao_Paulo"}},
 		}}),
 	}}
 	for b.Loop() {

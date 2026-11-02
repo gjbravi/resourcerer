@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	// The windows carry IANA time zones; embedding the database keeps them working on any base image.
+	_ "time/tzdata"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
@@ -68,8 +71,8 @@ const (
 	searchDays = 8
 )
 
-// Evaluate returns when an apply may start. A policy resourcerer cannot interpret, such as one with a
-// malformed selector, blocks when it enforces: a policy that cannot be read must
+// Evaluate returns when an apply may start. A policy resourcerer cannot interpret, such as one with an
+// unknown time zone or a malformed selector, blocks when it enforces: a policy that cannot be read must
 // not open the door. In Audit mode it is reported in WouldBlock instead, since auditing never blocks.
 func Evaluate(in Input) Decision {
 	action := in.Action
@@ -150,17 +153,18 @@ func selects(sel *metav1.LabelSelector, l map[string]string) (bool, error) {
 	return s.Matches(labels.Set(l)), nil
 }
 
-// compiled is a policy with its times parsed, once per evaluation instead of at every instant tried.
+// compiled is a policy with its times parsed and its time zones loaded, once per evaluation instead of
+// at every instant tried.
 type compiled struct {
 	spec    v1alpha1.ApplyRules
 	windows []window
 }
 
-// window is an ApplyWindow in minutes since midnight UTC. Windows are in UTC only: a wall clock that
-// follows daylight saving can be added as a field later without changing what an existing window means.
+// window is an ApplyWindow with its times in minutes since local midnight.
 type window struct {
 	days     [7]bool
 	from, to int
+	loc      *time.Location
 }
 
 type block struct {
@@ -193,7 +197,14 @@ func compile(r Rules, nsLabels, wlLabels map[string]string) (compiled, bool, err
 }
 
 func compileWindow(aw v1alpha1.ApplyWindow) (window, error) {
-	var w window
+	w := window{loc: time.UTC}
+	if aw.TimeZone != "" {
+		l, err := time.LoadLocation(aw.TimeZone)
+		if err != nil {
+			return window{}, fmt.Errorf("unknown time zone %q", aw.TimeZone)
+		}
+		w.loc = l
+	}
 	var err error
 	if w.from, err = minutes(aw.From); err != nil {
 		return window{}, err
@@ -301,30 +312,45 @@ func (c compiled) nextOpening(t time.Time) time.Time {
 	return best
 }
 
-// contains reports whether t falls in the window. A window that opens and closes on the same day covers
-// [from, to) that day; one whose to is earlier than its from crosses midnight, opening on a listed day
-// and closing on the next.
-func (w window) contains(t time.Time) bool {
-	t = t.UTC()
-	day := t.Weekday()
-	minute := t.Hour()*60 + t.Minute()
-	if w.from < w.to {
-		return w.days[day] && minute >= w.from && minute < w.to
+// A window is decided from the instants it opens and closes, the way KEDA's cron scaler does: each
+// listed local day has one occurrence, from time.Date(day, from) to time.Date(day, to), on the next day
+// when to is earlier than from. Being inside and the next opening both come from those instants, so
+// they always agree. On the day the clocks jump forward, a time in the skipped hour is whatever
+// time.Date makes of it, an hour earlier or later depending on the zone; on the day they fall back, a
+// repeated time is its first occurrence.
+
+// occurrence is the window opening on the local day y-m-d; ok is false when it does not open that day.
+func (w window) occurrence(y int, m time.Month, d int) (open, closed time.Time, ok bool) {
+	if !w.days[time.Date(y, m, d, 12, 0, 0, 0, w.loc).Weekday()] {
+		return time.Time{}, time.Time{}, false
 	}
-	if w.days[day] && minute >= w.from {
-		return true
+	open = time.Date(y, m, d, w.from/60, w.from%60, 0, 0, w.loc)
+	closeDay := d
+	if w.to < w.from {
+		closeDay++
 	}
-	// The tail of an overnight window opened the day before.
-	return w.days[(day+6)%7] && minute < w.to
+	closed = time.Date(y, m, closeDay, w.to/60, w.to%60, 0, 0, w.loc)
+	return open, closed, closed.After(open)
 }
 
-// nextOpening is the first instant after t at which the window is open: its opening on the first
-// listed day that is still ahead. The day before t counts, for an overnight window opened then.
+// contains reports whether t falls in the window: in the occurrence of its own local day, of the day
+// before for an overnight window, or of the day after when a jump moved that opening back across
+// midnight.
+func (w window) contains(t time.Time) bool {
+	y, m, d := t.In(w.loc).Date()
+	for i := -1; i <= 1; i++ {
+		if open, closed, ok := w.occurrence(y, m, d+i); ok && !t.Before(open) && t.Before(closed) {
+			return true
+		}
+	}
+	return false
+}
+
+// nextOpening is the first opening after t; the caller asks only when t is outside the window.
 func (w window) nextOpening(t time.Time) time.Time {
-	y, m, d := t.UTC().Date()
+	y, m, d := t.In(w.loc).Date()
 	for i := -1; i <= searchDays; i++ {
-		open := time.Date(y, m, d+i, w.from/60, w.from%60, 0, 0, time.UTC)
-		if w.days[open.Weekday()] && open.After(t) {
+		if open, _, ok := w.occurrence(y, m, d+i); ok && open.After(t) {
 			return open
 		}
 	}
