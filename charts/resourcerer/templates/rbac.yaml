@@ -114,6 +114,13 @@ rules:
   - apiGroups: ["resourcerer.io"]
     resources: ["recommendations"]
     verbs: ["get", "list", "watch"]
+  # The policies that decide when an apply may start, and the namespace labels their selectors match.
+  - apiGroups: ["resourcerer.io"]
+    resources: ["applypolicies", "clusterapplypolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["resourcerer.io"]
     resources: ["recommendations/status"]
     verbs: ["get", "update", "patch"]

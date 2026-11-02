@@ -7,6 +7,13 @@ prometheus:
 defaults:
   learning-period: PT15M
   schedule: "@every 1m"
+# Rendered so kind exercises the chart path; Audit records what would have been blocked in each
+# recommendation without stopping the applies the e2e checks. The e2e adds an enforcing policy of its
+# own to check the blocking path.
+applyPolicy:
+  enabled: true
+  mode: Audit
+  appliesTo: [Auto]
 # hack/fake-karpenter.sh serves Karpenter's metrics with fixed prices.
 cost:
   source: karpenter

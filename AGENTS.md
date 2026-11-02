@@ -22,6 +22,7 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 | `internal/engine` | Recommendation rules: **pure**, no I/O, table-driven tests with synthetic series |
 | `internal/recommender` | Controller: gathers history, runs the engine, writes `status` on each workload's schedule |
 | `internal/applier` | The only component that writes workloads: apply, revert, auto-deploy, history |
+| `internal/policy` | When an apply may start, from the apply policies that select the workload: **pure**, table-driven tests |
 | `internal/server` | HTTP API (`/api/v1/...`) and the embedded UI; live, cached queries for the workload page |
 | `internal/prom` | PromQL builders and the Prometheus client |
 | `internal/cluster` | Cluster config: defaults ConfigMap, cost pricing (`Pricer`), node allocation and placement |
@@ -31,7 +32,7 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 | `charts/resourcerer` | Helm chart; `values.schema.json` rejects unknown keys |
 | `hack/` | kind environment: cluster, Prometheus, demo workloads, a fake Karpenter exporter |
 | `test/e2e/run.sh` | End-to-end checks against kind |
-| `docs/` | `architecture.md` (components, data flow, diagrams) and user docs such as `reliability-signals.md` |
+| `docs/` | `architecture.md` (components, data flow, diagrams) and user docs such as `reliability-signals.md` and `apply-policy.md` |
 
 ## Commands
 
@@ -121,6 +122,9 @@ cluster") and fictional examples (`payments/checkout`, `demo/api`). Grep the dif
   signals. Signals the recommendation itself fixes (OOM kills, CPU throttling from 25%) count for applying.
 - **Reliability signals** are built-in or declared as PromQL templates (`docs/reliability-signals.md`). A signal with
   no data does not apply to a workload.
+- **Apply policies** (`ClusterApplyPolicy`, `ApplyPolicy`) decide **when** an apply may start: windows, freezes and
+  a cooldown. Every policy that selects the workload must allow it, so a namespace can be stricter but never looser.
+  The applier records the decision in `status.applyPolicy`, with the policy field that blocked and when it stops.
 - **Live data** for the workload page (reliability windows, placement) is computed by the server on request and
   cached; the controller's `status` stays small and drives lists and auto-deploy.
 

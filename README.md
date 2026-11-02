@@ -109,6 +109,14 @@ workloads whose requests or limits may be too tight. Declare your own as PromQL 
 `reliability.signals`, such as error rates or latency; they show in the workload list, the Reliability tab and the
 verdict on whether to apply. See [docs/reliability-signals.md](docs/reliability-signals.md).
 
+## Apply policies
+
+Auto-deploy applies a ready recommendation as soon as it appears. An apply policy narrows that: apply windows, freezes
+for a launch or a sales event, and a cooldown between changes, declared as `ClusterApplyPolicy` for the platform and
+`ApplyPolicy` for a team. Every policy that selects a workload has to allow the apply, so a namespace can be stricter
+than the platform but never looser, and `mode: Audit` records what a policy would have blocked before you enforce it.
+See [docs/apply-policy.md](docs/apply-policy.md).
+
 ## Settings
 
 Set cluster defaults in the Helm values under `defaults`; override them per namespace or workload with annotations:

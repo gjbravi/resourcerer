@@ -120,6 +120,40 @@ wait_for "auto-deploy applies a Ready recommendation" 300 bash -c \
 [[ -z "$(rec_field payments deployment-ledger '{.status.history}')" ]] \
   && pass "workload annotation turns auto-deploy off for ledger" || fail "workload annotation turns auto-deploy off for ledger"
 
+# ApplyPolicy: the chart renders one in Audit mode, and an enforcing freeze on ledger must hold the
+# automatic apply until it is gone.
+wait_for "the chart renders a cluster apply policy" 60 k get cap resourcerer-platform
+k -n payments get rec deployment-ledger -o jsonpath='{.status.applyPolicy.state}' | grep -q Allowed \
+  && pass "an audit policy reports the apply as allowed" || fail "an audit policy reports the apply as allowed"
+k apply -f - >/dev/null <<'EOF'
+apiVersion: resourcerer.io/v1alpha1
+kind: ApplyPolicy
+metadata:
+  name: e2e-freeze
+  namespace: payments
+spec:
+  appliesTo: [Auto]
+  mode: Enforce
+  workloadSelector: { matchLabels: { app: ledger } }
+  when:
+    freezes:
+      - from: "2020-01-01T00:00:00Z"
+        to: "2030-01-01T00:00:00Z"
+        reason: e2e freeze
+EOF
+k -n payments annotate deploy ledger resourcerer.io/auto-deploy=Enabled resourcerer.io/learning-period=PT2M --overwrite >/dev/null
+wait_for "a freeze blocks the automatic apply and says why" 300 bash -c \
+  "[[ \$(kubectl --context $CTX -n payments get rec deployment-ledger -o jsonpath='{.status.applyPolicy.state}') == Blocked \
+     && \$(kubectl --context $CTX -n payments get rec deployment-ledger -o jsonpath='{.status.applyPolicy.blockedBy}') == when.freezes \
+     && \$(kubectl --context $CTX -n payments get rec deployment-ledger -o jsonpath='{.status.applyPolicy.policy}') == ApplyPolicy/payments/e2e-freeze ]]"
+[[ -n "$(rec_field payments deployment-ledger '{.status.applyPolicy.nextAllowed}')" ]] \
+  && pass "a blocked apply records when it may start" || fail "a blocked apply records when it may start"
+[[ -z "$(rec_field payments deployment-ledger '{.status.history}')" ]] \
+  && pass "a frozen workload is not applied" || fail "a frozen workload is not applied"
+k -n payments delete applypolicy e2e-freeze >/dev/null
+wait_for "lifting the freeze lets auto-deploy apply" 300 bash -c \
+  "[[ \$(kubectl --context $CTX -n payments get rec deployment-ledger -o jsonpath='{.status.history[0].by}') == auto-deploy ]]"
+
 # Argo Rollouts: one with its own template, one taking it from a Deployment via spec.workloadRef.
 wait_for "creates Recommendations for Rollouts" 60 k -n demo get rec rollout-storefront rollout-billing
 wait_for "a workloadRef Deployment gets no Recommendation of its own" 30 bash -c "! kubectl --context $CTX -n demo get rec deployment-billing-template"

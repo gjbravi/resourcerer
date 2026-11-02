@@ -25,6 +25,12 @@ helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <ver
 | `cost.allocation` | `cluster` | `cluster` (every workload at the cluster's average rates) or `node` (each workload at the rates of the nodes its pods ran on; needs Karpenter prices). |
 | `cost.rates.cpuCoreHour`, `cost.rates.memoryGiBHour` | `0.0316`, `0.0042` | USD rates; with Karpenter, the CPU to memory ratio. |
 | `cost.karpenter.refreshInterval` | `10m` | How often rates are recalibrated from Karpenter prices; at least `30s`. |
+| `applyPolicy.enabled` | `false` | Render a cluster-scoped `ClusterApplyPolicy` from the values below. |
+| `applyPolicy.mode` | `Enforce` | `Enforce` blocks applies that break the policy; `Audit` only records what it would have blocked. |
+| `applyPolicy.appliesTo` | `[Auto]` | `Auto` (auto-deploy) or `Manual` (the Apply button and the API). |
+| `applyPolicy.windows` | `[]` | Periods an apply may start in, with `days`, `from`, `to` and `timeZone`. |
+| `applyPolicy.freezes` | `[]` | Periods nothing is applied in, with `from`, `to` and `reason`. |
+| `applyPolicy.cooldown` | `""` | Minimum time between two changes to the same workload, such as `24h`. |
 | `auth.strategy` | `anonymous` | Only `anonymous` for now. |
 | `readOnly` | `false` | Refuse every change from the UI and API. |
 | `applier.enabled` | `true` | Disable for a recommend-only install. |

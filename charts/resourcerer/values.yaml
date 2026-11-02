@@ -99,6 +99,33 @@ reliability:
   #     sum(rate(istio_requests_total{destination_workload_namespace="{{ .Namespace }}",
   #       destination_workload="{{ .Name }}"}[{{ .Window }}]))
 
+# -- When applies may start, rendered as a cluster-scoped `ClusterApplyPolicy`. A team can add an
+# `ApplyPolicy` in its own namespace; both are evaluated and the most restrictive wins, so a policy here
+# cannot be loosened further down. With `enabled: false` nothing governs applies and auto-deploy applies
+# as soon as a recommendation is ready.
+applyPolicy:
+  # -- Render the policy. A policy only governs what `appliesTo` lists, and an empty object blocks nothing.
+  enabled: false
+  # -- `Enforce` blocks applies that break the policy; `Audit` lets them through and records in each
+  # recommendation what would have been blocked, which is how to try a policy before it starts blocking.
+  mode: Enforce
+  # -- Kinds of apply governed: `Auto` (auto-deploy) or `Manual` (the Apply button and the API).
+  appliesTo: [Auto]
+  # -- Periods an apply may start in, in the window's own time zone. Empty: any time. Windows are a
+  # union: inside any of them an apply may start, whatever `freezes` says.
+  windows: []
+  # - days: [Mon, Tue, Wed, Thu, Fri]
+  #   from: "10:00"
+  #   to: "16:00"
+  #   timeZone: America/Sao_Paulo
+  # -- Periods nothing is applied in, as RFC 3339 timestamps. `to` is exclusive.
+  freezes: []
+  # - from: 2026-11-20T00:00:00Z
+  #   to: 2026-12-02T00:00:00Z
+  #   reason: Sales event
+  # -- Minimum time between two changes to the same workload, a Go duration such as `24h`. Empty: none.
+  cooldown: ""
+
 auth:
   # -- Only `anonymous` for now: anyone who reaches the UI can use it, with the server's
   # ServiceAccount. Keep the Service internal or put an authenticating proxy in front.

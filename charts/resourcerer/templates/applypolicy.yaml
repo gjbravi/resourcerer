@@ -1,0 +1,28 @@
+{{- if .Values.applyPolicy.enabled }}
+{{- $p := .Values.applyPolicy }}
+apiVersion: resourcerer.io/v1alpha1
+kind: ClusterApplyPolicy
+metadata:
+  name: {{ include "resourcerer.fullname" . }}-platform
+  labels:
+    {{- include "resourcerer.labels" . | nindent 4 }}
+spec:
+  mode: {{ $p.mode }}
+  appliesTo:
+    {{- toYaml $p.appliesTo | nindent 4 }}
+  {{- if or $p.windows $p.freezes }}
+  when:
+    {{- with $p.windows }}
+    windows:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with $p.freezes }}
+    freezes:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  {{- with $p.cooldown }}
+  limits:
+    cooldown: {{ . | quote }}
+  {{- end }}
+{{- end }}

@@ -305,6 +305,34 @@ sequenceDiagram
 - The applier remembers handled request IDs and auto-applied hashes in memory, because right after a status patch
   the cache can still serve the old object.
 
+### Apply policies
+
+Two kinds decide *when* an apply may start. Neither says how much to change: that is a setting.
+
+| Kind | Scope | Selects |
+|---|---|---|
+| `ClusterApplyPolicy` | cluster | namespaces (`namespaceSelector`) and workloads (`workloadSelector`) |
+| `ApplyPolicy` | one namespace | workloads (`workloadSelector`) |
+
+Every policy that selects a workload is evaluated, and an apply may start when **all** of them allow it, so a
+namespaced policy can be stricter than the platform's but never looser. `appliesTo` says which kinds of apply a policy
+governs (`Auto`, `Manual`; empty means `Auto`, so a policy never blocks a person unless it says so), and `mode: Audit`
+records what a policy would have blocked in `status.applyPolicy.wouldBlock` while letting the apply go — the way to try
+a policy on real traffic before enforcing it.
+
+`Evaluate` in `internal/policy` is the whole rule set, a pure function of the moment, the action, the workload's labels,
+the last change and the policies: freezes, windows (their own time zone, a `to` that is exclusive, overnight windows
+and days) and the `cooldown` counted from `status.history[0]`. It also answers *when* an apply may start —
+`nextAllowed` — by jumping to the instant each blocker stops blocking and evaluating again, since a freeze can end
+outside a window. A policy resourcerer cannot interpret, such as an unknown time zone, blocks: a policy that cannot be
+read must not open the door.
+
+The applier evaluates on every `Recommendation` it reconciles and records the answer in
+`status.applyPolicy: {state, blockedBy, policy, reason, nextAllowed, wouldBlock}`. `blockedBy` is a field path such as
+`when.windows`, so the UI can point at the policy line instead of parsing a message. It also watches the policy kinds,
+so lifting a freeze or opening a window re-decides at once instead of waiting for the next regeneration, and it
+requeues for `nextAllowed` (at most an hour ahead) while a blocked apply is otherwise due.
+
 ## The server and the UI
 
 ```mermaid
