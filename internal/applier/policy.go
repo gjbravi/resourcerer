@@ -152,25 +152,10 @@ func lastChange(rec *v1alpha1.Recommendation) time.Time {
 }
 
 // recordDecision writes the decision on the Recommendation, so the UI and the API show the reason the
-// applier used instead of guessing it. Automatic applies are the common case; when no policy governs
-// them, the manual decision is the one worth showing.
+// applier used instead of guessing it. Both kinds of apply are recorded: a policy that holds auto-deploy
+// back while a person may still apply is a real state, and one field could not say it.
 func (r *Reconciler) recordDecision(ctx context.Context, rec *v1alpha1.Recommendation, d decide) error {
-	chosen := d.auto
-	if d.auto.Allowed && !d.manual.Allowed {
-		chosen = d.manual
-	}
-	next := &v1alpha1.ApplyDecision{State: v1alpha1.PolicyStateAllowed}
-	if !chosen.Allowed {
-		next.State = v1alpha1.PolicyStateBlocked
-		next.BlockedBy = chosen.BlockedBy
-		next.Policy = chosen.Policy
-		next.Reason = chosen.Reason
-	}
-	if !chosen.NextAllowed.IsZero() {
-		t := metav1.NewTime(chosen.NextAllowed)
-		next.NextAllowed = &t
-	}
-	next.WouldBlock = chosen.WouldBlock
+	next := &v1alpha1.ApplyPolicyStatus{Auto: decision(d.auto), Manual: decision(d.manual)}
 	if sameDecision(rec.Status.ApplyPolicy, next) {
 		return nil
 	}
@@ -181,9 +166,24 @@ func (r *Reconciler) recordDecision(ctx context.Context, rec *v1alpha1.Recommend
 	return r.Status().Patch(ctx, rec, patch)
 }
 
+func decision(d policy.Decision) v1alpha1.ApplyDecision {
+	out := v1alpha1.ApplyDecision{State: v1alpha1.PolicyStateAllowed, WouldBlock: d.WouldBlock}
+	if !d.Allowed {
+		out.State = v1alpha1.PolicyStateBlocked
+		out.BlockedBy = d.BlockedBy
+		out.Policy = d.Policy
+		out.Reason = d.Reason
+	}
+	if !d.NextAllowed.IsZero() {
+		t := metav1.NewTime(d.NextAllowed)
+		out.NextAllowed = &t
+	}
+	return out
+}
+
 // sameDecision compares everything but EvaluatedAt, which changes on every evaluation and would make
 // the applier write the status of every workload on every pass.
-func sameDecision(a, b *v1alpha1.ApplyDecision) bool {
+func sameDecision(a, b *v1alpha1.ApplyPolicyStatus) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}

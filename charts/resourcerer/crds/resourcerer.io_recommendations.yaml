@@ -119,40 +119,84 @@ spec:
                   ApplyPolicy is what the ApplyPolicy objects governing this workload decided: when an apply may
                   start, and which policy blocks it otherwise.
                 properties:
-                  blockedBy:
+                  auto:
                     description: |-
-                      BlockedBy is the field of the policy that blocks, such as when.windows or limits.cooldown, so
-                      the UI can point at it instead of parsing a message.
-                    type: string
+                      ApplyDecision is what the ApplyPolicy objects that govern a workload decided for one kind of apply:
+                      when it may start, and which policy blocks it otherwise.
+                    properties:
+                      blockedBy:
+                        description: |-
+                          BlockedBy is the field of the policy that blocks, such as when.windows or limits.cooldown, so
+                          the UI can point at it instead of parsing a message.
+                        type: string
+                      nextAllowed:
+                        description: NextAllowed is when an apply may start again;
+                          the applier requeues for it.
+                        format: date-time
+                        type: string
+                      policy:
+                        description: Policy is the object that blocked, Kind/namespace/name.
+                          Empty when nothing blocked.
+                        type: string
+                      reason:
+                        type: string
+                      state:
+                        description: PolicyState is the decision the applier reached
+                          for a workload.
+                        enum:
+                        - Allowed
+                        - Blocked
+                        type: string
+                      wouldBlock:
+                        description: WouldBlock lists what Audit-mode policies would
+                          have blocked, most specific first.
+                        items:
+                          type: string
+                        type: array
+                    required:
+                    - state
+                    type: object
                   evaluatedAt:
+                    description: EvaluatedAt is when the applier reached this decision.
                     format: date-time
                     type: string
-                  nextAllowed:
-                    description: NextAllowed is when an apply may start again; the
-                      applier requeues for it.
-                    format: date-time
-                    type: string
-                  policy:
-                    description: Policy is the object that blocked, Kind/namespace/name.
-                      Empty when nothing blocked.
-                    type: string
-                  reason:
-                    type: string
-                  state:
-                    description: PolicyState is the decision the applier reached for
-                      a workload.
-                    enum:
-                    - Allowed
-                    - Blocked
-                    type: string
-                  wouldBlock:
-                    description: WouldBlock lists what Audit-mode policies would have
-                      blocked, most specific first.
-                    items:
-                      type: string
-                    type: array
-                required:
-                - state
+                  manual:
+                    description: |-
+                      ApplyDecision is what the ApplyPolicy objects that govern a workload decided for one kind of apply:
+                      when it may start, and which policy blocks it otherwise.
+                    properties:
+                      blockedBy:
+                        description: |-
+                          BlockedBy is the field of the policy that blocks, such as when.windows or limits.cooldown, so
+                          the UI can point at it instead of parsing a message.
+                        type: string
+                      nextAllowed:
+                        description: NextAllowed is when an apply may start again;
+                          the applier requeues for it.
+                        format: date-time
+                        type: string
+                      policy:
+                        description: Policy is the object that blocked, Kind/namespace/name.
+                          Empty when nothing blocked.
+                        type: string
+                      reason:
+                        type: string
+                      state:
+                        description: PolicyState is the decision the applier reached
+                          for a workload.
+                        enum:
+                        - Allowed
+                        - Blocked
+                        type: string
+                      wouldBlock:
+                        description: WouldBlock lists what Audit-mode policies would
+                          have blocked, most specific first.
+                        items:
+                          type: string
+                        type: array
+                    required:
+                    - state
+                    type: object
                 type: object
               containers:
                 items:

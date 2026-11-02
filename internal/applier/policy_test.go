@@ -55,38 +55,49 @@ func TestSortRules(t *testing.T) {
 func TestSameDecision(t *testing.T) {
 	now := metav1.NewTime(time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC))
 	later := metav1.NewTime(now.Add(time.Hour))
-	blocked := func() *v1alpha1.ApplyDecision {
-		return &v1alpha1.ApplyDecision{
-			State:       v1alpha1.PolicyStateBlocked,
-			BlockedBy:   "when.freezes",
-			Policy:      "ApplyPolicy/demo/freeze",
-			Reason:      "frozen",
+	blocked := func() *v1alpha1.ApplyPolicyStatus {
+		return &v1alpha1.ApplyPolicyStatus{
+			Auto: v1alpha1.ApplyDecision{
+				State:     v1alpha1.PolicyStateBlocked,
+				BlockedBy: "when.freezes",
+				Policy:    "ApplyPolicy/demo/freeze",
+				Reason:    "frozen",
+			},
+			Manual:      v1alpha1.ApplyDecision{State: v1alpha1.PolicyStateAllowed},
 			EvaluatedAt: &now,
 		}
 	}
 
 	tests := []struct {
 		name string
-		a, b *v1alpha1.ApplyDecision
+		a, b *v1alpha1.ApplyPolicyStatus
 		want bool
 	}{
 		{name: "both absent", want: true},
 		{name: "one absent", a: blocked(), want: false},
 		{name: "one absent, the other way", b: blocked(), want: false},
-		{name: "same decision, later evaluation", a: blocked(), b: func() *v1alpha1.ApplyDecision {
+		{name: "same decision, later evaluation", a: blocked(), b: func() *v1alpha1.ApplyPolicyStatus {
 			d := blocked()
 			d.EvaluatedAt = &later
 			return d
 		}(), want: true},
-		{name: "different state", a: blocked(), b: &v1alpha1.ApplyDecision{State: v1alpha1.PolicyStateAllowed}, want: false},
-		{name: "different blocking field", a: blocked(), b: func() *v1alpha1.ApplyDecision {
+		{name: "automatic apply blocked, manual allowed", a: blocked(), b: &v1alpha1.ApplyPolicyStatus{
+			Auto:   v1alpha1.ApplyDecision{State: v1alpha1.PolicyStateAllowed},
+			Manual: v1alpha1.ApplyDecision{State: v1alpha1.PolicyStateAllowed},
+		}, want: false},
+		{name: "only the manual decision changes", a: blocked(), b: func() *v1alpha1.ApplyPolicyStatus {
 			d := blocked()
-			d.BlockedBy = "when.windows"
+			d.Manual = v1alpha1.ApplyDecision{State: v1alpha1.PolicyStateBlocked, BlockedBy: "when.windows"}
 			return d
 		}(), want: false},
-		{name: "a window opens later", a: blocked(), b: func() *v1alpha1.ApplyDecision {
+		{name: "a window opens later", a: blocked(), b: func() *v1alpha1.ApplyPolicyStatus {
 			d := blocked()
-			d.NextAllowed = &later
+			d.Auto.NextAllowed = &later
+			return d
+		}(), want: false},
+		{name: "what an audit policy would block", a: blocked(), b: func() *v1alpha1.ApplyPolicyStatus {
+			d := blocked()
+			d.Auto.WouldBlock = []string{"the recommendation changes more than 50%"}
 			return d
 		}(), want: false},
 	}

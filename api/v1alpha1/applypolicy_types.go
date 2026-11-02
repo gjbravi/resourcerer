@@ -124,8 +124,21 @@ const (
 	PolicyStateBlocked PolicyState = "Blocked"
 )
 
-// ApplyDecision is what the ApplyPolicy objects that govern a workload decided, as recorded on the
-// Recommendation: when the applier may start, and which policy blocks it otherwise.
+// ApplyPolicyStatus is what the apply policies decided for one workload. The two kinds of apply are
+// decided apart, so the UI can say which one is held back: a policy commonly governs auto-deploy and
+// leaves a person free, or the other way around.
+type ApplyPolicyStatus struct {
+	// +optional
+	Auto ApplyDecision `json:"auto,omitempty"`
+	// +optional
+	Manual ApplyDecision `json:"manual,omitempty"`
+	// EvaluatedAt is when the applier reached this decision.
+	// +optional
+	EvaluatedAt *metav1.Time `json:"evaluatedAt,omitempty"`
+}
+
+// ApplyDecision is what the ApplyPolicy objects that govern a workload decided for one kind of apply:
+// when it may start, and which policy blocks it otherwise.
 type ApplyDecision struct {
 	// Policy is the object that blocked, Kind/namespace/name. Empty when nothing blocked.
 	// +optional
@@ -143,8 +156,6 @@ type ApplyDecision struct {
 	// WouldBlock lists what Audit-mode policies would have blocked, most specific first.
 	// +optional
 	WouldBlock []string `json:"wouldBlock,omitempty"`
-	// +optional
-	EvaluatedAt *metav1.Time `json:"evaluatedAt,omitempty"`
 }
 
 // ApplyPolicy governs when the workloads in its namespace may be applied. A team declares its own

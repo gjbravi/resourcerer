@@ -275,7 +275,7 @@ type RecommendationStatus struct {
 	// ApplyPolicy is what the ApplyPolicy objects governing this workload decided: when an apply may
 	// start, and which policy blocks it otherwise.
 	// +optional
-	ApplyPolicy *ApplyDecision `json:"applyPolicy,omitempty"`
+	ApplyPolicy *ApplyPolicyStatus `json:"applyPolicy,omitempty"`
 }
 
 // Recommendation holds the resource recommendation for one workload.
