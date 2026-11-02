@@ -33,6 +33,7 @@ import (
 	"github.com/gjbravi/resourcerer/internal/recommender"
 	"github.com/gjbravi/resourcerer/internal/scheme"
 	"github.com/gjbravi/resourcerer/internal/server"
+	"github.com/gjbravi/resourcerer/internal/server/auth"
 	"github.com/gjbravi/resourcerer/web"
 )
 
@@ -67,6 +68,9 @@ func main() {
 		leaderElect = fs.Bool("leader-elect", false, "enable leader election for controller and applier")
 		readOnly    = fs.Bool("read-only", false, "server: refuse every change")
 		disableUI   = fs.Bool("disable-ui", false, "server: serve the API without the embedded UI")
+		authStrat   = fs.String("auth-strategy", auth.StrategyAnonymous, `server: "anonymous" (anyone who reaches the server may change anything) or "oidc"`)
+		authCM      = fs.String("auth-config-configmap", "", "server: namespace/name of the ConfigMap with the OIDC configuration; required with --auth-strategy=oidc")
+		authSecure  = fs.String("auth-cookie-secure", string(auth.CookieSecureAuto), `server: Secure attribute of auth cookies: "auto" (when the request is HTTPS), "true" or "false"; set "true" behind a TLS-terminating proxy`)
 	)
 	zapOpts := zap.Options{}
 	zapOpts.BindFlags(fs)
@@ -77,6 +81,14 @@ func main() {
 	fail := func(err error, msg string) {
 		logger.Error(err, msg)
 		os.Exit(1)
+	}
+
+	if *authStrat != auth.StrategyAnonymous && *authStrat != auth.StrategyOIDC {
+		fail(fmt.Errorf("got %q", *authStrat), "--auth-strategy must be anonymous or oidc")
+	}
+	cookieSecure, err := auth.ParseCookieSecure(*authSecure)
+	if err != nil {
+		fail(err, "--auth-cookie-secure must be auto, true or false")
 	}
 
 	cfg := cluster.Config{Name: *clusterName, Selection: cluster.Selection(*selection), ExcludedNamespaces: splitList(*excluded)}
@@ -129,9 +141,19 @@ func main() {
 	}
 	if run["server"] {
 		srv := &server.Server{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Cluster: cfg, Prom: p, PromURL: *promURL,
-			MinStep: *minStep, Version: version, ReadOnly: *readOnly}
+			MinStep: *minStep, Version: version, ReadOnly: *readOnly, Auth: auth.Anonymous{}}
 		if !*disableUI {
 			srv.UI = web.FS()
+		}
+		if *authStrat == auth.StrategyOIDC {
+			ap, err := oidcProvider(mgr.GetAPIReader(), *authCM, cookieSecure)
+			if err != nil {
+				fail(err, "set up OIDC authentication")
+			}
+			if err := mgr.Add(everyReplica(ap.Run)); err != nil {
+				fail(err, "add OIDC configuration reload")
+			}
+			srv.Auth = ap
 		}
 		if err := mgr.Add(everyReplica(srv.Start(*httpAddr))); err != nil {
 			fail(err, "add HTTP server")
@@ -141,10 +163,34 @@ func main() {
 	_ = mgr.AddReadyzCheck("readyz", healthz.Ping)
 
 	logger.Info("starting", "role", role, "version", version, "cluster", cfg.Name, "selection", cfg.Selection,
-		"prometheus", *promURL, "readOnly", *readOnly)
+		"prometheus", *promURL, "readOnly", *readOnly, "auth", *authStrat)
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		fail(err, "run manager")
 	}
+}
+
+// oidcProvider reads secrets from the environment, where the chart injects them from Secrets, and the rest from
+// the ConfigMap. Any of them missing stops the server: it never falls back to anonymous.
+func oidcProvider(r client.Reader, configMap string, secure auth.CookieSecure) (*auth.OIDC, error) {
+	ns, name, ok := strings.Cut(configMap, "/")
+	if !ok || ns == "" || name == "" {
+		return nil, fmt.Errorf("--auth-config-configmap must be namespace/name, got %q", configMap)
+	}
+	for _, env := range []string{"RESOURCERER_OIDC_CLIENT_SECRET", "RESOURCERER_SESSION_KEY"} {
+		if os.Getenv(env) == "" {
+			return nil, fmt.Errorf("%s is not set", env)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return auth.NewOIDC(ctx, auth.OIDCOptions{
+		Reader:             r,
+		ConfigMap:          types.NamespacedName{Namespace: ns, Name: name},
+		ClientSecret:       os.Getenv("RESOURCERER_OIDC_CLIENT_SECRET"),
+		SessionKey:         os.Getenv("RESOURCERER_SESSION_KEY"),
+		PreviousSessionKey: os.Getenv("RESOURCERER_SESSION_KEY_PREVIOUS"),
+		CookieSecure:       secure,
+	})
 }
 
 // everyReplica runs on all replicas, not only the elected leader.

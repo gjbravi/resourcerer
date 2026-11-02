@@ -1,7 +1,7 @@
 // Package server serves the REST API and the embedded UI.
 //
-// Authentication is "anonymous", like Kiali's anonymous strategy: anyone who reaches the
-// server can use it, with the server's own ServiceAccount. Use ReadOnly to forbid changes.
+// An auth.Provider identifies every API caller; only editors may change anything, and ReadOnly forbids changes
+// to everyone. Changes are written with the server's own ServiceAccount.
 package server
 
 import (
@@ -32,13 +32,11 @@ import (
 	"github.com/gjbravi/resourcerer/internal/cluster"
 	"github.com/gjbravi/resourcerer/internal/engine"
 	"github.com/gjbravi/resourcerer/internal/prom"
+	"github.com/gjbravi/resourcerer/internal/server/auth"
 	"github.com/gjbravi/resourcerer/internal/settings"
 	"github.com/gjbravi/resourcerer/internal/signals"
 	"github.com/gjbravi/resourcerer/internal/workload"
 )
-
-// User is recorded as the requester of every change, since authentication is anonymous.
-const User = "anonymous"
 
 type Server struct {
 	Client    client.Client
@@ -50,30 +48,102 @@ type Server struct {
 	Version   string
 	ReadOnly  bool
 	UI        fs.FS
+	// Auth identifies callers. It is required: an unset provider must not mean anonymous.
+	Auth auth.Provider
 
 	cache cache
 }
 
+type route struct {
+	pattern string
+	handler http.HandlerFunc
+}
+
+// routes lists the API. Handler puts every route behind authentication, and every mutating method behind
+// write, so a new route cannot skip either. /api/v1/me is the one exception, served to everyone.
+func (s *Server) routes() []route {
+	return []route{
+		{"GET /api/v1/info", s.info},
+		{"GET /api/v1/workloads", s.list},
+		{"GET /api/v1/cluster/series", s.clusterSeries},
+		{"GET /api/v1/workloads/{ns}/{kind}/{name}", s.detail},
+		{"GET /api/v1/workloads/{ns}/{kind}/{name}/series", s.series},
+		{"GET /api/v1/workloads/{ns}/{kind}/{name}/impact", s.impact},
+		{"GET /api/v1/workloads/{ns}/{kind}/{name}/reliability", s.reliability},
+		{"GET /api/v1/workloads/{ns}/{kind}/{name}/placement", s.placement},
+		{"POST /api/v1/workloads/{ns}/{kind}/{name}/apply", s.apply},
+		{"POST /api/v1/workloads/{ns}/{kind}/{name}/revert", s.revert},
+		{"POST /api/v1/workloads/{ns}/{kind}/{name}/regenerate", s.regenerate},
+		{"PUT /api/v1/workloads/{ns}/{kind}/{name}/settings", s.workloadSetting},
+		{"PUT /api/v1/namespaces/{ns}/settings", s.namespaceSetting},
+	}
+}
+
+func mutating(pattern string) bool {
+	method, _, _ := strings.Cut(pattern, " ")
+	return method != http.MethodGet && method != http.MethodHead
+}
+
 func (s *Server) Handler() http.Handler {
+	if s.Auth == nil {
+		panic("server: Auth is required; use auth.Anonymous{} for no authentication")
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v1/info", s.info)
-	mux.HandleFunc("GET /api/v1/workloads", s.list)
-	mux.HandleFunc("GET /api/v1/cluster/series", s.clusterSeries)
-	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}", s.detail)
-	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}/series", s.series)
-	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}/impact", s.impact)
-	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}/reliability", s.reliability)
-	mux.HandleFunc("GET /api/v1/workloads/{ns}/{kind}/{name}/placement", s.placement)
-	mux.HandleFunc("POST /api/v1/workloads/{ns}/{kind}/{name}/apply", s.write(s.apply))
-	mux.HandleFunc("POST /api/v1/workloads/{ns}/{kind}/{name}/revert", s.write(s.revert))
-	mux.HandleFunc("POST /api/v1/workloads/{ns}/{kind}/{name}/regenerate", s.write(s.regenerate))
-	mux.HandleFunc("PUT /api/v1/workloads/{ns}/{kind}/{name}/settings", s.write(s.workloadSetting))
-	mux.HandleFunc("PUT /api/v1/namespaces/{ns}/settings", s.write(s.namespaceSetting))
+	mux.HandleFunc("GET /api/v1/me", s.me)
+	for _, rt := range s.routes() {
+		h := rt.handler
+		if mutating(rt.pattern) {
+			h = s.write(h)
+		}
+		mux.HandleFunc(rt.pattern, s.authenticate(h))
+	}
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, http.StatusNotFound, "not found") })
+	mux.HandleFunc("/auth/", func(w http.ResponseWriter, r *http.Request) {
+		if !s.Auth.Handle(w, r) {
+			http.NotFound(w, r)
+		}
+	})
 	if s.UI != nil {
 		mux.Handle("/", spa(s.UI))
 	}
 	return logRequests(mux)
+}
+
+// authenticate attaches the caller's identity and refuses callers who are not signed in or have no role.
+func (s *Server) authenticate(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := s.Auth.Identify(r)
+		if !ok {
+			writeReason(w, http.StatusUnauthorized, "unauthenticated", "sign in to use resourcerer")
+			return
+		}
+		if id.Role() == auth.RoleNone {
+			writeReason(w, http.StatusForbidden, "forbidden", id.User+" is not allowed to use resourcerer")
+			return
+		}
+		h(w, r.WithContext(auth.WithIdentity(r.Context(), id)))
+	}
+}
+
+// me tells the UI who is signed in. It answers callers who are not, with the strategy only, so the UI can send
+// them to sign in; and callers with no role, so it can say why.
+func (s *Server) me(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	id, ok := s.Auth.Identify(r)
+	if !ok {
+		writeJSON(w, Unauthenticated{Authenticated: false, Strategy: s.Auth.Strategy()})
+		return
+	}
+	st := s.Auth.Status()
+	m := Me{Authenticated: true, User: id.User, Groups: id.Groups, Role: id.Role(), Strategy: s.Auth.Strategy(),
+		ConfigStale: st.ConfigStale, ConfigError: st.ConfigError}
+	if m.Groups == nil {
+		m.Groups = []string{}
+	}
+	if !id.ExpiresAt.IsZero() {
+		m.ExpiresAt = id.ExpiresAt.UTC().Format(time.RFC3339)
+	}
+	writeJSON(w, m)
 }
 
 func (s *Server) Start(addr string) func(context.Context) error {
@@ -102,7 +172,7 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, Info{
 		Version:            s.Version,
 		Cluster:            s.Cluster.Name,
-		Auth:               "anonymous",
+		Auth:               s.Auth.Strategy(),
 		ReadOnly:           s.ReadOnly,
 		Selection:          string(s.Cluster.Selection),
 		ExcludedNamespaces: s.Cluster.ExcludedNamespaces,
@@ -580,14 +650,29 @@ func bands(pts []prom.Point, start, end time.Time) []Band {
 
 /* ── Mutations ─────────────────────────────────────────────────────────── */
 
+// write gates every mutation: nobody on a read-only install, otherwise editors only.
 func (s *Server) write(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.ReadOnly {
-			writeError(w, http.StatusForbidden, "resourcerer is read-only")
+			writeReason(w, http.StatusForbidden, "read-only", "resourcerer is read-only")
 			return
 		}
-		h(w, r)
+		id, ok := auth.FromContext(r.Context())
+		switch {
+		case !ok:
+			writeReason(w, http.StatusUnauthorized, "unauthenticated", "sign in to make changes")
+		case !id.Editor:
+			writeReason(w, http.StatusForbidden, "editor-required", id.User+" may view but not change resourcerer")
+		default:
+			h(w, r)
+		}
 	}
+}
+
+// requester is who a change is recorded for: the authenticated caller, never a value from the request.
+func requester(r *http.Request) string {
+	id, _ := auth.FromContext(r.Context())
+	return id.User
 }
 
 func (s *Server) patchSpec(w http.ResponseWriter, r *http.Request, mutate func(*v1alpha1.Recommendation) error) {
@@ -624,7 +709,7 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 		if d := rec.Status.ApplyPolicy; d != nil && heldByPolicy(d.Manual) {
 			return fmt.Errorf("held by %s: %s", d.Manual.Policy, d.Manual.Reason)
 		}
-		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionApply, Hash: body.Hash, RequestedBy: User, RequestedAt: metav1.NewTime(time.Now())}
+		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionApply, Hash: body.Hash, RequestedBy: requester(r), RequestedAt: metav1.NewTime(time.Now())}
 		return nil
 	})
 }
@@ -640,7 +725,7 @@ func heldByPolicy(d v1alpha1.ApplyDecision) bool {
 
 func (s *Server) revert(w http.ResponseWriter, r *http.Request) {
 	s.patchSpec(w, r, func(rec *v1alpha1.Recommendation) error {
-		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionRevert, RequestedBy: User, RequestedAt: metav1.NewTime(time.Now())}
+		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionRevert, RequestedBy: requester(r), RequestedAt: metav1.NewTime(time.Now())}
 		return nil
 	})
 }
@@ -779,6 +864,13 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// writeReason adds a stable reason for clients to act on, such as sending the user to sign in.
+func writeReason(w http.ResponseWriter, code int, reason, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg, "reason": reason})
 }
 
 func logRequests(h http.Handler) http.Handler {

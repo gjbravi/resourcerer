@@ -331,15 +331,37 @@ flowchart LR
     api -->|apply, revert, regenerate, settings| kapi[Kubernetes API]
 ```
 
-- **Endpoints**: `info` (cluster, settings defaults, cost and reliability configuration, Prometheus status),
-  `workloads` (list), `workloads/{ns}/{kind}/{name}` (detail) and its `series`, `impact`, `reliability` and
-  `placement`, `cluster/series`, and the writes `apply`, `revert`, `regenerate` and `settings`.
+- **Endpoints**: `me` (who is signed in; the only endpoint served without authentication), `info` (cluster, auth
+  strategy, settings defaults, cost and reliability configuration, Prometheus status), `workloads` (list),
+  `workloads/{ns}/{kind}/{name}` (detail) and its `series`, `impact`, `reliability` and `placement`,
+  `cluster/series`, and the writes `apply`, `revert`, `regenerate` and `settings`.
 - **Lists and details** come from the Recommendations in the cache: no Prometheus query, so they stay fast with
   thousands of workloads.
 - **Charts and live checks** query Prometheus on request, cached per key for a short time; concurrent identical
   requests share one query.
-- **Writes** go through `s.write`, which refuses them in read-only mode. Authentication is anonymous for now: keep
-  the Service internal or put an authenticating proxy in front.
+- **Authentication** is an `auth.Provider` chosen by `--auth-strategy`. `anonymous` (the default) lets anyone who
+  reaches the server do anything. `oidc` signs users in at an OpenID Connect provider (`/auth/login`,
+  `/auth/callback`, `/auth/logout`, authorization code with PKCE) and keeps the identity in an AES-GCM sealed cookie,
+  so no replica holds sessions. Its parameters are read from their own ConfigMap (`oidc.yaml`), fail-closed at start
+  and reread every 30s, keeping the last good configuration on errors; secrets come from the environment. Roles are
+  resolved from groups on every request, so a change to `editorGroups` applies without signing in again.
+- **`GET /api/v1/me`** always answers `200` with `Cache-Control: no-store`, so the UI learns whether to sign in
+  without an error path. A caller who is not signed in gets only `{"authenticated": false, "strategy": "oidc"}`. A
+  signed-in caller gets `{"authenticated": true, "user", "groups", "role", "strategy", "impersonating",
+  "configStale", "configError"?, "expiresAt"?}`, where `role` is `editor`, `viewer` or `none` (signed in, but outside
+  `allowedGroups` or not a viewer) and `configError`/`expiresAt` appear only when set. Under `anonymous` every caller
+  is signed in as `anonymous`, an editor. Every other `/api/v1` route answers `401` with `"reason":
+  "unauthenticated"` when not signed in and `403` with `"reason": "forbidden"` for role `none`.
+- **Session cookies** are `HttpOnly`, `SameSite=Lax` and `Path=/`. When `Secure`, the name carries the `__Host-`
+  prefix (`__Host-resourcerer_session`), which browsers refuse unless the cookie is Secure and host-only.
+  `--auth-cookie-secure=auto` decides from the request (TLS or `X-Forwarded-Proto: https`); behind a TLS-terminating
+  proxy set `--auth-cookie-secure=true` rather than relying on the proxy's header.
+- **Who controls authentication.** Anyone who can write the auth ConfigMap can point `issuer` at an IdP they run and
+  sign in as an editor: write access to ConfigMaps in the release namespace is admin access to resourcerer. Grant it
+  accordingly.
+- **Writes** go through `s.write`: refused to everyone in read-only mode (`403`, `"reason": "read-only"`), otherwise
+  allowed to editors only (`403`, `"reason": "editor-required"`). The requester recorded on an apply or revert is
+  the authenticated user, never a value from the request.
 - **The UI** is embedded in the binary (`web.FS()`) and served as a single-page app. React Query polls the workload
   every 5s, the list every 15s and charts every 30s; expensive views fetch only when shown.
 
