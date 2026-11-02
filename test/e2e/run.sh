@@ -170,8 +170,11 @@ resp=$(curl -s -w '\n%{http_code}' -X POST "$API/workloads/demo/Deployment/worke
   && pass "the API refuses an apply a policy holds" || fail "the API refuses an apply a policy holds (got ${resp##*$'\n'})"
 [[ "${resp%$'\n'*}" == *"ApplyPolicy/demo/e2e-freeze holds this apply"* ]] \
   && pass "the refusal names the policy" || fail "the refusal names the policy (got ${resp%$'\n'*})"
-[[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/worker/revert")" == 409 ]] \
-  && pass "a frozen workload cannot be reverted either" || fail "a frozen workload cannot be reverted either"
+# A revert is how a bad apply is undone, so no policy holds it. This one has nothing to revert, and the applier says so.
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/worker/revert")" == 200 ]] \
+  && pass "a frozen workload can still be reverted" || fail "a frozen workload can still be reverted"
+wait_for "the applier handles the revert despite the freeze" 60 bash -c \
+  "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.lastApplyResult.message}') == 'nothing to revert' ]]"
 k -n demo delete applypolicy e2e-freeze >/dev/null
 wait_for "lifting the freeze lets auto-deploy apply" 300 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.history[0].by}') == auto-deploy ]]"

@@ -111,13 +111,12 @@ applyPolicy:
   mode: Enforce
   # -- Kinds of apply governed: `Auto` (auto-deploy) or `Manual` (the Apply button and the API).
   appliesTo: [Auto]
-  # -- Periods an apply may start in, in the window's own time zone. Empty: any time. Windows are a
-  # union: inside any of them an apply may start, whatever `freezes` says.
+  # -- Periods an apply may start in, with `from`, `to` and `days` in UTC. Empty: any time. Windows are
+  # a union: inside any of them an apply may start, unless a freeze holds it.
   windows: []
   # - days: [Mon, Tue, Wed, Thu, Fri]
-  #   from: "10:00"
-  #   to: "16:00"
-  #   timeZone: America/Sao_Paulo
+  #   from: "13:00"
+  #   to: "19:00"
   # -- Periods nothing is applied in, as RFC 3339 timestamps. `to` is exclusive.
   freezes: []
   # - from: 2026-11-20T00:00:00Z

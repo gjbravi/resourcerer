@@ -321,20 +321,23 @@ records what a policy would have blocked in `status.applyPolicy.wouldBlock` whil
 a policy on real traffic before enforcing it.
 
 `Evaluate` in `internal/policy` is the whole rule set, a pure function of the moment, the action, the workload's labels,
-the last change and the policies: freezes, windows (their own time zone, a `to` that is exclusive, overnight windows
+the last change and the policies: freezes, windows (in UTC, a `to` that is exclusive, overnight windows
 and days) and the `cooldown` counted from `status.history[0]`. It also answers *when* an apply may start —
 `nextAllowed` — by jumping to the instant each blocker stops blocking and evaluating again, since a freeze can end
-outside a window. A policy resourcerer cannot interpret, such as an unknown time zone, blocks: a policy that cannot be
+outside a window. A policy resourcerer cannot interpret, such as a malformed selector, blocks: a policy that cannot be
 read must not open the door.
 
-The applier evaluates on every `Recommendation` it reconciles and records the answer in
+The applier evaluates on every `Recommendation` it reconciles, from its cache, and again from the API server right
+before it applies, so a policy created a moment ago still stops the apply. It records the answer in
 `status.applyPolicy`, once per kind of apply (`auto`, `manual`: state, blockedBy, policy, reason, nextAllowed,
-wouldBlock), so a policy that holds auto-deploy back while a person is free reads as such. The server also passes the
-decision through: an apply or a revert the manual decision holds is refused with `409` and the reason, so the click gets
-its answer from the API instead of from a rejected apply a moment later. `blockedBy` is a field path such as
-`when.windows`, which lets a client name the rule instead of parsing a message. It also watches the policy kinds,
-so lifting a freeze or opening a window re-decides at once instead of waiting for the next regeneration, and it
-requeues for `nextAllowed` (at most an hour ahead) while a blocked apply is otherwise due.
+wouldBlock), so a policy that holds auto-deploy back while a person is free reads as such. Anything it cannot read (the
+policies, the namespace's labels, the workload's) blocks both kinds and is retried every minute. The server also passes
+the decision through: an apply the manual decision holds is refused with `409` and the reason, so the click gets its
+answer from the API instead of from a rejected apply a moment later. A revert is never held: it is how a bad apply is
+undone. `blockedBy` is a field path such as `when.windows`, which lets a client name the rule instead of parsing a
+message. The applier also watches the policy kinds, so lifting a freeze or opening a window re-decides at once instead
+of waiting for the next regeneration, and requeues for the earliest `nextAllowed` of either kind (at most an hour
+ahead), which keeps the status the server reads current.
 
 ## The server and the UI
 

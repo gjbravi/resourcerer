@@ -32,7 +32,7 @@ applier keeps working and logs that applies are not gated by a policy.
 | `applyPolicy.enabled` | `false` | Render a cluster-scoped `ClusterApplyPolicy` from the values below. |
 | `applyPolicy.mode` | `Enforce` | `Enforce` blocks applies that break the policy; `Audit` only records what it would have blocked. |
 | `applyPolicy.appliesTo` | `[Auto]` | `Auto` (auto-deploy) or `Manual` (the Apply button and the API). |
-| `applyPolicy.windows` | `[]` | Periods an apply may start in, with `days`, `from`, `to` and `timeZone`. |
+| `applyPolicy.windows` | `[]` | Periods an apply may start in, with `days`, `from` and `to` in UTC. |
 | `applyPolicy.freezes` | `[]` | Periods nothing is applied in, with `from`, `to` and `reason`. |
 | `applyPolicy.cooldown` | `""` | Minimum time between two changes to the same workload, such as `24h`. |
 | `auth.strategy` | `anonymous` | Only `anonymous` for now. |
