@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -156,6 +157,22 @@ func (c *Client) Instant(ctx context.Context, q string, label string) (map[strin
 	return out, nil
 }
 
+// LabelValues returns the values of label on the series matching match between start and end.
+func (c *Client) LabelValues(ctx context.Context, label, match string, start, end time.Time) ([]string, error) {
+	v, _, err := c.API.LabelValues(ctx, label, []string{match}, start, end)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(v))
+	for i, s := range v {
+		out[i] = string(s)
+	}
+	return out, nil
+}
+
+// KarpenterNodeSeries matches the nodes Karpenter launched, for LabelValues.
+const KarpenterNodeSeries = `karpenter_nodes_allocatable{resource_type="cpu"}`
+
 // Karpenter metrics can reach Prometheus a minute late, through Thanos for example, so an instant query at
 // "now" can find none: these read the latest sample of the last few minutes.
 
@@ -197,12 +214,22 @@ func PodsByCapacity(r Ref) string {
 // nodeFactor is each Karpenter node's hourly price over what its allocatable capacity costs at the given rates,
 // labeled node, capacity_type and instance_type. Reserved capacity is priced as on-demand. A node name reused by a
 // new instance keeps both series for a few minutes, so the current series wins and one is kept per node.
-func nodeFactor(cpuRate, memRate float64) string {
+// Karpenter prices every offering of the region, tens of thousands of series that dominate the query: types, the
+// instance types the nodes had, narrows them down (none reads every offering).
+func nodeFactor(cpuRate, memRate float64, types []string) string {
 	alloc := func(r string) string {
 		sel := fmt.Sprintf(`karpenter_nodes_allocatable{resource_type="%s"}`, r)
 		return fmt.Sprintf(`(max by (node_name, instance_type, zone, capacity_type) (%s) or on (node_name) max by (node_name, instance_type, zone, capacity_type) (last_over_time(%s[5m])))`, sel, sel)
 	}
-	price := `label_replace(max by (instance_type, zone, capacity_type) (last_over_time(karpenter_cloudprovider_instance_type_offering_price_estimate[5m])), "price_type", "$1", "capacity_type", "(.*)")`
+	offerings := "karpenter_cloudprovider_instance_type_offering_price_estimate"
+	if len(types) > 0 {
+		re := make([]string, len(types))
+		for i, t := range types {
+			re[i] = strings.ReplaceAll(regexp.QuoteMeta(t), `\`, `\\`)
+		}
+		offerings += fmt.Sprintf(`{instance_type=~"%s"}`, quote(strings.Join(re, "|")))
+	}
+	price := fmt.Sprintf(`label_replace(max by (instance_type, zone, capacity_type) (last_over_time(%s[5m])), "price_type", "$1", "capacity_type", "(.*)")`, offerings)
 	nodes := fmt.Sprintf(`label_replace(label_replace(topk by (node_name) (1, %s), "price_type", "$1", "capacity_type", "(.*)"), "price_type", "on-demand", "capacity_type", "reserved")`, alloc("cpu"))
 	value := fmt.Sprintf(`(max by (node_name) (%s) * %g + max by (node_name) (%s) / 2^30 * %g)`, alloc("cpu"), cpuRate, alloc("memory"), memRate)
 	return fmt.Sprintf(`label_replace(
@@ -227,9 +254,9 @@ func podWeight(r Ref, cpuRate, memRate float64) string {
 
 // WorkloadNodeCost is the workload's requests valued at the given rates and multiplied by its nodes' factor, per
 // capacity type and instance type joined as "capacity_type|instance_type" in the key label. With priced set, the
-// factor is left out: the requests that run on priced nodes.
-func WorkloadNodeCost(r Ref, cpuRate, memRate float64, priced bool) string {
-	f := nodeFactor(cpuRate, memRate)
+// factor is left out: the requests that run on priced nodes. types are the instance types to price (see nodeFactor).
+func WorkloadNodeCost(r Ref, cpuRate, memRate float64, priced bool, types []string) string {
+	f := nodeFactor(cpuRate, memRate, types)
 	if priced {
 		f = fmt.Sprintf("(%s * 0 + 1)", f)
 	}
@@ -254,12 +281,20 @@ func ClusterRequested(resource string) string {
 	return fmt.Sprintf(`sum(kube_pod_container_resource_requests{resource="%s"} * on (namespace, pod) group_left () (max by (namespace, pod) (kube_pod_status_phase{phase="Running"}) == 1))`, resource)
 }
 
-// ClusterUsage sums usage over every container in the cluster.
-func (c *Client) ClusterUsage(resource string) string {
-	if resource == "cpu" {
-		return fmt.Sprintf(`sum(rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[%s]))`, c.RateWindow)
+// ClusterUsage sums usage over every container in the cluster, averaged over step when it is longer than the rate
+// window, so a chart with coarse steps does not only sample a few minutes out of each step.
+func (c *Client) ClusterUsage(resource string, step time.Duration) string {
+	win := c.RateWindow
+	if d, err := model.ParseDuration(win); err == nil && step > time.Duration(d) {
+		win = model.Duration(step).String()
 	}
-	return `sum(container_memory_working_set_bytes{container!="", container!="POD"})`
+	if resource == "cpu" {
+		return fmt.Sprintf(`sum(rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[%s]))`, win)
+	}
+	if win == c.RateWindow {
+		return `sum(container_memory_working_set_bytes{container!="", container!="POD"})`
+	}
+	return fmt.Sprintf(`sum(avg_over_time(container_memory_working_set_bytes{container!="", container!="POD"}[%s]))`, win)
 }
 
 // Recommended is the history of recommendations exported by the controller.

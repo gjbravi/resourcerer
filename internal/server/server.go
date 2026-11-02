@@ -384,8 +384,13 @@ var windows = map[string]time.Duration{"1h": time.Hour, "1d": 24 * time.Hour, "1
 
 const buckets = 150
 
-func (s *Server) window(r *http.Request) (time.Time, time.Time, time.Duration) {
+// window reads the chart range; "learning" is the workload's learning period, the window its numbers come from, or
+// the cluster default without rec.
+func (s *Server) window(r *http.Request, rec *v1alpha1.Recommendation) (time.Time, time.Time, time.Duration) {
 	win, ok := windows[r.URL.Query().Get("range")]
+	if r.URL.Query().Get("range") == "learning" {
+		win, ok = s.learning(r, rec), true
+	}
 	if !ok {
 		win = windows["1w"]
 	}
@@ -404,9 +409,9 @@ func (s *Server) series(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "resource must be cpu or memory")
 		return
 	}
-	start, end, win := s.window(r)
+	start, end, win := s.window(r, rec)
 	ref := prom.Ref{Namespace: rec.Namespace, Kind: rec.Spec.TargetRef.Kind, Name: rec.Spec.TargetRef.Name}
-	key := strings.Join([]string{"series", rec.Namespace, ref.Kind, ref.Name, container, resource, r.URL.Query().Get("range"), end.String()}, "|")
+	key := strings.Join([]string{"series", rec.Namespace, ref.Kind, ref.Name, container, resource, win.String(), end.String()}, "|")
 	v := s.cache.get(key, 30*time.Second, func() (any, error) {
 		ctx := r.Context()
 		raw, err := s.Prom.Range(ctx, s.Prom.BusiestPod(ref, resource), start, end, prom.Step(win, s.MinStep), "container")
@@ -447,9 +452,9 @@ func (s *Server) impact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "resource must be cpu or memory")
 		return
 	}
-	start, end, win := s.window(r)
+	start, end, win := s.window(r, rec)
 	ref := prom.Ref{Namespace: rec.Namespace, Kind: rec.Spec.TargetRef.Kind, Name: rec.Spec.TargetRef.Name}
-	key := strings.Join([]string{"impact", rec.Namespace, ref.Kind, ref.Name, resource, r.URL.Query().Get("range"), end.String()}, "|")
+	key := strings.Join([]string{"impact", rec.Namespace, ref.Kind, ref.Name, resource, win.String(), end.String()}, "|")
 	v := s.cache.get(key, 30*time.Second, func() (any, error) {
 		ctx := r.Context()
 		raw, err := s.Prom.Range(ctx, s.Prom.Total(ref, resource), start, end, prom.Step(win, s.MinStep), "")
@@ -496,8 +501,8 @@ func (s *Server) clusterSeries(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "resource must be cpu or memory")
 		return
 	}
-	start, end, win := s.window(r)
-	key := strings.Join([]string{"cluster", resource, r.URL.Query().Get("range"), end.String()}, "|")
+	start, end, win := s.window(r, nil)
+	key := strings.Join([]string{"cluster", resource, win.String(), end.String()}, "|")
 	v := s.cache.get(key, 30*time.Second, func() (any, error) {
 		ctx := r.Context()
 		var recs v1alpha1.RecommendationList
@@ -520,7 +525,7 @@ func (s *Server) clusterSeries(w http.ResponseWriter, r *http.Request) {
 		for name, q := range map[string]string{
 			"allocatable": prom.ClusterAllocatable(resource),
 			"requested":   prom.ClusterRequested(resource),
-			"usage":       s.Prom.ClusterUsage(resource),
+			"usage":       s.Prom.ClusterUsage(resource, step),
 		} {
 			m, err := s.Prom.Range(ctx, q, start, end, step, "")
 			if err != nil {

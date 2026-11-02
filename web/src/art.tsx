@@ -161,7 +161,7 @@ export const HatLogo = ({ size = 26 }: { size?: number }) => (
   </svg>
 );
 
-/** Half-circle gauge for the fit score. */
+/** Half-circle gauge for the rightsizing score. */
 export function Gauge({ value, size = 180 }: { value?: number; size?: number }) {
   const v = value == null ? 0 : Math.max(0, Math.min(100, value));
   const r = 76;
@@ -173,7 +173,7 @@ export function Gauge({ value, size = 180 }: { value?: number; size?: number }) 
       width={size}
       height={size * 0.52}
       role="img"
-      aria-label={value == null ? "no fit score" : `fit score ${Math.round(v)}`}
+      aria-label={value == null ? "no rightsizing score" : `rightsizing score ${Math.round(v)}`}
     >
       <path d="M24 92 A76 76 0 0 1 176 92" stroke="var(--track)" strokeWidth="14" fill="none" strokeLinecap="round" />
       {v > 0 && (
@@ -193,7 +193,7 @@ export function Gauge({ value, size = 180 }: { value?: number; size?: number }) 
   );
 }
 
-/** A floating magic wand casting sparkles, for the fit score. */
+/** A floating magic wand casting sparkles, for the rightsizing score. */
 export function WandArt({ size = 128 }: { size?: number }) {
   const id = useId().replace(/:/g, "");
   const g = (n: string) => `${id}-${n}`;

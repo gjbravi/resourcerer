@@ -34,8 +34,8 @@ React 19, TypeScript, Vite, React Query (`web/src/hooks.ts`), Recharts 3 (`web/s
 
 ## UX rules learned so far
 
-- Lead with the decision, then the evidence: the Impact tab opens with the verdict, then before/after, then usage,
-  then the cost breakdown collapsed.
+- Lead with the decision, then the evidence: open reliability signals above the savings, the verdict right under the
+  apply button, and the Impact tab with before/after, then usage, then how the cost is calculated, always open.
 - Do not repeat a number that is already visible on the same screen; if two places need it, one of them links.
 - Put controls next to what they control (chart zoom in the chart's header).
 - Every estimate says what it is based on (window, rates, coverage) where the user can see it.

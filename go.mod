@@ -5,10 +5,12 @@ go 1.26.0
 require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
+	golang.org/x/sync v0.24.0
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
 	k8s.io/client-go v0.37.1
 	sigs.k8s.io/controller-runtime v0.25.2
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -240,7 +242,6 @@ require (
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
@@ -263,7 +264,6 @@ require (
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
 tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint
