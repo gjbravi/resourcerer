@@ -17,26 +17,30 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
-      actions: write
+      contents: read
     outputs:
       created: ${{ steps.rp.outputs.release_created }}
       tag: ${{ steps.rp.outputs.tag_name }}
       version: ${{ steps.rp.outputs.version }}
       sha: ${{ steps.rp.outputs.sha }}
     steps:
+      # release-please acts as a GitHub App: a pull request opened with GITHUB_TOKEN does not trigger workflows,
+      # so CI and the title check would not run on the release pull request. The token lasts an hour and only
+      # has what release-please needs.
+      - uses: actions/create-github-app-token@v3
+        id: app
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
       - uses: googleapis/release-please-action@v5
         id: rp
         with:
+          token: ${{ steps.app.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-      - name: Run CI on the release pull request
-        if: steps.rp.outputs.prs_created == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ steps.rp.outputs.pr }}
-        run: gh workflow run ci.yaml --repo "$GITHUB_REPOSITORY" --ref "$(jq -r .headBranchName <<< "$PR")"
 
   # Publishes only a tree that passed CI; CI is not run a third time.
   verify:
@@ -56,7 +60,7 @@ jobs:
           tree=$(git rev-parse 'HEAD^{tree}')
           n=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=ci-passed-$tree" -q '[.artifacts[] | select(.expired | not)] | length')
           if [ "$n" -eq 0 ]; then
-            echo "::error::No passing CI run for tree $tree; run CI on ${{ needs.release-please.outputs.sha }} and re-run this workflow."
+            echo "::error::No passing CI run for tree $tree; wait for CI on the push of ${{ needs.release-please.outputs.sha }} to main and re-run this workflow."
             exit 1
           fi
 
