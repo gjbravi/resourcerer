@@ -26,6 +26,20 @@ func TestSortRules(t *testing.T) {
 		},
 		want: []string{"ClusterApplyPolicy/platform", "ApplyPolicy/demo/a", "ApplyPolicy/demo/b"},
 	}, {
+		name: "priority wins over scope: a namespaced policy can be named before the cluster's",
+		rules: []policy.Rules{
+			{Name: "ClusterApplyPolicy/platform"},
+			{Name: "ApplyPolicy/demo/strict", Spec: v1alpha1.ApplyRules{Priority: 10}},
+		},
+		want: []string{"ApplyPolicy/demo/strict", "ClusterApplyPolicy/platform"},
+	}, {
+		name: "at equal priority, cluster policies come first",
+		rules: []policy.Rules{
+			{Name: "ApplyPolicy/demo/a"},
+			{Name: "ClusterApplyPolicy/z"},
+		},
+		want: []string{"ClusterApplyPolicy/z", "ApplyPolicy/demo/a"},
+	}, {
 		name: "equal priorities and names keep their order",
 		rules: []policy.Rules{
 			{Name: "ApplyPolicy/demo/a"},
@@ -118,8 +132,8 @@ func TestSameDecision(t *testing.T) {
 func TestFailClosed(t *testing.T) {
 	d := failClosed(errors.New("list apply policies in demo: unknown unit"))
 	for name, got := range map[string]policy.Decision{"auto": d.auto, "manual": d.manual} {
-		if got.Allowed {
-			t.Errorf("%s: allowed, want blocked", name)
+		if got.Allowed || got.BlockedBy != policy.FieldPolicy {
+			t.Errorf("%s: %+v, want blocked by the policy", name, got)
 		}
 		if !strings.Contains(got.Reason, "could not be read") || !strings.Contains(got.Reason, "unknown unit") {
 			t.Errorf("%s: reason %q does not say what could not be read", name, got.Reason)

@@ -26,6 +26,7 @@ import (
 
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
 	"github.com/gjbravi/resourcerer/internal/policy"
+	"github.com/gjbravi/resourcerer/internal/settings"
 	"github.com/gjbravi/resourcerer/internal/workload"
 )
 
@@ -87,10 +88,10 @@ func Setup(mgr ctrl.Manager) error {
 		Named("applier").
 		For(&v1alpha1.Recommendation{})
 	if policies {
-		// A policy change re-decides every workload: a freeze ending or a window opening must not wait
-		// for the next regeneration of the recommendation it governs.
-		b = b.Watches(&v1alpha1.ClusterApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.allRecommendations)).
-			Watches(&v1alpha1.ApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.allRecommendations))
+		// A policy change re-decides the workloads it may govern: a freeze ending or a window opening
+		// must not wait for the next regeneration of the recommendation.
+		b = b.Watches(&v1alpha1.ClusterApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.recommendationsIn(false))).
+			Watches(&v1alpha1.ApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.recommendationsIn(true)))
 	}
 	return b.Complete(r)
 }
@@ -110,17 +111,25 @@ func policyKindsInstalled(mgr ctrl.Manager) (bool, error) {
 	return true, nil
 }
 
-func (r *Reconciler) allRecommendations(ctx context.Context, _ client.Object) []reconcile.Request {
-	var recs v1alpha1.RecommendationList
-	if err := r.List(ctx, &recs); err != nil {
-		log.FromContext(ctx).Error(err, "list recommendations after a policy change")
-		return nil
+// recommendationsIn enqueues the Recommendations a changed policy may govern: those of its own
+// namespace for an ApplyPolicy, every one for a ClusterApplyPolicy.
+func (r *Reconciler) recommendationsIn(ownNamespace bool) handler.MapFunc {
+	return func(ctx context.Context, obj client.Object) []reconcile.Request {
+		var opts []client.ListOption
+		if ownNamespace {
+			opts = append(opts, client.InNamespace(obj.GetNamespace()))
+		}
+		var recs v1alpha1.RecommendationList
+		if err := r.List(ctx, &recs, opts...); err != nil {
+			log.FromContext(ctx).Error(err, "list recommendations after a policy change")
+			return nil
+		}
+		out := make([]reconcile.Request, 0, len(recs.Items))
+		for i := range recs.Items {
+			out = append(out, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: recs.Items[i].Namespace, Name: recs.Items[i].Name}})
+		}
+		return out
 	}
-	out := make([]reconcile.Request, 0, len(recs.Items))
-	for i := range recs.Items {
-		out = append(out, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: recs.Items[i].Namespace, Name: recs.Items[i].Name}})
-	}
-	return out
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -128,45 +137,76 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := r.Get(ctx, req.NamespacedName, rec); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	decided, err := r.decideFor(ctx, rec)
+	decided, err := r.decideFor(ctx, r.Client, rec)
+	if err == nil && r.aboutToApply(rec, decided) {
+		// The cache can lag behind a policy created a moment ago: an apply about to happen is decided
+		// again on what the API server holds, so a freeze created just before it still stops it.
+		decided, err = r.decideFor(ctx, r.APIReader, rec)
+	}
+	var retry time.Duration
 	if err != nil {
 		// A policy that cannot be read must not open the door, and one broken policy must not stop the
 		// applier for every other workload: record the refusal and try again soon, so a typo reads as a
 		// blocked apply with a reason instead of a controller that quietly stops working.
-		decided = failClosed(err)
-		if rerr := r.recordDecision(ctx, rec, decided); rerr != nil {
-			return ctrl.Result{}, rerr
-		}
-		return ctrl.Result{RequeueAfter: policyRetry}, nil
+		decided, retry = failClosed(err), policyRetry
 	}
 	// Recorded before acting, so the UI shows the same reason the applier used, including when a
 	// policy only audited and the apply goes ahead.
 	if err := r.recordDecision(ctx, rec, decided); err != nil {
 		return ctrl.Result{}, err
 	}
+	if retry == 0 {
+		retry = requeueFor(r.Now(), decided)
+	}
 	key := req.String()
-	if ar := rec.Spec.ApplyRequest; ar != nil && ar.ID != "" && ar.ID != rec.Status.LastHandledRequestID {
+	if ar := pendingRequest(rec); ar != nil {
 		id := "request:" + ar.ID
 		if r.seen(key, id) {
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: retry}, nil
 		}
 		r.remember(key, id)
-		return ctrl.Result{}, r.handle(ctx, rec, *ar, decided.manual)
+		return requeue(retry, r.handle(ctx, rec, *ar, decided.manual))
 	}
 	if r.autoDue(rec, decided.auto) {
 		id := "auto:" + rec.Status.Hash
 		if r.seen(key, id) {
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: retry}, nil
 		}
 		r.remember(key, id)
-		return ctrl.Result{}, r.apply(ctx, rec, AutoDeployUser, nil)
+		return requeue(retry, r.apply(ctx, rec, AutoDeployUser, nil))
 	}
-	return ctrl.Result{RequeueAfter: r.requeueFor(rec, decided.auto)}, nil
+	return ctrl.Result{RequeueAfter: retry}, nil
+}
+
+// requeue keeps the wait for a policy when the apply went through: controller-runtime ignores a
+// RequeueAfter returned with an error, and retries that error on its own.
+func requeue(after time.Duration, err error) (ctrl.Result, error) {
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{RequeueAfter: after}, nil
+}
+
+// pendingRequest is the apply or revert requested from the UI or the API that has not been handled yet.
+func pendingRequest(rec *v1alpha1.Recommendation) *v1alpha1.ApplyRequest {
+	if ar := rec.Spec.ApplyRequest; ar != nil && ar.ID != "" && ar.ID != rec.Status.LastHandledRequestID {
+		return ar
+	}
+	return nil
+}
+
+// aboutToApply reports whether this reconcile would apply, so the decision is read again uncached only
+// then: on every reconcile it would be two uncached lists for every Recommendation in the cluster.
+func (r *Reconciler) aboutToApply(rec *v1alpha1.Recommendation, d decide) bool {
+	if ar := pendingRequest(rec); ar != nil {
+		return ar.Action == v1alpha1.ActionApply && d.manual.Allowed
+	}
+	return r.autoDue(rec, d.auto)
 }
 
 func (r *Reconciler) autoDue(rec *v1alpha1.Recommendation, d policy.Decision) bool {
 	st := rec.Status
-	if !d.Allowed || !r.autoCandidate(rec) {
+	if !d.Allowed || st.Settings[settings.AutoDeploy].Value != "Enabled" || st.Phase != v1alpha1.PhaseReady || !st.Pending || st.Hash == "" {
 		return false
 	}
 	// Do not re-apply a recommendation that was already applied, or reverted by someone.
@@ -192,6 +232,8 @@ func (r *Reconciler) handle(ctx context.Context, rec *v1alpha1.Recommendation, a
 		}
 		return r.apply(ctx, rec, ar.RequestedBy, &ar)
 	case v1alpha1.ActionRevert:
+		// Never held by a policy: a revert is how a bad apply is undone, and a freeze or the cooldown
+		// right after that apply is exactly when it has to stay possible.
 		return r.revert(ctx, rec, ar)
 	}
 	return r.finish(ctx, rec, &ar, "Rejected", "unknown action "+string(ar.Action))
