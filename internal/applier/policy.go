@@ -23,6 +23,10 @@ import (
 // a single long timer.
 const maxRequeue = time.Hour
 
+// policyRetry is how soon to try again after the policies could not be read: short enough that fixing a
+// typo unblocks applies without waiting for the next regeneration of every recommendation.
+const policyRetry = time.Minute
+
 // decideAt is when an apply may start, for both kinds of apply. The rules are read once and evaluated
 // twice: a policy may govern one and not the other.
 type decide struct {
@@ -52,6 +56,16 @@ func (r *Reconciler) decideFor(ctx context.Context, rec *v1alpha1.Recommendation
 	return decide{auto: auto, manual: manual}, nil
 }
 
+// failClosed is what a policy read failure means: no apply of either kind until the policies can be read
+// again, and a reason that names the policy that could not be read.
+func failClosed(err error) decide {
+	reason := "the apply policies could not be read: " + err.Error()
+	return decide{
+		auto:   policy.Decision{Reason: reason},
+		manual: policy.Decision{Reason: reason},
+	}
+}
+
 func withAction(in policy.Input, a v1alpha1.AppliesTo) policy.Input {
 	in.Action = a
 	return in
@@ -60,6 +74,9 @@ func withAction(in policy.Input, a v1alpha1.AppliesTo) policy.Input {
 // rulesFor lists the policies that govern the workload: cluster policies first, then namespaced ones,
 // each ordered by priority and name so the same input always reports the same policy.
 func (r *Reconciler) rulesFor(ctx context.Context, rec *v1alpha1.Recommendation) ([]policy.Rules, error) {
+	if !r.policies {
+		return nil, nil
+	}
 	// Read from the API server, not the cache: right after a policy is created its effect must already
 	// be there, and a cache that has not caught up would let an apply through a freeze that exists.
 	var clusters v1alpha1.ClusterApplyPolicyList

@@ -74,8 +74,11 @@ spec:
                   cooldown:
                     description: |-
                       Cooldown is the minimum time between two changes to the same workload, counted from the last
-                      apply or revert of any hash.
+                      apply or revert of any hash, as a Go duration such as `24h`.
                     type: string
+                    x-kubernetes-validations:
+                    - message: cooldown must be a duration such as 24h
+                      rule: self.matches(r'^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$')
                 type: object
               mode:
                 default: Enforce

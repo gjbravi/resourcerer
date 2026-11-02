@@ -14,6 +14,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
@@ -41,6 +42,11 @@ type Reconciler struct {
 	Recorder  events.EventRecorder
 	Now       func() time.Time
 
+	// policies is false when the policy kinds are not installed, which is what an installation looks
+	// like when it was upgraded without applying the chart's CRDs: applies are then not gated, instead
+	// of the controller refusing to start and the applier silently doing nothing.
+	policies bool
+
 	// done remembers handled requests and auto-applied hashes per Recommendation: right after a
 	// status patch the cache can still serve the old object, which would apply the same thing twice.
 	mu   sync.Mutex
@@ -64,14 +70,44 @@ func (r *Reconciler) remember(key, id string) {
 
 func Setup(mgr ctrl.Manager) error {
 	r := &Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("resourcerer-applier"), Now: time.Now}
-	return ctrl.NewControllerManagedBy(mgr).
+	policies, err := policyKindsInstalled(mgr)
+	if err != nil {
+		return err
+	}
+	r.policies = policies
+	if !policies {
+		// Nothing to gate on and nothing to watch: applies behave as they did before apply policies
+		// existed. Helm does not upgrade the CRDs in crds/ on an upgrade, so this is what an
+		// installation that skipped them looks like.
+		mgr.GetLogger().Info("apply policy kinds are not installed: applies are not gated by a policy",
+			"hint", "kubectl apply -f charts/resourcerer/crds, then restart the applier")
+	}
+
+	b := ctrl.NewControllerManagedBy(mgr).
 		Named("applier").
-		For(&v1alpha1.Recommendation{}).
+		For(&v1alpha1.Recommendation{})
+	if policies {
 		// A policy change re-decides every workload: a freeze ending or a window opening must not wait
 		// for the next regeneration of the recommendation it governs.
-		Watches(&v1alpha1.ClusterApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.allRecommendations)).
-		Watches(&v1alpha1.ApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.allRecommendations)).
-		Complete(r)
+		b = b.Watches(&v1alpha1.ClusterApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.allRecommendations)).
+			Watches(&v1alpha1.ApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.allRecommendations))
+	}
+	return b.Complete(r)
+}
+
+// policyKindsInstalled reports whether the API server serves the apply policy kinds.
+func policyKindsInstalled(mgr ctrl.Manager) (bool, error) {
+	mapper := mgr.GetRESTMapper()
+	for _, kind := range []string{"ClusterApplyPolicy", "ApplyPolicy"} {
+		gvk := v1alpha1.GroupVersion.WithKind(kind)
+		if _, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version); err != nil {
+			if meta.IsNoMatchError(err) {
+				return false, nil
+			}
+			return false, fmt.Errorf("look up %s: %w", kind, err)
+		}
+	}
+	return true, nil
 }
 
 func (r *Reconciler) allRecommendations(ctx context.Context, _ client.Object) []reconcile.Request {
@@ -94,7 +130,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	decided, err := r.decideFor(ctx, rec)
 	if err != nil {
-		return ctrl.Result{}, err
+		// A policy that cannot be read must not open the door, and one broken policy must not stop the
+		// applier for every other workload: record the refusal and try again soon, so a typo reads as a
+		// blocked apply with a reason instead of a controller that quietly stops working.
+		decided = failClosed(err)
+		if rerr := r.recordDecision(ctx, rec, decided); rerr != nil {
+			return ctrl.Result{}, rerr
+		}
+		return ctrl.Result{RequeueAfter: policyRetry}, nil
 	}
 	// Recorded before acting, so the UI shows the same reason the applier used, including when a
 	// policy only audited and the apply goes ahead.

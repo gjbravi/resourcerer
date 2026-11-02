@@ -71,8 +71,9 @@ type ApplyFreeze struct {
 // ApplyLimits bounds how often applies happen.
 type ApplyLimits struct {
 	// Cooldown is the minimum time between two changes to the same workload, counted from the last
-	// apply or revert of any hash.
+	// apply or revert of any hash, as a Go duration such as `24h`.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.matches(r'^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$')",message="cooldown must be a duration such as 24h"
 	Cooldown *metav1.Duration `json:"cooldown,omitempty"`
 }
 
