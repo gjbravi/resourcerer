@@ -78,7 +78,8 @@ type ApplyLimits struct {
 
 // ApplyRules is what a policy decides, shared by ApplyPolicy and ClusterApplyPolicy.
 type ApplyRules struct {
-	// WorkloadSelector narrows the workloads the policy governs. Empty: every workload in scope.
+	// WorkloadSelector narrows the workloads the policy governs, matched against the workload's labels
+	// and its pod template's. Empty: every workload in scope.
 	// +optional
 	WorkloadSelector *metav1.LabelSelector `json:"workloadSelector,omitempty"`
 	// Priority breaks ties between policies that block for the same reason: the highest is reported.

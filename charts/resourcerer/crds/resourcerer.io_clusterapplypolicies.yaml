@@ -210,8 +210,9 @@ spec:
                     type: array
                 type: object
               workloadSelector:
-                description: 'WorkloadSelector narrows the workloads the policy governs.
-                  Empty: every workload in scope.'
+                description: |-
+                  WorkloadSelector narrows the workloads the policy governs, matched against the workload's labels
+                  and its pod template's. Empty: every workload in scope.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.

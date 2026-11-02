@@ -9,7 +9,7 @@ Two kinds, with the same rules:
 | Kind | Scope | Selects |
 |---|---|---|
 | `ClusterApplyPolicy` | cluster | namespaces (`namespaceSelector`) and workloads (`workloadSelector`) |
-| `ApplyPolicy` | one namespace | workloads (`workloadSelector`) |
+| `ApplyPolicy` | one namespace | workloads (`workloadSelector`, matched against the workload's labels and its pod template's) |
 
 ```yaml
 apiVersion: resourcerer.io/v1alpha1

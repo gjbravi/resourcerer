@@ -60,8 +60,10 @@ func withAction(in policy.Input, a v1alpha1.AppliesTo) policy.Input {
 // rulesFor lists the policies that govern the workload: cluster policies first, then namespaced ones,
 // each ordered by priority and name so the same input always reports the same policy.
 func (r *Reconciler) rulesFor(ctx context.Context, rec *v1alpha1.Recommendation) ([]policy.Rules, error) {
+	// Read from the API server, not the cache: right after a policy is created its effect must already
+	// be there, and a cache that has not caught up would let an apply through a freeze that exists.
 	var clusters v1alpha1.ClusterApplyPolicyList
-	if err := r.List(ctx, &clusters); err != nil {
+	if err := r.APIReader.List(ctx, &clusters); err != nil {
 		return nil, fmt.Errorf("list cluster apply policies: %w", err)
 	}
 	nsLabels := r.namespaceLabels(ctx, rec.Namespace)
@@ -75,7 +77,7 @@ func (r *Reconciler) rulesFor(ctx context.Context, rec *v1alpha1.Recommendation)
 	sortRules(rules)
 
 	var namespaced v1alpha1.ApplyPolicyList
-	if err := r.List(ctx, &namespaced, client.InNamespace(rec.Namespace)); err != nil {
+	if err := r.APIReader.List(ctx, &namespaced, client.InNamespace(rec.Namespace)); err != nil {
 		return nil, fmt.Errorf("list apply policies in %s: %w", rec.Namespace, err)
 	}
 	own := make([]policy.Rules, 0, len(namespaced.Items))
@@ -103,13 +105,24 @@ func (r *Reconciler) namespaceLabels(ctx context.Context, name string) map[strin
 	return ns.Labels
 }
 
+// workloadLabels are what a workloadSelector matches: the workload's own labels and its pod template's,
+// since a manifest often carries the labels selectors are written against only in the template.
 func (r *Reconciler) workloadLabels(ctx context.Context, rec *v1alpha1.Recommendation) map[string]string {
 	t := rec.Spec.TargetRef
 	w, err := workload.Get(ctx, r.Client, t.Kind, types.NamespacedName{Namespace: rec.Namespace, Name: t.Name})
 	if err != nil {
 		return nil
 	}
-	return w.Object.GetLabels()
+	out := map[string]string{}
+	if w.Template != nil {
+		for k, v := range w.Template.Labels {
+			out[k] = v
+		}
+	}
+	for k, v := range w.Object.GetLabels() {
+		out[k] = v
+	}
+	return out
 }
 
 // lastChange is when resourcerer last changed the workload, for the cooldown; history is newest first
