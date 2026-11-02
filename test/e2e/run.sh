@@ -144,7 +144,7 @@ metadata:
   name: e2e-freeze
   namespace: demo
 spec:
-  appliesTo: [Auto]
+  appliesTo: [Auto, Manual]
   mode: Enforce
   workloadSelector: { matchLabels: { app: worker } }
   when:
@@ -162,6 +162,12 @@ wait_for "a freeze blocks the automatic apply and says why" 300 bash -c \
   && pass "a blocked apply records when it may start" || fail "a blocked apply records when it may start"
 [[ -z "$(rec_field demo deployment-worker '{.status.history}')" ]] \
   && pass "a frozen workload is not applied" || fail "a frozen workload is not applied"
+hash=$(rec_field demo deployment-worker '{.status.hash}')
+curl -fs -X POST "$API/workloads/demo/Deployment/worker/apply" -d "{\"hash\":\"$hash\"}" >/dev/null
+wait_for "a policy blocks the Apply button too" 60 bash -c \
+  "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.lastApplyResult.result}') == Rejected ]]"
+k -n demo get rec deployment-worker -o jsonpath='{.status.lastApplyResult.message}' | grep -q "apply policy" \
+  && pass "the refusal says which policy blocks it" || fail "the refusal says which policy blocks it"
 k -n demo delete applypolicy e2e-freeze >/dev/null
 wait_for "lifting the freeze lets auto-deploy apply" 300 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.history[0].by}') == auto-deploy ]]"
