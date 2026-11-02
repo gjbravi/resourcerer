@@ -607,11 +607,16 @@ func (s *Server) patchSpec(w http.ResponseWriter, r *http.Request, mutate func(*
 	writeJSON(w, map[string]string{"status": "accepted"})
 }
 
-// heldByPolicy refuses a change the applier would refuse anyway: the status already says whether a policy holds the
-// button, so the answer reaches the click instead of arriving a moment later as a rejected apply.
-func heldByPolicy(rec *v1alpha1.Recommendation) error {
+// heldByPolicy refuses an apply the applier would refuse anyway: the status already says whether a policy holds the
+// button, so the answer reaches the click instead of arriving a moment later as a rejected apply. A block whose
+// nextAllowed has passed is left to the applier, which decides on the live policies: the status may not have caught
+// up with a window that just opened. Reverts are never held, so they never come here.
+func heldByPolicy(rec *v1alpha1.Recommendation, now time.Time) error {
 	d := rec.Status.ApplyPolicy
 	if d == nil || d.Manual.State != v1alpha1.PolicyStateBlocked {
+		return nil
+	}
+	if n := d.Manual.NextAllowed; n != nil && !now.Before(n.Time) {
 		return nil
 	}
 	by := d.Manual.Policy
@@ -630,7 +635,7 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.patchSpec(w, r, func(rec *v1alpha1.Recommendation) error {
-		if err := heldByPolicy(rec); err != nil {
+		if err := heldByPolicy(rec, time.Now()); err != nil {
 			return err
 		}
 		if rec.Status.Hash != body.Hash {
@@ -643,9 +648,6 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) revert(w http.ResponseWriter, r *http.Request) {
 	s.patchSpec(w, r, func(rec *v1alpha1.Recommendation) error {
-		if err := heldByPolicy(rec); err != nil {
-			return err
-		}
 		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionRevert, RequestedBy: User, RequestedAt: metav1.NewTime(time.Now())}
 		return nil
 	})
