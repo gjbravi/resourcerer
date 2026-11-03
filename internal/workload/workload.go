@@ -70,17 +70,11 @@ func APIVersion(kind string) string {
 }
 
 func FromObject(obj client.Object) (*Workload, error) {
-	desired := func(p *int32) int32 {
-		if p == nil {
-			return 1
-		}
-		return *p
-	}
 	switch o := obj.(type) {
 	case *appsv1.Deployment:
-		return &Workload{Object: o, Kind: "Deployment", APIVersion: "apps/v1", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: desired(o.Spec.Replicas)}, nil
+		return &Workload{Object: o, Kind: "Deployment", APIVersion: "apps/v1", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: desiredReplicas(o.Spec.Replicas)}, nil
 	case *appsv1.StatefulSet:
-		return &Workload{Object: o, Kind: "StatefulSet", APIVersion: "apps/v1", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: desired(o.Spec.Replicas)}, nil
+		return &Workload{Object: o, Kind: "StatefulSet", APIVersion: "apps/v1", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: desiredReplicas(o.Spec.Replicas)}, nil
 	case *appsv1.DaemonSet:
 		return &Workload{Object: o, Kind: "DaemonSet", APIVersion: "apps/v1", Template: &o.Spec.Template, Selector: o.Spec.Selector, Replicas: o.Status.DesiredNumberScheduled}, nil
 	case *unstructured.Unstructured:
@@ -200,4 +194,58 @@ func ReferencedDeployments(ctx context.Context, c client.Reader, namespace strin
 		}
 	}
 	return out
+}
+
+// Labels returns the workload's labels and its pod template's: manifests often label only the pod, and an
+// apply policy has to match either. The template wins on a shared key.
+func (w *Workload) Labels() map[string]string {
+	if w.Template == nil || len(w.Template.Labels) == 0 {
+		return w.Object.GetLabels()
+	}
+	out := make(map[string]string, len(w.Object.GetLabels())+len(w.Template.Labels))
+	for k, v := range w.Object.GetLabels() {
+		out[k] = v
+	}
+	for k, v := range w.Template.Labels {
+		out[k] = v
+	}
+	return out
+}
+
+// InProgress reports whether the workload is still replacing its pods, whoever started it: a template
+// change never goes through the eviction API, so nothing else would tell us a rollout is under way.
+func (w *Workload) InProgress() bool {
+	switch o := w.Object.(type) {
+	case *appsv1.Deployment:
+		desired := desiredReplicas(o.Spec.Replicas)
+		return o.Status.ObservedGeneration < o.Generation || o.Status.UpdatedReplicas < desired ||
+			o.Status.Replicas > o.Status.UpdatedReplicas || o.Status.AvailableReplicas < o.Status.UpdatedReplicas
+	case *appsv1.StatefulSet:
+		desired := desiredReplicas(o.Spec.Replicas)
+		return o.Status.ObservedGeneration < o.Generation || o.Status.UpdatedReplicas < desired ||
+			(o.Status.UpdateRevision != "" && o.Status.UpdateRevision != o.Status.CurrentRevision) ||
+			o.Status.ReadyReplicas < desired
+	case *appsv1.DaemonSet:
+		return o.Status.ObservedGeneration < o.Generation || o.Status.UpdatedNumberScheduled < o.Status.DesiredNumberScheduled ||
+			o.Status.NumberAvailable < o.Status.DesiredNumberScheduled
+	case *unstructured.Unstructured:
+		if o.GetKind() != Rollout {
+			return false
+		}
+		intField := func(fields ...string) int64 {
+			v, _, _ := unstructured.NestedInt64(o.Object, append([]string{"status"}, fields...)...)
+			return v
+		}
+		phase, _, _ := unstructured.NestedString(o.Object, "status", "phase")
+		return intField("observedGeneration") < o.GetGeneration() || phase == "Progressing" ||
+			intField("readyReplicas") < int64(w.Replicas) || intField("updatedReplicas") < int64(w.Replicas)
+	}
+	return false
+}
+
+func desiredReplicas(p *int32) int32 {
+	if p == nil {
+		return 1
+	}
+	return *p
 }

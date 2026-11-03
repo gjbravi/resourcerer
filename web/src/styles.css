@@ -2686,6 +2686,10 @@ body:has(.rz.dark) {
   border: 1px solid var(--border);
   border-radius: 14px;
 }
+.rz-autocard.hold {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 10%, var(--panel)), var(--panel) 70%);
+}
 .rz-autocard.on,
 .rz-autocard.done,
 .rz-autocard.wait {
@@ -2705,6 +2709,9 @@ body:has(.rz.dark) {
 .rz-autocard:not(.off) .ic {
   background: var(--accent);
   color: #fff;
+}
+.rz-autocard.hold .ic {
+  background: var(--warn);
 }
 .rz-autocard.on .ic {
   animation: rzglow 2.4s ease-in-out infinite;

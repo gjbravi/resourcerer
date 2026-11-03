@@ -114,6 +114,96 @@ spec:
             type: object
           status:
             properties:
+              applyPolicy:
+                description: ApplyPolicy is when an apply may start, from the apply
+                  policies that select the workload.
+                properties:
+                  auto:
+                    description: ApplyDecision is what the policies that govern a
+                      workload decided for one kind of apply.
+                    properties:
+                      blockedBy:
+                        description: |-
+                          BlockedBy is the rule that blocks, as the spec field path: windows, freezes, rate.cooldown,
+                          rate.maxConcurrent, rate.maxPerHour, rate.perNamespace, rate.spread, rollout (the workload's own
+                          rollout is still running) or policy (a policy could not be read).
+                        type: string
+                      nextAllowed:
+                        description: |-
+                          NextAllowed is when an apply may start. Absent while waiting for a slot, which depends on other
+                          rollouts finishing.
+                        format: date-time
+                        type: string
+                      policy:
+                        description: |-
+                          Policy is the policy that blocks, Kind/name (or Kind/namespace/name), cluster policies first and
+                          then by name, so the same rules always name the same policy. Empty when allowed.
+                        type: string
+                      reason:
+                        description: Reason says the same for people.
+                        type: string
+                      state:
+                        description: ApplyDecisionState is whether an apply may start
+                          now.
+                        enum:
+                        - Allowed
+                        - Blocked
+                        type: string
+                      wouldBlock:
+                        description: 'WouldBlock lists what Audit-mode policies would
+                          have blocked, as "<policy>: <reason>".'
+                        items:
+                          type: string
+                        type: array
+                    required:
+                    - state
+                    type: object
+                  evaluatedAt:
+                    description: EvaluatedAt is when this decision last changed, not
+                      when it was last computed.
+                    format: date-time
+                    type: string
+                  manual:
+                    description: ApplyDecision is what the policies that govern a
+                      workload decided for one kind of apply.
+                    properties:
+                      blockedBy:
+                        description: |-
+                          BlockedBy is the rule that blocks, as the spec field path: windows, freezes, rate.cooldown,
+                          rate.maxConcurrent, rate.maxPerHour, rate.perNamespace, rate.spread, rollout (the workload's own
+                          rollout is still running) or policy (a policy could not be read).
+                        type: string
+                      nextAllowed:
+                        description: |-
+                          NextAllowed is when an apply may start. Absent while waiting for a slot, which depends on other
+                          rollouts finishing.
+                        format: date-time
+                        type: string
+                      policy:
+                        description: |-
+                          Policy is the policy that blocks, Kind/name (or Kind/namespace/name), cluster policies first and
+                          then by name, so the same rules always name the same policy. Empty when allowed.
+                        type: string
+                      reason:
+                        description: Reason says the same for people.
+                        type: string
+                      state:
+                        description: ApplyDecisionState is whether an apply may start
+                          now.
+                        enum:
+                        - Allowed
+                        - Blocked
+                        type: string
+                      wouldBlock:
+                        description: 'WouldBlock lists what Audit-mode policies would
+                          have blocked, as "<policy>: <reason>".'
+                        items:
+                          type: string
+                        type: array
+                    required:
+                    - state
+                    type: object
+                type: object
               containers:
                 items:
                   properties:
@@ -729,6 +819,12 @@ spec:
                   - source
                   - value
                   type: object
+                type: object
+              targetLabels:
+                additionalProperties:
+                  type: string
+                description: TargetLabels are the workload's labels and its pod template's,
+                  which apply policy selectors match.
                 type: object
               templateRef:
                 description: |-

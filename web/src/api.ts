@@ -217,6 +217,27 @@ export interface Change {
   toLimits: Resources;
 }
 
+/** What an apply policy decided for one kind of apply. Mirrors v1alpha1.ApplyDecision. */
+export interface ApplyDecision {
+  state: "Allowed" | "Blocked";
+  /** The policy that blocks, Kind/name or Kind/namespace/name. */
+  policy?: string;
+  /** The rule that blocks, as the spec field path. */
+  blockedBy?: string;
+  reason?: string;
+  /** When an apply may start; absent while waiting for a slot. */
+  nextAllowed?: string;
+  /** What Audit-mode policies would have blocked. */
+  wouldBlock?: string[];
+}
+
+/** The decisions for automatic and manual applies, and when they last changed. */
+export interface ApplyPolicyStatus {
+  auto: ApplyDecision;
+  manual: ApplyDecision;
+  evaluatedAt?: string;
+}
+
 export interface Detail extends Summary {
   /** Pods per capacity type of their Karpenter node. */
   capacity?: Record<string, number>;
@@ -231,6 +252,7 @@ export interface Detail extends Summary {
   events: { type: string; reason: string; message: string; time: string }[];
   lastApplyResult?: { time: string; result: "Succeeded" | "Failed" | "Rejected"; message?: string };
   applyMethod: string;
+  applyPolicy?: ApplyPolicyStatus;
   templateKind?: string;
   templateName?: string;
 }

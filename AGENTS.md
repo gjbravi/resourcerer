@@ -25,13 +25,14 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 | `internal/server` | HTTP API (`/api/v1/...`) and the embedded UI; live, cached queries for the workload page |
 | `internal/prom` | PromQL builders and the Prometheus client |
 | `internal/cluster` | Cluster config: defaults ConfigMap, cost pricing (`Pricer`), node allocation and placement |
+| `internal/policy` | When an apply may start, from the apply policies that select the workload: **pure**, table-driven tests |
 | `internal/settings` | Settings, their defaults, validation and resolution (values → namespace → workload annotations) |
 | `internal/signals` | Reliability signals: built-in toggles and PromQL templates declared in the values |
 | `web/` | React 19 + TypeScript + Vite UI, React Query, Recharts 3; `web/src/api.ts` mirrors `internal/server/types.go` |
 | `charts/resourcerer` | Helm chart; `values.schema.json` rejects unknown keys |
 | `hack/` | kind environment: cluster, Prometheus, demo workloads, a fake Karpenter exporter |
 | `test/e2e/run.sh` | End-to-end checks against kind |
-| `docs/` | `architecture.md` (components, data flow, diagrams) and user docs such as `reliability-signals.md` |
+| `docs/` | `architecture.md` (components, data flow, diagrams) and user docs such as `reliability-signals.md` and `apply-policy.md` |
 
 ## Commands
 
@@ -119,6 +120,10 @@ cluster") and fictional examples (`payments/checkout`, `demo/api`). Grep the dif
 - **The workload page shows a verdict under the apply button** ("Safe to apply", "Review before applying", "Apply to
   fix reliability", …) built from history coverage, a replay of usage against the recommendation (`status.evidence`) and reliability
   signals. Signals the recommendation itself fixes (OOM kills, CPU throttling from 25%) count for applying.
+- **Apply policies** (`ClusterApplyPolicy`, `ApplyPolicy`) decide **when** an apply may start: windows, freezes and
+  a rate. Every policy that selects the workload must allow it, so a namespace can be stricter but never looser.
+  The applier records the decision in `status.applyPolicy`, with the rule that blocked and when it stops; the server
+  answers a held click with 409, a revert is never held, and a policy that cannot be read holds.
 - **Reliability signals** are built-in or declared as PromQL templates (`docs/reliability-signals.md`). A signal with
   no data does not apply to a workload.
 - **Live data** for the workload page (reliability windows, placement) is computed by the server on request and
@@ -127,8 +132,9 @@ cluster") and fictional examples (`payments/checkout`, `demo/api`). Grep the dif
 ## Roadmap
 
 Design issues describe the next steps; read the relevant one before working in that area:
-reliability signals as custom resources (#28), `ApplyPolicy` (#29), `OptimizationPolicy` (#30), `CostProfile` (#27),
-decision models with Jev/decider (#26), shimmer skeletons (#31).
+reliability signals as custom resources (#28), `ApplyPolicy` (#29: windows, freezes and rate limits are in; the
+disruption budget, `freezeWhen`, verification with revert and change limits as settings are next), `OptimizationPolicy`
+(#30), `CostProfile` (#27), decision models with Jev/decider (#26), shimmer skeletons (#31).
 
 ## Glossary
 
@@ -151,6 +157,10 @@ Words the code and the UI use with a specific meaning:
 | **Coverage** | The share of a workload's requests that ran on nodes with a known price. |
 | **Placement** | Where a workload's requests ran over the learning period: capacity types and instance types, with what each cost. |
 | **Auto-deploy** | The applier applying `Ready`, pending recommendations without a click, once per hash. |
+| **Apply policy** | A `ClusterApplyPolicy` or `ApplyPolicy` deciding when an apply may start: windows, freezes and a rate. Every policy that selects a workload must allow the apply. |
+| **Window / Freeze** | A recurring period in a time zone an apply may start in / a one-off period nothing is applied in, both kinds of apply included. |
+| **Hold** | The applier's name for an apply a policy refuses now: it is deferred, not cancelled, and the decision carries the rule and the instant it ends. |
+| **In progress** | An apply of ours whose rollout has not finished. A rate limit counts those, and a workload is never applied on top of a rollout, ours or not. |
 
 ## Skills
 

@@ -34,6 +34,23 @@ describe("autoDeploy", () => {
   it("does nothing within the threshold", () => {
     expect(autoDeploy({ ...base, pending: false }).text).toBe("Nothing to apply: requests are within 15%.");
   });
+  it("says a policy holds it, and leaves the rest to that policy", () => {
+    const held = autoDeploy({
+      ...base,
+      applyPolicy: {
+        auto: {
+          state: "Blocked",
+          policy: "ClusterApplyPolicy/production",
+          blockedBy: "windows",
+          reason: "outside the apply windows (Mon,Tue 10:00-16:00 UTC)",
+          nextAllowed: new Date(Date.now() + 3600_000).toISOString(),
+        },
+        manual: { state: "Allowed" },
+      },
+    } as unknown as Detail);
+    expect(held).toMatchObject({ on: true, tone: "hold", heldBy: "ClusterApplyPolicy/production" });
+    expect(held.text).toContain("outside the apply windows");
+  });
   it("applies a hash once and never one that was reverted", () => {
     const applied = { time: "", action: "Apply" as const, by: "auto-deploy", hash: "abc", containers: null };
     expect(autoDeploy({ ...base, history: [applied] })).toMatchObject({

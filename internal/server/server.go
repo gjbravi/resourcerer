@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"slices"
@@ -346,6 +347,7 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 	if a := st.LastApplyResult; a != nil {
 		d.LastApplyResult = &ApplyResult{Time: a.Time.UTC().Format(time.RFC3339), Result: a.Result, Message: a.Message}
 	}
+	d.ApplyPolicy = st.ApplyPolicy
 	d.Events = s.events(r.Context(), rec)
 	d.Capacity = s.capacity(r.Context(), rec)
 	d.Pricing = rec.Status.Pricing
@@ -617,9 +619,23 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 		if rec.Status.Hash != body.Hash {
 			return errors.New("the recommendation changed since it was displayed; reload and review it again")
 		}
+		// The click gets its answer at once; the applier decides again on the live policies, since one
+		// may have changed since this decision was recorded.
+		if d := rec.Status.ApplyPolicy; d != nil && heldByPolicy(d.Manual) {
+			return fmt.Errorf("held by %s: %s", d.Manual.Policy, d.Manual.Reason)
+		}
 		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionApply, Hash: body.Hash, RequestedBy: User, RequestedAt: metav1.NewTime(time.Now())}
 		return nil
 	})
+}
+
+// heldByPolicy reports whether an apply policy still holds an apply: a decision that names a next allowed
+// instant has expired once that instant has passed.
+func heldByPolicy(d v1alpha1.ApplyDecision) bool {
+	if d.State != v1alpha1.ApplyBlocked {
+		return false
+	}
+	return d.NextAllowed == nil || d.NextAllowed.After(time.Now())
 }
 
 func (s *Server) revert(w http.ResponseWriter, r *http.Request) {

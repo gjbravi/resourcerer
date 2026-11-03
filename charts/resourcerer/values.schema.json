@@ -76,6 +76,26 @@
         }
       }
     },
+    "applyPolicies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cluster": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "spec"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" },
+              "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+              "spec": { "type": "object", "description": "A ClusterApplyPolicy spec; the CRD validates its fields." }
+            }
+          }
+        }
+      }
+    },
     "auth": { "type": "object", "properties": { "strategy": { "type": "string", "enum": ["anonymous"] } } },
     "readOnly": { "type": "boolean" },
     "controller": { "$ref": "#/definitions/component" },

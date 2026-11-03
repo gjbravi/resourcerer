@@ -16,7 +16,10 @@ var (
 )
 
 func addKnownTypes(s *runtime.Scheme) error {
-	s.AddKnownTypes(GroupVersion, &Recommendation{}, &RecommendationList{})
+	s.AddKnownTypes(GroupVersion,
+		&Recommendation{}, &RecommendationList{},
+		&ApplyPolicy{}, &ApplyPolicyList{},
+		&ClusterApplyPolicy{}, &ClusterApplyPolicyList{})
 	metav1.AddToGroupVersion(s, GroupVersion)
 	return nil
 }

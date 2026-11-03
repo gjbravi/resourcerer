@@ -299,6 +299,11 @@ sequenceDiagram
 
 - **Auto-deploy**: with `auto-deploy: Enabled`, the applier applies a `Ready`, pending recommendation as
   `auto-deploy`, once per hash; a hash already in the history (applied, or reverted by someone) is never re-applied.
+- **Apply policies** (`internal/policy`) decide *when* an apply may start: windows in a time zone, freezes, and how
+  many applies run at once. The applier reads the `ApplyPolicy` and `ClusterApplyPolicy` objects uncached before
+  each decision, records it in `status.applyPolicy` for each kind of apply, and looks again at the first instant a
+  rule changes. Every policy that selects a workload must allow it; a `409` from the server answers a held click at
+  once, and a revert is never held. See [apply-policy.md](apply-policy.md).
 - **Revert** applies the `from` values of the last apply, through the same path.
 - **Server-side apply** with the `resourcerer` field manager owns only the resources fields it sets, so GitOps tools
   can ignore them by manager instead of fighting over them.
