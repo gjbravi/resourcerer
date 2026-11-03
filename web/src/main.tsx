@@ -21,7 +21,7 @@ import { Overview } from "./pages/Overview";
 import { SettingsPage } from "./pages/SettingsPage";
 import { Workloads } from "./pages/Workloads";
 import { configureSignals } from "./reliability";
-import { bootState, clearSignRecord, readSignRecord, writeLock } from "./session";
+import { bootState, clearSignRecord, readSignRecord, shellLabels, writeLock } from "./session";
 import "./styles.css";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, retry: 1 } } });
@@ -42,7 +42,8 @@ function App() {
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   const page = parts[0] === "w" ? "workloads" : (parts[0] ?? "overview");
   const rows = workloads.data ?? [];
-  const cluster = info.data?.cluster ?? "";
+  const shell = shellLabels(info.data);
+  const cluster = shell.cluster ?? "";
   const readOnly = info.data?.readOnly ?? false;
   const lock = writeLock(session.data, readOnly);
   const nav = [
@@ -89,13 +90,15 @@ function App() {
             Beta
           </span>
         </a>
-        <div className="rz-cluster">
-          <Server size={14} />
-          <div>
-            <div className="rz-dim rz-xs">Cluster</div>
-            <b>{cluster || "…"}</b>
+        {shell.cluster && (
+          <div className="rz-cluster">
+            <Server size={14} />
+            <div>
+              <div className="rz-dim rz-xs">Cluster</div>
+              <b>{shell.cluster}</b>
+            </div>
           </div>
-        </div>
+        )}
         <nav>
           {nav.map(([href, id, label, Icon]) => (
             <a key={id} href={href} className={page === id ? "on" : ""} aria-current={page === id ? "page" : undefined}>
@@ -103,21 +106,27 @@ function App() {
             </a>
           ))}
         </nav>
-        <div className="rz-sidefoot">
-          <div className="rz-dim rz-xs">{info.data?.version}</div>
-          <div className="rz-dim rz-xs">Prometheus · {info.data?.prometheus.url.replace(/^https?:\/\//, "")}</div>
-          {me?.configStale && (
-            <div className="rz-xs t-warn" title={me.configError || "The sign-in configuration could not be reread."}>
-              Sign-in configuration is out of date
-            </div>
-          )}
-        </div>
+        {(shell.version || shell.prometheus || me?.configStale) && (
+          <div className="rz-sidefoot">
+            {shell.version && <div className="rz-dim rz-xs">{shell.version}</div>}
+            {shell.prometheus && <div className="rz-dim rz-xs">Prometheus · {shell.prometheus}</div>}
+            {me?.configStale && (
+              <div className="rz-xs t-warn" title={me.configError || "The sign-in configuration could not be reread."}>
+                Sign-in configuration is out of date
+              </div>
+            )}
+          </div>
+        )}
       </aside>
       <div className="rz-main">
         <div className="rz-surface">
           <header className="rz-top">
             <div className="rz-crumbs rz-dim">
-              {cluster} <span>/</span>
+              {shell.cluster && (
+                <>
+                  {shell.cluster} <span>/</span>
+                </>
+              )}
               {parts[0] === "w" ? (
                 <>
                   <a href="#/workloads">Workloads</a> <span>/</span>{" "}

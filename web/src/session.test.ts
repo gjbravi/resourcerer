@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Session } from "./api";
+import type { Info, Session } from "./api";
 import {
   afterMe,
   bootState,
@@ -9,6 +9,7 @@ import {
   pagePath,
   readSignRecord,
   sendToSignIn,
+  shellLabels,
   signInURL,
   signedOut,
   signMove,
@@ -333,5 +334,47 @@ describe("writeLock", () => {
       readOnly: true,
       reason: "Read-only",
     });
+  });
+});
+
+describe("shellLabels", () => {
+  const info = (over: { cluster?: string; version?: string; prometheus?: { url: string } }): Info =>
+    ({ cluster: "", version: "", prometheus: { url: "" }, ...over }) as Info;
+
+  for (const [name, given, labels] of [
+    ["nothing has been answered for the shell yet", undefined, {}],
+    [
+      "everything the server filled in",
+      info({ cluster: "cluster-east", version: "0.7.0", prometheus: { url: "http://127.0.0.1:9090" } }),
+      { cluster: "cluster-east", version: "0.7.0", prometheus: "127.0.0.1:9090" },
+    ],
+    [
+      "the scheme, which is not part of the label",
+      info({ prometheus: { url: "https://prom.internal:9090" } }),
+      {
+        prometheus: "prom.internal:9090",
+      },
+    ],
+    [
+      "a host with a path keeps it",
+      info({ cluster: "cluster-east", prometheus: { url: "http://prom.metrics.svc/prom" } }),
+      { cluster: "cluster-east", prometheus: "prom.metrics.svc/prom" },
+    ],
+    ["a value the server left empty is not a label", info({ cluster: "", version: "", prometheus: { url: "" } }), {}],
+    [
+      "one of them missing leaves the other two",
+      info({ cluster: "cluster-east", version: "", prometheus: { url: "http://prom:9090" } }),
+      { cluster: "cluster-east", prometheus: "prom:9090" },
+    ],
+  ] as [string, Info | undefined, Record<string, string>][]) {
+    it(name, () => expect(shellLabels(given)).toEqual(labels));
+  }
+
+  // Every one of these is an answer the shell gets only once someone is signed in, and the screens before that are
+  // the first thing a new install shows: an ellipsis where the cluster belongs reads as a broken install.
+  it("gives the shell nothing to render rather than a placeholder", () => {
+    for (const given of [undefined, info({ cluster: "", version: "", prometheus: { url: "" } })]) {
+      expect(Object.values(shellLabels(given))).toEqual([]);
+    }
   });
 });

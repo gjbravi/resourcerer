@@ -1,4 +1,4 @@
-import type { Me, Session } from "./api";
+import type { Info, Me, Session } from "./api";
 
 /**
  * The header that marks a request as resourcerer's own. The server requires it on mutations, where it is the one
@@ -177,4 +177,27 @@ export function bootState(
     return record.stopped === undefined ? { view: "signing-in" } : { view: "cookie-dropped" };
   }
   return me.role === "none" ? { view: "no-access", me } : { view: "app", me };
+}
+
+/**
+ * The labels the shell carries around whatever page it holds: the cluster being looked at, the build serving it, and
+ * the Prometheus behind that. All three come from `GET /api/v1/info`, which is answered only to a signed-in caller, so
+ * every boot view renders the shell without them — and those screens are where a new install is first seen, where
+ * `Cluster …` and `Prometheus ·` read as a broken install rather than as nobody signed in yet. A label the shell does
+ * not have is therefore absent, never placeholder text, and a value the server left empty counts as not having one.
+ */
+export interface ShellLabels {
+  cluster?: string;
+  version?: string;
+  prometheus?: string;
+}
+
+export function shellLabels(info: Info | undefined): ShellLabels {
+  if (!info) return {};
+  const labels: ShellLabels = {};
+  if (info.cluster) labels.cluster = info.cluster;
+  if (info.version) labels.version = info.version;
+  const url = info.prometheus.url.replace(/^https?:\/\//, "");
+  if (url) labels.prometheus = url;
+  return labels;
 }
