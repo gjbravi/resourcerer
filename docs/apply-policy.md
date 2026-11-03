@@ -79,6 +79,26 @@ for that rollout, like any other.
 **Reverts are never held.** A revert is how a bad apply is undone, and a freeze or the cooldown that follows the
 apply it undoes is exactly when it has to stay possible.
 
+### Applying outside a window
+
+A person who owns the application is not the audience of a window: a window says "this is when the least traffic
+runs", not "nobody may act". Which one you get is one field:
+
+- **Advisory, the default.** Leave `Manual` out of `appliesTo`. The window holds auto-deploy and nothing else, so a
+  click at 14:00 applies. The decision in the status still names the window, so the UI and `kubectl` can show that
+  the apply is outside it.
+- **Committed.** List `Manual`. The click is refused with `409` and the reason, and in this version there is no way
+  past it in the product.
+
+That second option decides for the person because resourcerer cannot yet tell who is clicking: authentication is
+`anonymous`, so `history[].by` records what the client claimed, not who acted, and an override with no caller
+behind it records nothing worth keeping. [#33](https://github.com/gjbravi/resourcerer/issues/33) brings the
+identity, and with it the override: a caller allowed to bypass the advisory rules (`windows`, `rate.cooldown`)
+applies with a reason the history keeps, while freezes, rate limits and a rollout in progress still hold.
+
+So list `Manual` where the rule is a promise to somebody else — a freeze for a sales event, a code freeze — and
+leave a window that only reflects traffic on `Auto`.
+
 ## Windows
 
 A window is open while the local clock shows a time in `[from, to)` on a listed day. Windows are a union: inside
