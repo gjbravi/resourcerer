@@ -278,6 +278,26 @@ func TestCooldownHoldsBothKindsOfApply(t *testing.T) {
 	}
 }
 
+// A workload in the middle of a rollout is held by the rollout, which has no instant of its own, but that must
+// not hide the instant the window gives: the status and the UI say when the hold ends.
+func TestARolloutDoesNotHideTheNextWindow(t *testing.T) {
+	now := mustTime(t, "2026-11-03T16:30:00Z") // 16:30 in Lisbon, past the window
+	policies := []Policy{{Name: "p", Spec: v1alpha1.ApplyRules{
+		Windows: []v1alpha1.ApplyWindow{{From: "02:00", To: "06:00", TimeZone: "Europe/Lisbon"}}}}}
+	got := decide(t, now, policies, func(in *Input) { in.Target.RollingOut = true })
+	if got.Auto.BlockedBy != "windows" {
+		t.Fatalf("blockedBy = %q, want windows (%+v)", got.Auto.BlockedBy, got.Auto)
+	}
+	if want := mustTime(t, "2026-11-04T02:00:00Z"); got.Auto.NextAllowed == nil || !got.Auto.NextAllowed.Time.Equal(want) {
+		t.Fatalf("nextAllowed = %v, want the window opening (%+v)", got.Auto.NextAllowed, got.Auto)
+	}
+	// A rollout with nothing else in the way has no instant, though: it is not this rule's to promise.
+	open := decide(t, now.Add(10*time.Hour), policies, func(in *Input) { in.Target.RollingOut = true })
+	if open.Auto.BlockedBy != "rollout" || open.Auto.NextAllowed != nil {
+		t.Fatalf("a rollout alone should say nothing about when: %+v", open.Auto)
+	}
+}
+
 func TestCooldown(t *testing.T) {
 	now := mustTime(t, "2026-11-03T12:00:00Z")
 	policies := []Policy{{Name: "p", Spec: v1alpha1.ApplyRules{

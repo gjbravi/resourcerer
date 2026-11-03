@@ -197,6 +197,7 @@ const maxSteps = 64
 
 func nextAllowed(in Input, enforcing []compiled, kind v1alpha1.ApplyKind) (time.Time, bool) {
 	t := in.Now.Truncate(time.Second).Add(time.Second)
+	var known time.Time
 	for range maxSteps {
 		var jump time.Time
 		for _, c := range enforcing {
@@ -205,7 +206,13 @@ func nextAllowed(in Input, enforcing []compiled, kind v1alpha1.ApplyKind) (time.
 				continue
 			}
 			if b.next.IsZero() {
-				return time.Time{}, false
+				// A rule that waits for another rollout to finish has no instant of its own, and the target it
+				// reads is the workload as it is now, so waiting on it would end the search for every instant. The
+				// earliest instant another rule gives still answers when, which is what the status and the UI say.
+				return known, !known.IsZero()
+			}
+			if known.IsZero() || b.next.Before(known) {
+				known = b.next
 			}
 			if b.next.After(jump) {
 				jump = b.next
