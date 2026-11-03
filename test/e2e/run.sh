@@ -32,7 +32,7 @@ wait_for() {
 }
 
 API="http://localhost:$PORT/api/v1"
-MPORT="${E2E_METRICS_PORT:-18081}"
+MPORT="${E2E_METRICS_PORT:-18091}"
 PF=""
 MPF=""
 trap 'kill $PF $MPF 2>/dev/null || true' EXIT
@@ -49,9 +49,13 @@ done
 wait_for "server answers" 30 curl -fs "$API/info"
 
 # The applier's counters are the only place an apply, a hold or a slot shows up as a number.
+if curl -s -o /dev/null --max-time 2 "http://localhost:$MPORT/metrics"; then
+  fail "port $MPORT already answers: set E2E_METRICS_PORT to a free port"
+fi
 k -n resourcerer port-forward svc/resourcerer-applier-metrics "$MPORT:8081" >/dev/null 2>&1 &
 MPF=$!
 metric() { curl -fs "http://localhost:$MPORT/metrics" | grep -qE "$1"; }
+wait_for "the applier's metrics endpoint answers" 60 curl -fs "http://localhost:$MPORT/metrics"
 
 # Start from the manifests, also when an earlier run stopped halfway.
 k apply --server-side --force-conflicts -f "$(dirname "$0")/../../hack/demo.yaml" >/dev/null
