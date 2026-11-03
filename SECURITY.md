@@ -15,9 +15,17 @@ Please do not open public issues for security problems. You will get an acknowle
 - **Two authentication strategies.** `auth.strategy: anonymous` (the default) identifies nobody: anyone who can reach
   the server's Service uses the UI and API with the server's ServiceAccount, which is what lets a port-forward install
   work without setup. Keep the Service internal, or put an authenticating proxy in front; the chart warns when an
-  Ingress is enabled without `readOnly`. `auth.strategy: oidc` signs callers in at an OpenID Connect provider, and the
-  groups in the token decide what they may do: `allowedGroups` admits them at all, `roles.editorGroups` lets them
-  apply, revert and change settings. Someone signed in outside both gets an error, not a read view.
+  Ingress is enabled without `readOnly`. `auth.strategy: oidc` signs callers in at an OpenID Connect provider, and
+  three rules decide what they may do:
+  - `roles.anyAuthenticatedIsViewer` (default `true`) gives an admitted user read access;
+  - `roles.editorGroups` gives apply, revert and settings changes. It defaults empty, so nobody may change anything;
+  - `allowedGroups`, when set, is the perimeter: a user outside it has no access at all, even a member of
+    `editorGroups`. Membership of either list on its own is not enough.
+
+  `allowedGroups` and `anyAuthenticatedIsViewer` default open, so **an `oidc` install with the defaults lets every
+  user the provider authenticates read**, and nobody write. Set `allowedGroups` when not everyone who can sign in may
+  read it, and `editorGroups` to say who may change things. A user the rules leave with no role is refused: an error
+  on sign-in, and `403 forbidden` on every call but `GET /api/v1/me`.
 - **`readOnly: true`** makes the API refuse every change, and the server's ClusterRole drops its `patch` verbs.
 - **The authentication configuration is the trust boundary.** Whoever can write the OIDC ConfigMap can point `issuer`
   at a provider they run and sign in as an editor; whoever can read the session-key Secret can mint a cookie for any
@@ -26,11 +34,16 @@ Please do not open public issues for security problems. You will get an acknowle
   cookie that is `HttpOnly`, `SameSite=Lax` and `Path=/`, and carries the `__Host-` prefix where it is `Secure`. No
   replica holds sessions, and nothing can be revoked early: a leaked cookie or a departed employee stays usable until
   `auth.oidc.sessionTTL` passes, which is what that value trades. Replacing the session key, or the strategy, signs
-  everyone out.
+  everyone out. Signing out is `GET /auth/logout`: it carries no token and clears the cookie whatever the request
+  brought with it, so any page that gets the browser to navigate there — a link, or a form that submits to it — signs
+  the user out, and where a browser still lets a cross-site reply set a cookie, so does an `<img>` pointing at it.
+  That is a nuisance and nothing more: the route reads nothing, changes nothing else, and signing in again brings the
+  session back.
 - **Changes have to come from the UI.** Under `oidc`, a mutation also needs the header the UI attaches and a body
-  typed as JSON, and is refused with `403 ajax-required` without them. That is the CSRF guard: a page on another origin
-  can make the browser send a session cookie with a form, but it cannot attach a header this API grants to no origin.
-  An `anonymous` install skips the guard — there is no session to ride, and the API is meant to be scripted there.
+  typed as JSON, and is refused with `403 ajax-required` without them. That is the CSRF guard: a page on the same site
+  — a sibling subdomain — can make the browser send the session cookie with a form, and `SameSite=Lax` is what stops a
+  cross-site page doing the same. Neither can attach a header this API grants to no origin. An `anonymous` install
+  skips the guard — there is no session to ride, and the API is meant to be scripted there.
 - **Separate identities per component:**
   - `controller` reads workloads, pods, HPAs and Prometheus, and writes only `Recommendation` objects and Events.
   - `applier` is the only component that patches workloads and HPA targets. Disable it with

@@ -224,17 +224,34 @@ func (p *OIDC) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expires := time.Unix(s.Expires, 0)
+	sealed, err := p.seal(s, cfg, expires)
+	if err != nil {
+		logger.Error(err, "seal OIDC session", "user", s.User)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	p.setCookie(w, r, SessionCookie, sealed, int(cfg.TTL().Seconds()))
+	http.Redirect(w, r, SafeRedirect(st.Redirect), http.StatusFound)
+}
+
+// seal seals the session for the cookie, dropping the groups the configuration does not mention if it does not fit.
+// A cookie still too large after that would be set and then dropped by the browser without a word, leaving the user
+// to circle the provider, so sign-in says what is too big instead.
+func (p *OIDC) seal(s session, cfg Config, expires time.Time) (string, error) {
 	sealed, err := p.codec.Seal(SessionCookie, s, expires)
 	if err == nil && len(sealed) > maxCookie {
 		s.Groups = cfg.referenced(s.Groups)
 		sealed, err = p.codec.Seal(SessionCookie, s, expires)
 	}
 	if err != nil {
-		http.Error(w, "create session: "+err.Error(), http.StatusInternalServerError)
-		return
+		return "", fmt.Errorf("create session: %w", err)
 	}
-	p.setCookie(w, r, SessionCookie, sealed, int(cfg.TTL().Seconds()))
-	http.Redirect(w, r, SafeRedirect(st.Redirect), http.StatusFound)
+	if len(sealed) > maxCookie {
+		return "", fmt.Errorf("sign-in failed: %s's %d groups leave a session cookie of %d bytes, over the %d a "+
+			"browser accepts. Narrow auth.oidc.allowedGroups or auth.oidc.roles.editorGroups to fewer of them",
+			s.User, len(s.Groups), len(sealed), maxCookie)
+	}
+	return sealed, nil
 }
 
 func (p *OIDC) exchange(r *http.Request, cfg Config, code string, st loginState) (session, error) {

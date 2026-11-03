@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/gjbravi/resourcerer/internal/server/auth"
 )
 
@@ -63,32 +66,44 @@ func TestMutationsNeedTheUIHeaderUnderACookieStrategy(t *testing.T) {
 
 func TestWriteAsksACookieStrategyForTheUIHeader(t *testing.T) {
 	const apply = "/api/v1/workloads/demo/Deployment/api/apply"
+	const settingsRoute = "/api/v1/workloads/demo/Deployment/api/settings"
 	for _, tc := range []struct {
-		name, target, headers, body string
-		chunked                     bool
-		code                        int
-		reason                      string
+		name, method, target, headers, body string
+		chunked                             bool
+		code                                int
+		reason                              string
 	}{
-		{"json from the UI", apply, ajaxPair, `{"hash":"h1"}`, false, http.StatusOK, ""},
-		{"json with a charset", apply, "X-Resourcerer-Request: 1\nContent-Type: application/json; charset=utf-8", `{"hash":"h1"}`, false, http.StatusOK, ""},
-		{"chunked json from the UI", apply, ajaxPair, `{"hash":"h1"}`, true, http.StatusOK, ""},
+		{"json from the UI", http.MethodPost, apply, ajaxPair, `{"hash":"h1"}`, false, http.StatusOK, ""},
+		{"json with a charset", http.MethodPost, apply, "X-Resourcerer-Request: 1\nContent-Type: application/json; charset=utf-8", `{"hash":"h1"}`, false, http.StatusOK, ""},
+		{"chunked json from the UI", http.MethodPost, apply, ajaxPair, `{"hash":"h1"}`, true, http.StatusOK, ""},
 		// A mutation with no body has nothing to parse, so only the header is required of it.
-		{"no body", "/api/v1/workloads/demo/Deployment/api/revert", "X-Resourcerer-Request: 1", "", false, http.StatusOK, ""},
-		{"no header at all", apply, "Content-Type: application/json", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
-		{"no header and no content type", apply, "", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
+		{"no body", http.MethodPost, "/api/v1/workloads/demo/Deployment/api/revert", "X-Resourcerer-Request: 1", "", false, http.StatusOK, ""},
+		{"no header at all", http.MethodPost, apply, "Content-Type: application/json", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
+		{"no header and no content type", http.MethodPost, apply, "", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
 		// The hole this closes: a same-site page posting a JSON body the browser sends without a preflight.
-		{"json body posted as text/plain", apply, "Content-Type: text/plain", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
-		{"json body posted as a form", apply, "Content-Type: application/x-www-form-urlencoded", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
-		{"header, body posted as a form", apply, "X-Resourcerer-Request: 1\nContent-Type: application/x-www-form-urlencoded", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
-		{"header, chunked body posted as text/plain", apply, "X-Resourcerer-Request: 1\nContent-Type: text/plain", `{"hash":"h1"}`, true, http.StatusForbidden, "ajax-required"},
-		{"header, no content type and a body", apply, "X-Resourcerer-Request: 1", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
+		{"json body posted as text/plain", http.MethodPost, apply, "Content-Type: text/plain", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
+		{"json body posted as a form", http.MethodPost, apply, "Content-Type: application/x-www-form-urlencoded", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
+		{"header, body posted as a form", http.MethodPost, apply, "X-Resourcerer-Request: 1\nContent-Type: application/x-www-form-urlencoded", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
+		{"header, chunked body posted as text/plain", http.MethodPost, apply, "X-Resourcerer-Request: 1\nContent-Type: text/plain", `{"hash":"h1"}`, true, http.StatusForbidden, "ajax-required"},
+		{"header, no content type and a body", http.MethodPost, apply, "X-Resourcerer-Request: 1", `{"hash":"h1"}`, false, http.StatusForbidden, "ajax-required"},
+		// The settings routes are PUT, the other method the UI mutates with, and they carry a body like apply does.
+		{"settings from the UI", http.MethodPut, settingsRoute, ajaxPair, `{"key":"cpu.optimization-goal","value":"Savings"}`, false, http.StatusOK, ""},
+		{"settings from the UI, chunked", http.MethodPut, settingsRoute, ajaxPair, `{"key":"cpu.optimization-goal","value":"Savings"}`, true, http.StatusOK, ""},
+		{"settings with no header", http.MethodPut, settingsRoute, "Content-Type: application/json", `{"key":"cpu.optimization-goal","value":"Savings"}`, false, http.StatusForbidden, "ajax-required"},
+		{"settings posted as a form", http.MethodPut, settingsRoute, "X-Resourcerer-Request: 1\nContent-Type: application/x-www-form-urlencoded", `key=cpu.optimization-goal&value=Savings`, false, http.StatusForbidden, "ajax-required"},
 	} {
-		s := newServer(cookieEditor, recommendation())
-		w := rawCall(t, s.Handler(), http.MethodPost, tc.target, tc.body, tc.headers, tc.chunked)
+		// A case that reaches the handler has to find the workload there: the settings route patches its annotations.
+		s := newServer(cookieEditor, recommendation(), deployment())
+		w := rawCall(t, s.Handler(), tc.method, tc.target, tc.body, tc.headers, tc.chunked)
 		if w.Code != tc.code || reason(w) != tc.reason {
 			t.Errorf("%s: %d %q, want %d %q", tc.name, w.Code, w.Body, tc.code, tc.reason)
 		}
 	}
+}
+
+// deployment is the workload the settings route in the table above writes to.
+func deployment() *appsv1.Deployment {
+	return &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "demo", Name: "api"}}
 }
 
 // The caller is identified first, then asked where the request came from, and only then does the gate decide what

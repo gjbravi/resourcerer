@@ -1,19 +1,20 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { api, refKey, type Range, type Ref, type ReliabilityWindow, type Resource } from "./api";
-import { sendToSignIn } from "./session";
+import { afterMe } from "./session";
 
 /**
  * Who is calling, from `GET /api/v1/me`: the only call the server answers without a session, so the app asks it
  * before anything else. It is rechecked when the window regains focus, which is how a session that ended while the
- * page sat there is noticed; a caller who is gone from it is sent back to the provider.
+ * page sat there is noticed; a caller who is gone from it is sent back to the provider, unless that round trip is what
+ * keeps bringing them here.
  */
 export const useSession = () =>
   useQuery({
     queryKey: ["me"],
     queryFn: async () => {
       const s = await api.me();
-      if (!s.authenticated) sendToSignIn();
+      afterMe(s);
       return s;
     },
   });

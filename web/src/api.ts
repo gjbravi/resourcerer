@@ -1,4 +1,4 @@
-import { ajaxHeader, ajaxValue, signInURL } from "./session";
+import { ajaxHeader, ajaxValue, sendToSignIn } from "./session";
 
 /** Types mirror internal/server/types.go. CPU is in cores and memory in bytes. */
 export type Resource = "cpu" | "memory";
@@ -327,11 +327,9 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   const data = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };
   if (!res.ok) {
     // A session that ended while the page was open: go and sign in again rather than leave an error on screen. The
-    // first sign-in is not here — /me answers 200 — and the app starts it once it knows who is calling.
-    if (res.status === 401 && data.reason === "unauthenticated") {
-      const to = signInURL(window.location);
-      if (to) window.location.assign(to);
-    }
+    // first sign-in is not here — /me answers 200 — and the app starts it once it knows who is calling. The same
+    // breaker as afterMe's applies, so a browser that brings back no cookie does not circle the provider forever.
+    if (res.status === 401 && data.reason === "unauthenticated") sendToSignIn();
     throw new ApiError(res.status, data.error ?? res.statusText, data.reason);
   }
   return data as T;

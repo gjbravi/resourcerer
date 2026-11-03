@@ -13,7 +13,7 @@ import {
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HatLogo } from "./art";
-import type { Me } from "./api";
+import type { Me, Session } from "./api";
 import { ErrorBox, Toasts } from "./components";
 import { useHash, useInfo, useSession, useWorkloads } from "./hooks";
 import { Details } from "./pages/Details";
@@ -21,7 +21,7 @@ import { Overview } from "./pages/Overview";
 import { SettingsPage } from "./pages/SettingsPage";
 import { Workloads } from "./pages/Workloads";
 import { configureSignals } from "./reliability";
-import { writeLock } from "./session";
+import { bootState, clearSignRecord, readSignRecord, writeLock } from "./session";
 import "./styles.css";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, retry: 1 } } });
@@ -32,8 +32,9 @@ function App() {
   // The session is the one call the server answers without a signed-in caller, so it comes first and everything else
   // waits for it: asking as nobody would answer every request with 401.
   const session = useSession();
+  const boot = bootState(session, readSignRecord());
   const me = session.data?.authenticated ? session.data : undefined;
-  const asks = !!me && me.role !== "none";
+  const asks = boot.view === "app";
   const info = useInfo(asks);
   configureSignals(info.data?.reliability);
   const workloads = useWorkloads(asks);
@@ -51,9 +52,16 @@ function App() {
   ] as const;
 
   let body;
-  if (!session.data) body = <div className="rz-loading">Loading…</div>;
-  else if (!session.data.authenticated) body = <div className="rz-loading">Signing in…</div>;
-  else if (session.data.role === "none") body = <NoAccess me={session.data} />;
+  if (boot.view === "loading") body = <div className="rz-loading">Loading…</div>;
+  else if (boot.view === "error")
+    body = (
+      <div className="rz-page">
+        <ErrorBox error={boot.error} />
+      </div>
+    );
+  else if (boot.view === "signing-in") body = <div className="rz-loading">Signing in…</div>;
+  else if (boot.view === "cookie-dropped") body = <CookieDropped />;
+  else if (boot.view === "no-access") body = <NoAccess me={boot.me} />;
   else if (parts[0] === "w" && parts.length >= 4) {
     body = (
       <Details
@@ -121,7 +129,7 @@ function App() {
               )}
             </div>
             <div className="rz-topright">
-              <Who me={me} readOnly={readOnly} />
+              <Who session={session.data} readOnly={readOnly} />
               <button
                 className="rz-icon"
                 onClick={() => setDark((x) => (localStorage.setItem("resourcerer.theme", x ? "light" : "dark"), !x))}
@@ -131,9 +139,11 @@ function App() {
               </button>
             </div>
           </header>
-          {(info.error || workloads.error) && (
+          {/* A strip of its own only while there is a page under it: with no page at all the boot view carries the
+              failure, and saying it twice would only make it look like two problems. */}
+          {boot.view === "app" && (session.error || info.error || workloads.error) && (
             <div className="rz-page" style={{ paddingBottom: 0 }}>
-              <ErrorBox error={info.error ?? workloads.error} />
+              <ErrorBox error={session.error ?? info.error ?? workloads.error} />
             </div>
           )}
           {body}
@@ -145,17 +155,21 @@ function App() {
 }
 
 /**
- * Who is calling, where the install says who may do what. A caller under `anonymous` is named the way this header
- * always named them: there is no one behind that session, and signing out of it would achieve nothing.
+ * Who is calling, where the install says who may do what. The strategy decides which chip this is, so "anyone who
+ * reaches this page can use it" appears only under `anonymous` and never while an `oidc` install is still finding out
+ * who is calling. A caller under `anonymous` is named the way this header always named them: there is no one behind
+ * that session, and signing out of it would achieve nothing.
  */
-function Who({ me, readOnly }: { me: Me | undefined; readOnly: boolean }) {
-  if (!me || me.strategy === "anonymous") {
+function Who({ session, readOnly }: { session: Session | undefined; readOnly: boolean }) {
+  if (session?.strategy === "anonymous") {
     return (
       <span className="rz-anon" title="Authentication strategy: anonymous. Anyone who reaches this page can use it.">
         <Unlock size={12} /> anonymous{readOnly ? " · read-only" : ""}
       </span>
     );
   }
+  if (!session || !session.authenticated) return null;
+  const me = session;
   const groups = me.groups.length ? ` · ${me.groups.join(", ")}` : "";
   return (
     <>
@@ -170,7 +184,11 @@ function Who({ me, readOnly }: { me: Me | undefined; readOnly: boolean }) {
   );
 }
 
-/** Signed in, but with no role here. An empty page would read as a broken install, so this says what is missing. */
+/**
+ * Signed in, but with no role here. An empty page would read as a broken install, so this says what is missing. Which
+ * of the two rules refused the caller is the install's own business, so both are named and the user's own groups are
+ * the only list put on screen.
+ */
 function NoAccess({ me }: { me: Me }) {
   return (
     <div className="rz-page">
@@ -179,8 +197,14 @@ function NoAccess({ me }: { me: Me }) {
           <div>
             <h2>Signed in without access</h2>
             <p className="rz-dim rz-xs">
-              <b>{me.user}</b> signed in with {me.strategy}, but none of the groups below is allowed to use this
-              install. Ask an administrator to add one of them to <code>auth.oidc.allowedGroups</code>.
+              <b>{me.user}</b> signed in with {me.strategy}, but none of the groups below grants access here. Either
+              none of them is in <code>auth.oidc.allowedGroups</code>, or this install reads for editors only (
+              <code>auth.oidc.roles.anyAuthenticatedIsViewer: false</code>) and none of them is in{" "}
+              <code>auth.oidc.roles.editorGroups</code>. Ask whoever owns this install to check those two.
+            </p>
+            <p className="rz-dim rz-xs">
+              Signing out and in again will not change it: a first sign-in is refused before it reaches this page, so
+              you are here because the groups or the configuration changed since you signed in.
             </p>
           </div>
         </div>
@@ -191,6 +215,40 @@ function NoAccess({ me }: { me: Me }) {
             <span className="rz-dim">The provider presented no groups.</span>
           )}
         </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * The provider signed the browser in and it came back with no session cookie, so the SPA stopped sending it there.
+ * Only the browser or the install's configuration can fix that, so this names them instead of looping.
+ */
+function CookieDropped() {
+  return (
+    <div className="rz-page">
+      <section className="rz-card">
+        <div className="rz-cardhd">
+          <div>
+            <h2>The session cookie was not kept</h2>
+            <p className="rz-dim rz-xs">
+              You signed in, but the browser carried no session cookie back to resourcerer, so it stopped asking the
+              provider again rather than loop through it. Allow cookies for this site, and check{" "}
+              <code>auth.cookieSecure</code>: a <code>Secure</code> cookie needs TLS, so it has to be <code>false</code>{" "}
+              when the install is reached over plain HTTP.
+            </p>
+          </div>
+        </div>
+        <button
+          className="rz-btn"
+          onClick={() => {
+            // Retrying is the user's decision, which is the one thing that earns another round trip to the provider.
+            clearSignRecord();
+            window.location.reload();
+          }}
+        >
+          Try again
+        </button>
       </section>
     </div>
   );

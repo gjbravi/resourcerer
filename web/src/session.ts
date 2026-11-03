@@ -1,4 +1,4 @@
-import type { Session } from "./api";
+import type { Me, Session } from "./api";
 
 /**
  * The header that marks a request as resourcerer's own. The server requires it on mutations, where it is the one
@@ -30,10 +30,89 @@ export function signInURL(page: Page): string | null {
   return `/auth/login?redirect=${encodeURIComponent(pagePath(page))}`;
 }
 
-/** Hand the browser to the provider, keeping the page it was on so the way back is the same page. */
-export function sendToSignIn(page: Page = window.location) {
+/**
+ * How long a sign-in attempt stays current. Coming back from the provider without a session cookie inside that window
+ * means the browser will not keep it, and every further turn of `/me` → provider → callback → `/me` is another full
+ * authorization for the same nothing.
+ */
+export const loopWindow = 30_000;
+
+/** This tab's sign-in record: when it went to the provider, and when a round trip came back with no session. */
+export interface SignRecord {
+  at?: number;
+  stopped?: number;
+}
+
+/** The part of `sessionStorage` the record needs. */
+export interface Store {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+const attemptKey = "resourcerer.sign-in";
+const stoppedKey = "resourcerer.sign-in-stopped";
+
+/**
+ * `sessionStorage`, or an empty one where the browser will not hand it over. Losing the record costs the loop breaker
+ * and nothing else, which is what a browser that refuses storage already costs the session cookie.
+ */
+export const signStore: Store = {
+  getItem: (key) => guarded(() => sessionStorage.getItem(key), null),
+  setItem: (key, value) => guarded(() => sessionStorage.setItem(key, value), undefined),
+  removeItem: (key) => guarded(() => sessionStorage.removeItem(key), undefined),
+};
+
+function guarded<T>(run: () => T, ifBlocked: T): T {
+  try {
+    return run();
+  } catch {
+    return ifBlocked;
+  }
+}
+
+export function readSignRecord(store: Store = signStore): SignRecord {
+  return { at: when(store.getItem(attemptKey)), stopped: when(store.getItem(stoppedKey)) };
+}
+
+function when(stored: string | null): number | undefined {
+  const at = Number(stored);
+  return stored !== null && stored !== "" && Number.isFinite(at) ? at : undefined;
+}
+
+export function clearSignRecord(store: Store = signStore) {
+  store.removeItem(attemptKey);
+  store.removeItem(stoppedKey);
+}
+
+/** Whether to hand the browser to the provider, or to stop because the last attempt is what put us back here. */
+export function signMove(now: number, record: SignRecord): "sign-in" | "wait" {
+  return record.at !== undefined && now - record.at < loopWindow ? "wait" : "sign-in";
+}
+
+/**
+ * Hand the browser to the provider, keeping the page it was on so the way back is the same page. An attempt inside
+ * `loopWindow` is not repeated: the message on screen says what a second one would not fix.
+ */
+export function sendToSignIn(page: Page = window.location, store: Store = signStore, now = Date.now()) {
   const to = signInURL(page);
-  if (to) page.assign(to);
+  if (!to) return;
+  if (signMove(now, readSignRecord(store)) === "wait") {
+    store.setItem(stoppedKey, String(now));
+    return;
+  }
+  store.setItem(attemptKey, String(now));
+  store.removeItem(stoppedKey);
+  page.assign(to);
+}
+
+/**
+ * What the answer from `GET /api/v1/me` means for this tab: a session makes the sign-in record stale, and no session
+ * starts the sign-in that the record may decide to hold back.
+ */
+export function afterMe(session: Session, page: Page = window.location, store: Store = signStore, now = Date.now()) {
+  if (session.authenticated) clearSignRecord(store);
+  else sendToSignIn(page, store, now);
 }
 
 /** Whether the caller may change anything, and what to say where a control is disabled instead. */
@@ -52,4 +131,25 @@ export function writeLock(session: Session | undefined, readOnly = false): Lock 
   if (session.role === "editor") return { write: true, readOnly: false };
   if (session.role === "viewer") return { write: false, reason: "View-only access", readOnly: false };
   return { write: false, readOnly: false };
+}
+
+/** What to show before there is a page to show. Every one of these is an answer `/me` gave, or the lack of one. */
+export type Boot =
+  | { view: "loading" }
+  | { view: "error"; error: unknown }
+  | { view: "signing-in" }
+  | { view: "cookie-dropped" }
+  | { view: "no-access"; me: Me }
+  | { view: "app"; me: Me };
+
+/**
+ * The boot decision. An answer outranks an error: when `/me` fails after having answered once, the page stays up with
+ * the error in the header, which is what an install did before there was a session to ask about. Only a `/me` that
+ * never answered leaves the app with nothing to render, and that has to say so rather than load forever.
+ */
+export function bootState(session: { data: Session | undefined; error: unknown }, record: SignRecord = {}): Boot {
+  const me = session.data;
+  if (!me) return session.error ? { view: "error", error: session.error } : { view: "loading" };
+  if (!me.authenticated) return record.stopped === undefined ? { view: "signing-in" } : { view: "cookie-dropped" };
+  return me.role === "none" ? { view: "no-access", me } : { view: "app", me };
 }

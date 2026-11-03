@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api } from "./api";
-import { ajaxHeader, ajaxValue } from "./session";
+import { ajaxHeader, ajaxValue, readSignRecord } from "./session";
 
 /** What the browser was asked to send, as `call` built it. */
 interface Sent {
@@ -42,6 +42,7 @@ const location = (pathname: string, hash = "") => {
 
 beforeEach(() => {
   sent.length = 0;
+  sessionStorage.clear();
   reply(200, { ok: true });
   location("/");
 });
@@ -97,7 +98,15 @@ describe("a refused request", () => {
   it("reads a server that answers without JSON", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: false, status: 502, statusText: "Bad Gateway", json: async () => ({ throw: 1 }) })),
+      vi.fn(async () => ({
+        ok: false,
+        status: 502,
+        statusText: "Bad Gateway",
+        // What a proxy's error page does to res.json(): it rejects, and the status text is all there is.
+        json: async () => {
+          throw new SyntaxError("<html> is not JSON");
+        },
+      })),
     );
     const err = (await api.info().catch((e: unknown) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
@@ -132,5 +141,15 @@ describe("a refused request", () => {
     const err = (await api.info().catch((e: unknown) => e)) as ApiError;
     expect(err.status).toBe(403);
     expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("does not circle the provider when a sign-in brings back no cookie", async () => {
+    const assign = location("/");
+    reply(401, { error: "sign in", reason: "unauthenticated" });
+    await api.info().catch(() => undefined);
+    await api.info().catch(() => undefined);
+    expect(assign).toHaveBeenCalledTimes(1);
+    // The mark that tells the page to stop and explain rather than send the browser off again.
+    expect(readSignRecord().stopped).toEqual(expect.any(Number));
   });
 });

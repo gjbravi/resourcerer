@@ -53,7 +53,8 @@ func (c Config) TTL() time.Duration { return c.ttl }
 var parsed sync.Map
 
 // ParseConfig reads oidc.yaml strictly, so a misspelled key fails instead of silently weakening access, and caches
-// the result by content.
+// the result by content. Keys bind as JSON tags do, case aside, so EditorGroups parses as editorGroups: an unknown key
+// is refused, a differently capitalised one is not.
 func ParseConfig(data string) (Config, error) {
 	if v, ok := parsed.Load(data); ok {
 		return v.(Config), nil

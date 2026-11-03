@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -114,6 +116,66 @@ func TestIdentify(t *testing.T) {
 	p.config.state.Store(&configState{cfg: stricter})
 	if id, ok := p.Identify(request(valid, now.Add(time.Hour))); !ok || id.Editor || !id.Viewer {
 		t.Errorf("after editorGroups changed = %+v, want a viewer without signing in again", id)
+	}
+}
+
+// The browser drops a cookie it cannot take without saying so, which leaves a signed-in user with no session and no
+// message. So a session that will not fit is refused out loud, after the groups no rule mentions are dropped.
+func TestSealSessionFitsTheCookie(t *testing.T) {
+	codec, _ := NewCodec(newKey(t), "")
+	now := time.Unix(1_700_000_000, 0)
+	exp := now.Add(time.Hour)
+	p := &OIDC{codec: codec, now: func() time.Time { return now }}
+	cfg, err := ParseConfig(validConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// About 50 bytes a group: 200 of them are well past what a cookie carries.
+	groups := func(n int) []string {
+		out := make([]string, n)
+		for i := range out {
+			out[i] = fmt.Sprintf("team-%03d-%s", i, strings.Repeat("x", 40))
+		}
+		return out
+	}
+	// Every group one rule mentions is one the session keeps, so this is the user trimming cannot help.
+	allReferenced := cfg
+	allReferenced.AllowedGroups = groups(200)
+
+	for _, tc := range []struct {
+		name   string
+		cfg    Config
+		groups []string
+		// The groups the session is expected to carry; nil means no session at all.
+		want []string
+	}{
+		{"one group fits as it is", cfg, []string{"platform"}, []string{"platform"}},
+		{"the rest are trimmed away", cfg, append([]string{"platform"}, groups(200)...), []string{"platform"}},
+		{"too many of the referenced ones is refused", allReferenced, groups(200), nil},
+	} {
+		s := session{User: "alice", Groups: tc.groups, Issuer: cfg.Issuer, ClientID: cfg.ClientID, Expires: exp.Unix()}
+		sealed, err := p.seal(s, tc.cfg, exp)
+		if tc.want == nil {
+			if err == nil || !strings.Contains(err.Error(), "browser accepts") || sealed != "" {
+				t.Errorf("%s: sealed %d bytes with err %v, want a refusal that names the limit", tc.name, len(sealed), err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		if len(sealed) > maxCookie {
+			t.Errorf("%s: the cookie is %d bytes, over the %d a browser takes", tc.name, len(sealed), maxCookie)
+		}
+		var got session
+		if err := p.codec.Open(SessionCookie, sealed, now, &got); err != nil {
+			t.Errorf("%s: open: %v", tc.name, err)
+			continue
+		}
+		if !slices.Equal(got.Groups, tc.want) {
+			t.Errorf("%s: the session carries %v, want %v", tc.name, got.Groups, tc.want)
+		}
 	}
 }
 
