@@ -58,4 +58,4 @@ They must be scoped, deduplicated and bounded.
 
 Signals use Go templates with `{{ .Namespace }}`, `{{ .Name }}`, `{{ .Kind }}`, `{{ .Window }}` and
 `{{ .OwnedPods }}`; the contract is "the value over `{{ .Window }}`, one series or one per `container`". See
-`docs/reliability-signals.md` and keep its examples valid when changing the template variables.
+`docs/guides/reliability-signals.md` and keep its examples valid when changing the template variables.

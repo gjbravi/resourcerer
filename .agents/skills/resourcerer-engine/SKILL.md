@@ -31,8 +31,9 @@ that gathers data.
   rollout to every auto-deployed workload: call it out in the PR and in the release notes, and prefer changes that
   only move values when the evidence says so.
 - **The `Basis` is the explanation users see.** Update it whenever a rule changes a value, so the UI says why.
-- **Goals are documented in three places**: `Goals` here, the table in `docs/architecture.md`, and the help text in
-  `web/src/settings.ts`. Change all three together.
+- **Goals are documented in several places**: `Goals` here, the tables in `docs/architecture.md`,
+  `docs/concepts/recommendations.md` and `docs/configuration/goals-and-limits.md`, and the help text in
+  `web/src/settings.ts`. Change them together.
 - **Phases drive auto-deploy** (`Ready` only) and manual apply (`Ready` or `Learning`). A rule that keeps workloads
   in `Learning` longer delays savings; one that makes them `Ready` sooner applies on less history.
 - **Usage is the busiest pod**, not the average: rules that compare with requests compare per pod.

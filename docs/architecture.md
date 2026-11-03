@@ -1,4 +1,7 @@
-# Architecture
+---
+title: Architecture
+description: How resourcerer is put together under the hood, with diagrams for each flow.
+---
 
 How resourcerer is put together and what happens under the hood: the components, the `Recommendation` resource,
 how a recommendation is computed, priced, checked and applied, and how the UI gets its data.
@@ -248,7 +251,7 @@ Signals that requests or limits are too tight, or that the workload is unhealthy
 - **Built-in**: CPU throttling, memory peak against the limit, OOM kills, restarts, crash loops, HPA at its maximum,
   BestEffort pods. Computed from Prometheus and pod status.
 - **Declared**: PromQL templates in the chart values, evaluated per workload over its learning period
-  (`internal/signals`, `docs/reliability-signals.md`). A signal with no data does not apply to the workload; one that
+  (`internal/signals`, [Reliability signals](guides/reliability-signals.md)). A signal with no data does not apply to the workload; one that
   fails is skipped and never blocks the recommendation.
 
 The controller stores the learning-period view in `status.reliability`, which drives the workload list and the
@@ -303,7 +306,7 @@ sequenceDiagram
   many applies run at once. The applier reads the `ApplyPolicy` and `ClusterApplyPolicy` objects uncached before
   each decision, records it in `status.applyPolicy` for each kind of apply, and looks again at the first instant a
   rule changes. Every policy that selects a workload must allow it; a `409` from the server answers a held click at
-  once, and a revert is never held. See [apply-policy.md](apply-policy.md).
+  once, and a revert is never held. See [Apply policies](guides/apply-policies.md).
 - **Revert** applies the `from` values of the last apply, through the same path.
 - **Server-side apply** with the `resourcerer` field manager owns only the resources fields it sets, so GitOps tools
   can ignore them by manager instead of fighting over them.
@@ -369,6 +372,4 @@ flowchart TB
 
 ## Where this is going
 
-The roadmap is in the design issues: reliability signals as custom resources (#28), `ApplyPolicy` for windows,
-freezes and verified auto-deploy (#29), `OptimizationPolicy` for settings by selector (#30), `CostProfile` for Savings
-Plans and Reserved Instances (#27), and decision models (Jev / decider) behind the verdict (#26).
+The next steps are in the design issues: see the [roadmap](roadmap.md).

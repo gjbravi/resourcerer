@@ -20,7 +20,8 @@ description: Add or change a value in the resourcerer Helm chart and wire it to 
    - process-level options become flags in the Deployment templates.
 4. **`charts/resourcerer/README.md`:** add a row to the values table for anything a user would set.
 5. **`hack/resourcerer-values.yaml`:** set it when the kind environment or e2e should exercise it.
-6. **Docs:** update `README.md` or `docs/` when the value changes behaviour users see.
+6. **Docs:** add the value to `docs/reference/helm-values.md`, and update the configuration or guide page when it
+   changes behaviour users see (see the `resourcerer-docs` skill).
 
 ## Check
 

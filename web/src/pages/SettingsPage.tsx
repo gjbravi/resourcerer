@@ -199,8 +199,8 @@ function ReliabilitySignals({ cfg }: { cfg: Info["reliability"] }) {
             <ShieldCheck size={16} /> Reliability signals
           </h2>
           <p className="rz-dim rz-xs">
-            Set in the Helm values under <code>reliability</code>; see <code>docs/reliability-signals.md</code>. Turn
-            one off for a namespace or workload with <code>resourcerer.io/reliability.disabled</code>.
+            Set in the Helm values under <code>reliability</code>; see <code>docs/guides/reliability-signals.md</code>.
+            Turn one off for a namespace or workload with <code>resourcerer.io/reliability.disabled</code>.
           </p>
         </div>
       </div>

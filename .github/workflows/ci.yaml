@@ -17,8 +17,8 @@ concurrency:
 
 jobs:
   # Decides whether the change needs testing at all:
-  # - a change that only touches docs, agent skills or repository metadata does not change the binary, image or
-  #   chart;
+  # - a change that only touches docs, the docs site, agent skills or repository metadata does not change the
+  #   binary, image or chart (the Docs workflow builds the site);
   # - a push to main whose tree already passed CI in the pull request that was squash-merged is not tested
   #   again: the ruleset requires pull requests to be up to date, so the tree is the same.
   # Skipped jobs count as passed for the required checks.
@@ -50,7 +50,7 @@ jobs:
           if [ -n "$base" ] && git cat-file -e "$base" 2>/dev/null; then
             git diff --name-only "$base" HEAD > changed.txt
             echo "changed files:"; cat changed.txt
-            if [ -s changed.txt ] && ! grep -qvE '(\.md$|^docs/|^\.agents/|^\.claude/|^LICENSE$|^\.github/CODEOWNERS$|^\.github/ISSUE_TEMPLATE/|^\.github/pull_request_template\.md$)' changed.txt; then
+            if [ -s changed.txt ] && ! grep -qvE '(\.md$|\.mdx$|^docs/|^website/|^\.github/workflows/docs\.yaml$|^\.agents/|^\.claude/|^LICENSE$|^\.github/CODEOWNERS$|^\.github/ISSUE_TEMPLATE/|^\.github/pull_request_template\.md$)' changed.txt; then
               echo "only docs and metadata changed"
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0

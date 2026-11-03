@@ -1,0 +1,55 @@
+name: Docs
+
+# Builds the documentation site (website/, pages in docs/) on every change to it, and publishes it to GitHub Pages
+# from main.
+on:
+  pull_request:
+    paths: ["docs/**", "website/**", ".github/workflows/docs.yaml"]
+  push:
+    branches: [main]
+    paths: ["docs/**", "website/**", ".github/workflows/docs.yaml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # "Last updated" on each page comes from the Git history.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: make docs-build
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/dist
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    # One deployment at a time, and never cancel one halfway.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5

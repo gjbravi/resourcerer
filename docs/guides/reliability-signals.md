@@ -1,4 +1,7 @@
-# Reliability signals
+---
+title: Reliability signals
+description: Built-in signals and your own PromQL templates, flagging workloads whose requests or limits may be too tight.
+---
 
 Reliability signals tell when a workload's requests or limits may be too tight, or when it is unhealthy for other
 reasons. They show in three places:
