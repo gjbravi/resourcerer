@@ -56,7 +56,7 @@ done
 wait_for "server answers" 30 curl -fs "$API/info"
 
 # The applier's counters are the only place an apply, a hold or a slot shows up as a number.
-if [[ -n "$E2E_METRICS_PORT" ]] && curl -s -o /dev/null --max-time 2 "http://localhost:$MPORT/metrics"; then
+if [[ -n "${E2E_METRICS_PORT:-}" ]] && curl -s -o /dev/null --max-time 2 "http://localhost:$MPORT/metrics"; then
   fail "port $MPORT already answers: set E2E_METRICS_PORT to a free port"
 fi
 k -n resourcerer port-forward svc/resourcerer-applier-metrics "$MPORT:8081" >/dev/null 2>&1 &
