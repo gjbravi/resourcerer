@@ -204,10 +204,12 @@ k delete cap e2e-closed-window >/dev/null
 # nothing holds it. worker is the workload here: its Recommendation is pending, and no run of this script applies it.
 worker_cpu=$(k -n demo get deploy worker -o jsonpath='{.spec.template.spec.containers[?(@.name=="worker")].resources.requests.cpu}')
 window_policy e2e-auto-window worker
+# A short learning period, so the recommendation is Ready and the applier wants to apply it in a cluster this young.
+k -n demo annotate deploy worker resourcerer.io/learning-period=PT2M --overwrite >/dev/null
 k -n demo annotate deploy worker resourcerer.io/auto-deploy=Enabled --overwrite >/dev/null
-wait_for "a due automatic apply under the closed window" 240 decision demo deployment-worker \
-  '.status.pending == true and .status.settings["auto-deploy"].value == "Enabled"
-   and .status.applyPolicy.auto.blockedBy == "windows"'
+wait_for "a due automatic apply under the closed window" 300 decision demo deployment-worker \
+  '.status.phase == "Ready" and .status.pending == true
+   and .status.settings["auto-deploy"].value == "Enabled" and .status.applyPolicy.auto.blockedBy == "windows"'
 sleep 5
 [[ "$(k -n demo get deploy worker -o jsonpath='{.spec.template.spec.containers[?(@.name=="worker")].resources.requests.cpu}')" == "$worker_cpu" ]] \
   && pass "a held automatic apply leaves the workload alone ($worker_cpu)" \
