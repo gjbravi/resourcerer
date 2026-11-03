@@ -71,7 +71,7 @@ explain again. `docs/architecture.md` keeps the component view and the sequence 
 ## Preview and check
 
 ```bash
-make docs-dev      # http://localhost:8000/resourcerer/ with live reload (creates website/.venv on first run)
+make docs-dev      # http://localhost:8000/resourcerer/ with live reload (creates a virtualenv on first run)
 make docs-build    # what CI runs: zensical build --strict, fails on broken links and other warnings
 make lint-docs     # pages in the nav, paths and make targets in backticks exist (MERMAID=1 renders the diagrams)
 ```
@@ -85,5 +85,5 @@ Check new pages in both themes (the toggle is in the header) and at a phone widt
   diagram styles.
 - `docs/assets/javascripts/diagrams.js`: Mermaid rendering with zoom; it hooks the theme's instant navigation through
   `document$`.
-- `website/requirements.txt`: the pinned Zensical version, updated by Dependabot. `website/.venv` and the built
-  `website/site` are not committed.
+- `website/requirements.txt`: the pinned Zensical version, updated by Dependabot. The virtualenv and the built site
+  the make targets create under website/ are ignored by Git.
