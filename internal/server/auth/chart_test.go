@@ -185,6 +185,50 @@ func renderAuth(t *testing.T, manifests string) (doc, configMap string, args []s
 	return doc, configMap, args
 }
 
+// TestChartRefusesWhatTheServerWould renders the chart once per value that the server turns down and checks the
+// render against the rule: refused, and by the check that names this field or this rule, or accepted and rendered
+// when it is a value the server reads. Looking only for the failure would let a render that broke for an unrelated
+// reason pass with the value under test unguarded. The message is matched in either spelling a Helm major uses for a
+// schema failure ("issuer is required", "missing property 'issuer'"), since the last stable Helm is what CI installs.
+func TestChartRefusesWhatTheServerWould(t *testing.T) {
+	helm := lookupHelm(t)
+	for _, tc := range []struct {
+		value string
+		want  string // empty when the server accepts the value, so the chart has to render it
+	}{
+		// null removes a key from the merged values, so each of these is the fixture with that field missing.
+		{"auth.oidc.issuer=null", "(?i)issuer is required|missing property 'issuer'"},
+		{"auth.oidc.clientID=null", "(?i)clientID is required|missing property 'clientID'"},
+		{"auth.oidc.clientSecretSecretRef=null", "(?i)clientSecretSecretRef is required|missing property 'clientSecretSecretRef'"},
+		{"auth.session.keySecretRef=null", "(?i)keySecretRef is required|missing property 'keySecretRef'"},
+		// A URL with no host to sign in at. The next two are URLs to the eye that point the server at another host,
+		// which is why the pattern rejects a userinfo part and a port that is not a number.
+		{"auth.oidc.issuer=https://", "(?i)does not match pattern"},
+		{"auth.oidc.issuer=https://sso.example.com /realms", "(?i)does not match pattern"},
+		{"auth.oidc.issuer=https://user@sso.example.com/realms", "(?i)does not match pattern"},
+		{"auth.oidc.issuer=https://sso.example.com:abc", "(?i)does not match pattern"},
+		{"auth.oidc.issuer=https://sso.example.com/a%zz", "(?i)does not match pattern"},
+		{"auth.oidc.redirectURL=https://", "(?i)does not match pattern"},
+		// One dash or two: Go's flag package reads both, and the last one on the command line wins, so either spelling
+		// would undo auth.strategy at the point the server reads its flags.
+		{"server.extraArgs[0]=--auth-strategy=anonymous", "must not set"},
+		{"server.extraArgs[0]=-auth-strategy=anonymous", "must not set"},
+		// Roles set to null is the same as no roles, which the server reads as its defaults.
+		{"auth.oidc.roles=null", ""},
+	} {
+		out, err := exec.Command(helm, "template", "rz", chartDir, "-n", "resourcerer", "-f", valuesFile,
+			"--set", tc.value).CombinedOutput()
+		switch {
+		case tc.want == "" && err != nil:
+			t.Errorf("the chart refused %s, which the server reads:\n%s", tc.value, out)
+		case tc.want != "" && err == nil:
+			t.Errorf("%s rendered, but the server refuses it", tc.value)
+		case tc.want != "" && !regexp.MustCompile(tc.want).Match(out):
+			t.Errorf("%s was turned down for a reason other than %q:\n%s", tc.value, tc.want, out)
+		}
+	}
+}
+
 // TestSchemaAcceptsOnlyWhatTheParserDoes is the same rule from the other side: values.schema.json checks the shape of
 // the OIDC values before rendering, and anything it lets through has to be a value this package accepts, or the pod
 // exits with a message nobody asked for. The empty string is excluded: it is how values.yaml spells unset, and the

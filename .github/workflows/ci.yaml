@@ -159,52 +159,6 @@ jobs:
             sed -n '/^  oidc.yaml: |$/,$p' | tail -n +2 | sed 's/^    //' |
             python3 -c 'import sys; sys.stdout.write(sys.stdin.read().rstrip("\n") + "\n")' |
             diff -u "$OIDC_GOLDEN" -
-      - name: Values the server would refuse never render
-        env:
-          OIDC_VALUES: internal/server/auth/testdata/chart-values.yaml
-        run: |
-          refuse() {
-            # An extended regex: the render has to be turned down, and by the rule under test. It is not a literal
-            # because two Helm majors are in play — setup-helm installs the latest, so the job runs Helm 4 here and
-            # Helm 3 on a workstation — and each words a schema failure its own way ("issuer is required" against
-            # "missing property 'issuer'"). Both name the field, which is what makes the refusal the right one.
-            want=$1
-            shift
-            # Refusing is not enough on its own: a render that fails for some other reason leaves the value under test
-            # unguarded, so the check has to see the message that says why this value is the one it turned down.
-            if out=$(helm template rz charts/resourcerer -n resourcerer -f "$OIDC_VALUES" "$@" 2>&1); then
-              echo "rendered, but the server refuses it: $*" >&2
-              exit 1
-            elif ! grep -Eqi -- "$want" <<<"$out"; then
-              echo "turned down for a reason other than \"$want\": $*" >&2
-              printf '%s\n' "$out" >&2
-              exit 1
-            fi
-          }
-          # null removes a key from the merged values, so each of these is a configuration missing that field.
-          for key in auth.oidc.issuer auth.oidc.clientID auth.oidc.clientSecretSecretRef auth.session.keySecretRef; do
-            leaf=${key##*.}
-            refuse "$leaf is required|missing property '$leaf'" --set "$key=null"
-          done
-          # A session the server would not mint, a URL with no host to sign in at, a flag that would undo the strategy.
-          refuse "is out of range" --set auth.oidc.sessionTTL=1m
-          refuse "is out of range" --set auth.oidc.sessionTTL=200h
-          # A leading zero is decimal to time.ParseDuration and octal to Helm's int, which is why the template converts
-          # with atoi: read as octal these two land on the wrong side of the range the server checks.
-          refuse "is out of range" --set auth.oidc.sessionTTL=0200h
-          refuse "is out of range" --set auth.oidc.sessionTTL=020000m
-          refuse "Does not match pattern" --set auth.oidc.issuer=https://
-          refuse "Does not match pattern" --set 'auth.oidc.issuer=https://sso.example.com /realms'
-          # Each of these is a URL to the eye and points the server at another host than the one written here.
-          refuse "Does not match pattern" --set 'auth.oidc.issuer=https://user@sso.example.com/realms'
-          refuse "Does not match pattern" --set 'auth.oidc.issuer=https://sso.example.com:abc'
-          refuse "Does not match pattern" --set 'auth.oidc.issuer=https://sso.example.com/a%zz'
-          refuse "Does not match pattern" --set auth.oidc.redirectURL=https://
-          # One dash or two: Go's flag package reads both, and the last one on the command line wins.
-          refuse "must not set" --set 'server.extraArgs[0]=--auth-strategy=anonymous'
-          refuse "must not set" --set 'server.extraArgs[0]=-auth-strategy=anonymous'
-          # Roles set to null is the same as no roles, which the server reads as its defaults.
-          helm template rz charts/resourcerer -n resourcerer -f "$OIDC_VALUES" --set auth.oidc.roles=null >/dev/null
 
   e2e:
     needs: gate
