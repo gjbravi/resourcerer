@@ -336,5 +336,9 @@ wait_for "the applier exports the apply counters" 60 metric '^resourcerer_apply_
 wait_for "the applier counts the holds by the rule that held them" 60 metric '^resourcerer_apply_deferred_total\{reason="window"\} [1-9]'
 wait_for "the applier counts the reverts" 60 metric '^resourcerer_apply_reverted_total\{reason="manual"\} [1-9]'
 wait_for "a policy exports the slots it has left" 60 metric '^resourcerer_applypolicy_slots_available\{policy="ClusterApplyPolicy/e2e-slots"\}'
+# An installation whose CRDs are missing or older than the binary keeps working and silently drops what it
+# writes. These are what an alert watches, and checking them also proves the CRDs installed here are current.
+wait_for "the applier reports the policy CRDs installed" 60 metric '^resourcerer_crd_current\{crd="clusterapplypolicies"\} 1'
+wait_for "the applier reports the Recommendation CRD keeps its decisions" 60 metric '^resourcerer_crd_current\{crd="recommendations"\} 1'
 
 echo "all e2e checks passed"

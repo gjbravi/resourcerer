@@ -202,12 +202,19 @@ before them sees the policies after its next restart, which is the release that 
 | `resourcerer_apply_deferred_total` | `reason` = `window`, `freeze`, `cooldown`, `concurrency`, `namespace`, `rate`, `spread`, `rollout`, `policy` | how much auto-deploy is being held, and why |
 | `resourcerer_apply_reverted_total` | `reason` = `manual` | how often an apply is undone; every revert in this version is one a person asked for |
 | `resourcerer_applypolicy_slots_available` | `policy` | how far a `maxConcurrent` policy is from its limit, like Karpenter's allowed disruptions |
+| `resourcerer_crd_current` | `crd` = `applypolicies`, `clusterapplypolicies`, `recommendations` | `0` when the CRD is missing or older than the binary: applies run ungated, or a decision never reaches the status |
 
 The applier serves them on `:8081`, as the controller does its own; the chart exposes both Services
 (`<release>-metrics` and `<release>-applier-metrics`) and scrapes them when `metrics.scrapeAnnotations` is on.
 
 Watch `resourcerer_apply_deferred_total` for the first hours of a policy in `Enforce`: a window that was meant to
 allow a nightly batch and a window that never opens look the same without it.
+
+Alert on `resourcerer_crd_current == 0`. It is the only sign of an installation that skipped the chart's CRDs: the
+binary keeps working, the API server accepts its writes, and what it wrote — the policies it reads, or the decision
+it records — is silently not there. A `recommendations` of `0` means the CRD kept an older schema than the binary,
+so every decision written to `status.applyPolicy` is pruned as an unknown field; the applier notices it once per
+process, logs the CRD it found behind, and keeps applying.
 
 ## Shipping policies with the release
 

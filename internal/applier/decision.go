@@ -2,12 +2,14 @@ package applier
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
 	"github.com/gjbravi/resourcerer/internal/policy"
@@ -23,7 +25,34 @@ func (r *Reconciler) recordPolicy(ctx context.Context, rec *v1alpha1.Recommendat
 	now := metav1.NewTime(r.Now())
 	patch := client.MergeFrom(rec.DeepCopy())
 	rec.Status.ApplyPolicy = &v1alpha1.ApplyPolicyStatus{Auto: res.Auto, Manual: res.Manual, EvaluatedAt: &now}
-	return r.Status().Patch(ctx, rec, patch)
+	if err := r.Status().Patch(ctx, rec, patch); err != nil {
+		return err
+	}
+	r.verifyPolicyRecorded(ctx, rec)
+	return nil
+}
+
+// verifyPolicyRecorded checks once per process that the API server keeps the decision written above. An
+// installation whose Recommendation CRD predates this binary prunes unknown status fields without an error: the
+// apply stays held, the status says nothing about why, and the server answers the click with a plain apply.
+func (r *Reconciler) verifyPolicyRecorded(ctx context.Context, rec *v1alpha1.Recommendation) {
+	if r.verifiedPolicy.Load() {
+		return
+	}
+	var written v1alpha1.Recommendation
+	if err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(rec), &written); err != nil {
+		// The next written decision tries again: a read that failed says nothing about the CRD.
+		return
+	}
+	r.verifiedPolicy.Store(true)
+	if written.Status.ApplyPolicy != nil {
+		setCRDCurrent("recommendations", true)
+		return
+	}
+	setCRDCurrent("recommendations", false)
+	log.FromContext(ctx).Error(errors.New("status.applyPolicy did not survive the write"),
+		"the Recommendation CRD is older than this binary, so apply decisions never reach the status: apply charts/resourcerer/crds",
+		"crd", "recommendations")
 }
 
 // policyRefused is the decision when the rules could not be read: everything is held, and the reason says

@@ -25,13 +25,28 @@ var (
 		Name: "resourcerer_applypolicy_slots_available",
 		Help: "Applies a policy's maxConcurrent still allows among the workloads it selects.",
 	}, []string{"policy"})
+	// An installation that skipped the chart's CRDs, or kept an older one, accepts writes and drops what it does
+	// not know: policies are not read at all, or a decision never reaches the status. Neither logs an error on its
+	// own, so this is the one signal an alert can be built on.
+	crdCurrentGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "resourcerer_crd_current",
+		Help: "1 when the CRD is installed and keeps the fields this binary writes to it, 0 when it is missing or older than the binary.",
+	}, []string{"crd"})
 )
 
 func init() {
-	metrics.Registry.MustRegister(applyCounter, deferredCounter, revertedCounter, slotsGauge)
+	metrics.Registry.MustRegister(applyCounter, deferredCounter, revertedCounter, slotsGauge, crdCurrentGauge)
 }
 
 func countApply(result string) { applyCounter.WithLabelValues(result).Inc() }
+
+func setCRDCurrent(crd string, current bool) {
+	if current {
+		crdCurrentGauge.WithLabelValues(crd).Set(1)
+		return
+	}
+	crdCurrentGauge.WithLabelValues(crd).Set(0)
+}
 
 // deferApply counts a held apply under the short reason a metric reader filters by, rather than the spec
 // field path the status carries.

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -364,17 +365,55 @@ func TestARecreatedRecommendationIsAppliedAgain(t *testing.T) {
 
 // An installation that upgrades before the chart's CRDs are applied must not watch a kind that does not exist:
 // the informer never syncs and the applier stops reconciling while looking healthy.
-func TestPoliciesInstalled(t *testing.T) {
+func TestCRDInstalled(t *testing.T) {
 	mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{v1alpha1.GroupVersion})
-	if policiesInstalled(mapper) {
-		t.Fatal("neither policy kind is mapped, so neither can be watched")
+	for _, kind := range []string{"ClusterApplyPolicy", "ApplyPolicy"} {
+		if crdInstalled(mapper, kind) {
+			t.Fatalf("%s is mapped, and nothing was mapped", kind)
+		}
 	}
 	mapper.Add(v1alpha1.GroupVersion.WithKind("ClusterApplyPolicy"), meta.RESTScopeRoot)
-	if policiesInstalled(mapper) {
-		t.Fatal("a mapping for one kind is not both of them")
+	if !crdInstalled(mapper, "ClusterApplyPolicy") {
+		t.Fatal("a mapped kind is not seen as installed")
 	}
-	mapper.Add(v1alpha1.GroupVersion.WithKind("ApplyPolicy"), meta.RESTScopeNamespace)
-	if !policiesInstalled(mapper) {
-		t.Fatal("both kinds are mapped")
+	if crdInstalled(mapper, "ApplyPolicy") {
+		t.Fatal("an unmapped kind is seen as installed")
+	}
+}
+
+// An installation whose Recommendation CRD is older than the binary takes the write and drops the field: the
+// decision never reaches the status, and from this side that is indistinguishable from success.
+func TestADiscardedDecisionIsReported(t *testing.T) {
+	setCRDCurrent("recommendations", true)
+	patched := false
+	funcs := interceptor.Funcs{
+		SubResourcePatch: func(ctx context.Context, c client.Client, sub string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+			err := c.SubResource(sub).Patch(ctx, obj, patch, opts...)
+			if err == nil && sub == "status" {
+				patched = true
+			}
+			return err
+		},
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			err := c.Get(ctx, key, obj, opts...)
+			if rec, isRec := obj.(*v1alpha1.Recommendation); err == nil && isRec && patched {
+				rec.Status.ApplyPolicy = nil // what an API server that does not know the field answers
+			}
+			return err
+		},
+	}
+	f := newFixtureWith(t, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC), funcs)
+	f.reconcile(t) // a CRD behind the binary does not stop the apply itself
+	if got := testutil.ToFloat64(crdCurrentGauge.WithLabelValues("recommendations")); got != 0 {
+		t.Fatalf("crd current = %v, want 0 for a CRD that drops the field", got)
+	}
+}
+
+func TestARecordedDecisionIsReported(t *testing.T) {
+	setCRDCurrent("recommendations", false)
+	f := newFixture(t, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+	f.reconcile(t)
+	if got := testutil.ToFloat64(crdCurrentGauge.WithLabelValues("recommendations")); got != 1 {
+		t.Fatalf("crd current = %v, want 1 for a CRD that keeps the field", got)
 	}
 }

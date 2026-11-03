@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -50,6 +51,10 @@ type Reconciler struct {
 	// applying remembers the applies whose rollout has not finished, which a rate limit counts. The
 	// applier is leader-elected, so one process sees every apply it starts.
 	applying map[types.NamespacedName]time.Time
+	// verifiedPolicy is set once the API server has been seen keeping a written decision: an older
+	// Recommendation CRD takes the write and discards the field, which is indistinguishable from success
+	// from this side.
+	verifiedPolicy atomic.Bool
 }
 
 func (r *Reconciler) seen(key, id string) bool {
@@ -70,8 +75,12 @@ func (r *Reconciler) remember(key, id string) {
 func Setup(mgr ctrl.Manager) error {
 	r := &Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("resourcerer-applier"),
 		Now: time.Now, applying: map[types.NamespacedName]time.Time{}}
+	mapper := mgr.GetRESTMapper()
+	caps, aps := crdInstalled(mapper, "ClusterApplyPolicy"), crdInstalled(mapper, "ApplyPolicy")
+	setCRDCurrent("clusterapplypolicies", caps)
+	setCRDCurrent("applypolicies", aps)
 	b := ctrl.NewControllerManagedBy(mgr).Named("applier").For(&v1alpha1.Recommendation{})
-	if policiesInstalled(mgr.GetRESTMapper()) {
+	if caps && aps {
 		// A policy change has to reach the workloads it governs at once: a freeze or a narrower window is
 		// often written because something is about to happen.
 		b = b.Watches(&v1alpha1.ClusterApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.everyWorkload)).
@@ -90,16 +99,12 @@ func Setup(mgr ctrl.Manager) error {
 	return mgr.Add(&policyReporter{Reconciler: r})
 }
 
-// policiesInstalled reports whether the apply policy kinds can be watched, which is what an upgrade that skipped
+// crdInstalled reports whether the API server serves a kind this binary depends on, which an upgrade that skipped
 // the chart's CRDs does not have.
-func policiesInstalled(mapper meta.RESTMapper) bool {
-	for _, kind := range []string{"ClusterApplyPolicy", "ApplyPolicy"} {
-		gvk := v1alpha1.GroupVersion.WithKind(kind)
-		if _, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version); err != nil {
-			return false
-		}
-	}
-	return true
+func crdInstalled(mapper meta.RESTMapper, kind string) bool {
+	gvk := v1alpha1.GroupVersion.WithKind(kind)
+	_, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	return err == nil
 }
 
 // everyWorkload enqueues every Recommendation, for a change to a cluster-scoped policy.
