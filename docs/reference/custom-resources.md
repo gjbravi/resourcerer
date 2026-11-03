@@ -4,7 +4,7 @@ description: The fields of Recommendation, ApplyPolicy and ClusterApplyPolicy (r
 ---
 
 All three are in the API group `resourcerer.io`, version `v1alpha1`. The Go types, with every field documented, are in
-[`api/v1alpha1`](../../api/v1alpha1/recommendation_types.go).
+[`api/v1alpha1`](https://github.com/gjbravi/resourcerer/blob/main/api/v1alpha1/recommendation_types.go).
 
 ## Recommendation
 

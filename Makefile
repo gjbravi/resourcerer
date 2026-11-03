@@ -74,12 +74,19 @@ web-dev: ## Run the UI dev server with /api proxied to :8080
 ##@ Documentation site
 
 .PHONY: docs-dev
-docs-dev: ## Serve the documentation site with live reload on :4321
-	cd website && npm ci --no-audit --no-fund && npm run dev
+DOCS_PY := website/.venv/bin
+
+$(DOCS_PY)/zensical: website/requirements.txt
+	python3 -m venv website/.venv
+	$(DOCS_PY)/pip install --quiet --disable-pip-version-check -r website/requirements.txt
+	touch $@
+
+docs-dev: $(DOCS_PY)/zensical ## Serve the documentation site with live reload on :8000
+	$(DOCS_PY)/zensical serve
 
 .PHONY: docs-build
-docs-build: ## Build the documentation site into website/dist; fails on broken links
-	cd website && npm ci --no-audit --no-fund && npm run build
+docs-build: $(DOCS_PY)/zensical ## Build the documentation site into website/site; fails on broken links and warnings
+	$(DOCS_PY)/zensical build --strict --clean
 
 ##@ Container image
 

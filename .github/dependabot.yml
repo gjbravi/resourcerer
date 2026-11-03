@@ -20,7 +20,7 @@ updates:
       # typescript-eslint and the tooling do not support TypeScript 7 yet.
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
-  - package-ecosystem: npm
+  - package-ecosystem: pip
     directory: /website
     schedule:
       interval: weekly

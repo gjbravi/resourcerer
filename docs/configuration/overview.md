@@ -58,11 +58,11 @@ A change at any level regenerates the affected recommendations within seconds. A
 warning on the workload page and in `status.warnings`, and the previous level wins, so a typo never breaks a
 recommendation.
 
-:::tip[GitOps]
-Settings are plain annotations, so they belong in Git with the manifests. If you also change them from the UI, tell
-your GitOps tool to ignore `resourcerer.io/*` annotations, or the next sync puts the Git value back. See
-[GitOps](../guides/gitops.md).
-:::
+!!! tip "GitOps"
+    Settings are plain annotations, so they belong in Git with the manifests. If you also change them from the UI, tell
+    your GitOps tool to ignore `resourcerer.io/*` annotations, or the next sync puts the Git value back. See
+    [GitOps](../guides/gitops.md).
+
 
 ## The five settings to decide first
 

@@ -36,4 +36,4 @@ node allocation and declared reliability signals.
 make kind-down
 ```
 
-To work on resourcerer itself, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+To work on resourcerer itself, see [CONTRIBUTING.md](https://github.com/gjbravi/resourcerer/blob/main/CONTRIBUTING.md).

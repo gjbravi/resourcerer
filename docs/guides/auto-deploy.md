@@ -34,35 +34,35 @@ It is recorded as an apply by `auto-deploy` in the history and the events, and c
 3. **Add a policy before anything is automatic.** A window in working hours, one rollout at a time per namespace, a
    cooldown. In `Audit` mode first, to see what it would hold:
 
-   ```yaml
-   applyPolicies:
-     cluster:
-       - name: business-hours
-         spec:
-           mode: Audit
-           appliesTo: [Auto]
-           windows:
-             - { days: [Mon, Tue, Wed, Thu], from: "09:00", to: "16:00", timeZone: Europe/Lisbon }
-           rate:
-             maxConcurrent: 2
-             perNamespace: { maxConcurrent: 1 }
-             cooldown: 24h
-             spread: 30m
-   ```
+    ```yaml
+    applyPolicies:
+      cluster:
+        - name: business-hours
+          spec:
+            mode: Audit
+            appliesTo: [Auto]
+            windows:
+              - { days: [Mon, Tue, Wed, Thu], from: "09:00", to: "16:00", timeZone: Europe/Lisbon }
+            rate:
+              maxConcurrent: 2
+              perNamespace: { maxConcurrent: 1 }
+              cooldown: 24h
+              spread: 30m
+    ```
 
 4. **Enable a first namespace.** Development or staging:
 
-   ```bash
-   kubectl annotate namespace staging resourcerer.io/auto-deploy=Enabled
-   ```
+    ```bash
+    kubectl annotate namespace staging resourcerer.io/auto-deploy=Enabled
+    ```
 
 5. **Enforce the policy** (`mode: Enforce`, or remove `mode`) once its `wouldBlock` records look right.
 6. **Extend namespace by namespace**, leaving out the workloads that should stay manual:
 
-   ```bash
-   kubectl annotate namespace payments resourcerer.io/auto-deploy=Enabled
-   kubectl -n payments annotate deployment ledger resourcerer.io/auto-deploy=Disabled
-   ```
+    ```bash
+    kubectl annotate namespace payments resourcerer.io/auto-deploy=Enabled
+    kubectl -n payments annotate deployment ledger resourcerer.io/auto-deploy=Disabled
+    ```
 
 Or the other way around once you trust it: `auto-deploy: Enabled` in the chart's `defaults`, and `Disabled` on the
 namespaces that opt out.

@@ -4,7 +4,7 @@ description: Every value of the resourcerer chart, with its default.
 ---
 
 The chart's `values.schema.json` rejects unknown keys. The source of truth, with comments, is
-[`charts/resourcerer/values.yaml`](../../charts/resourcerer/values.yaml).
+[`charts/resourcerer/values.yaml`](https://github.com/gjbravi/resourcerer/blob/main/charts/resourcerer/values.yaml).
 
 ## General
 

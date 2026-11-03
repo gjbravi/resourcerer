@@ -161,13 +161,13 @@ Pure functions over usage series, so every rule is tested with synthetic data.
 - **Usage** is the busiest pod per container at each step: the pod that would be throttled or OOM-killed first.
 - **Requests** are a percentile of that usage plus a margin, per optimization goal:
 
-  | Goal | CPU | Memory |
-  |---|---|---|
-  | Savings | p85 + 5% | p99 + 10% |
-  | Balanced | p95 + 10% | max + 15% |
-  | Reliability | p99 + 20% | max + 30% |
+    | Goal | CPU | Memory |
+    |---|---|---|
+    | Savings | p85 + 5% | p99 + 10% |
+    | Balanced | p95 + 10% | max + 15% |
+    | Reliability | p99 + 20% | max + 30% |
 
-  then raised to the minimum (`cpu.requests.min`, `memory.requests.min`) and rounded.
+    then raised to the minimum (`cpu.requests.min`, `memory.requests.min`) and rounded.
 - **OOM kills** cap the observed memory at the old limit, so the memory recommendation is raised to at least 1.2×
   that limit.
 - **Limits** follow the limits policy: keep them (`RequestsOnly`), raise them only if the request would pass them
@@ -194,7 +194,7 @@ stateDiagram-v2
     Error --> Ready: next run succeeds
 ```
 
-  Only `Ready` and `Learning` recommendations can be applied by hand; auto-deploy needs `Ready`.
+    Only `Ready` and `Learning` recommendations can be applied by hand; auto-deploy needs `Ready`.
 - **Pending changes**: the recommendation counts as pending when a request moves by more than
   `auto-deploy.threshold` (and a minimum absolute amount), so tiny drifts do not trigger rollouts.
 

@@ -11,26 +11,26 @@ description: Upgrade the chart and its CRDs, and remove resourcerer cleanly.
 2. **Apply the CRDs first.** Helm installs the CRDs in the chart's `crds/` directory on the first install only and never
    upgrades them:
 
-   ```bash
-   helm pull oci://ghcr.io/gjbravi/charts/resourcerer --version <version> --untar
-   kubectl apply --server-side -f resourcerer/crds
-   ```
+    ```bash
+    helm pull oci://ghcr.io/gjbravi/charts/resourcerer --version <version> --untar
+    kubectl apply --server-side -f resourcerer/crds
+    ```
 
 3. Upgrade the release with the same values file:
 
-   ```bash
-   helm upgrade resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> \
-     --namespace resourcerer -f resourcerer-values.yaml
-   ```
+    ```bash
+    helm upgrade resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> \
+      --namespace resourcerer -f resourcerer-values.yaml
+    ```
 
 Recommendations survive an upgrade: they are custom resources, and the new controller regenerates them on their next
 slot. Applied values are on the workloads themselves and are not touched.
 
-:::caution[CRDs left behind]
-A release upgraded without its CRDs keeps working, but the features that need the new fields do not. For apply
-policies, the applier logs that their CRDs are missing and **runs ungated**, applying as if no policy existed, rather
-than refusing every apply.
-:::
+!!! warning "CRDs left behind"
+    A release upgraded without its CRDs keeps working, but the features that need the new fields do not. For apply
+    policies, the applier logs that their CRDs are missing and **runs ungated**, applying as if no policy existed, rather
+    than refusing every apply.
+
 
 ### With Argo CD or Flux
 
@@ -51,9 +51,9 @@ What stays:
 - **The CRDs and every `Recommendation`, `ApplyPolicy` and `ClusterApplyPolicy`.** Helm never deletes CRDs. Remove them
   when you are sure, which deletes every object of those kinds:
 
-  ```bash
-  kubectl delete crd recommendations.resourcerer.io applypolicies.resourcerer.io clusterapplypolicies.resourcerer.io
-  ```
+    ```bash
+    kubectl delete crd recommendations.resourcerer.io applypolicies.resourcerer.io clusterapplypolicies.resourcerer.io
+    ```
 
 - **Annotations** `resourcerer.io/*` on namespaces and workloads, and the `resourcerer.io/enabled` labels. They do
   nothing without resourcerer; remove them with `kubectl annotate ... resourcerer.io/<key>-` if you want a clean slate.

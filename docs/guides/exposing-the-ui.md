@@ -3,11 +3,11 @@ title: Exposing the UI
 description: Reach the UI with a port-forward, or expose it to your team behind an authenticating proxy.
 ---
 
-:::danger[No login yet]
-Authentication is `anonymous` for now: anyone who reaches the UI or the API can apply, revert and change settings,
-with the server's permissions. Never expose the Service without an authenticating proxy in front, and consider
-`readOnly: true` for a wide audience.
-:::
+!!! danger "No login yet"
+    Authentication is `anonymous` for now: anyone who reaches the UI or the API can apply, revert and change settings,
+    with the server's permissions. Never expose the Service without an authenticating proxy in front, and consider
+    `readOnly: true` for a wide audience.
+
 
 ## Port-forward
 

@@ -1,13 +1,13 @@
 name: Docs
 
-# Builds the documentation site (website/, pages in docs/) on every change to it, and publishes it to GitHub Pages
-# from main.
+# Builds the documentation site (Zensical: mkdocs.yml, pages in docs/, tooling in website/) on every change to it,
+# and publishes it to GitHub Pages from main.
 on:
   pull_request:
-    paths: ["docs/**", "website/**", ".github/workflows/docs.yaml"]
+    paths: ["docs/**", "website/**", "mkdocs.yml", ".github/workflows/docs.yaml"]
   push:
     branches: [main]
-    paths: ["docs/**", "website/**", ".github/workflows/docs.yaml"]
+    paths: ["docs/**", "website/**", "mkdocs.yml", ".github/workflows/docs.yaml"]
   workflow_dispatch:
 
 permissions:
@@ -22,19 +22,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
-          # "Last updated" on each page comes from the Git history.
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: website/package-lock.json
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: website/requirements.txt
       - run: make docs-build
       - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
         with:
-          path: website/dist
+          path: website/site
 
   deploy:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
