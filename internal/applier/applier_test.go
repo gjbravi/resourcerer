@@ -9,9 +9,11 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -357,5 +359,22 @@ func TestARecreatedRecommendationIsAppliedAgain(t *testing.T) {
 	st := f.status(t)
 	if len(st.History) == 0 || st.History[0].By != AutoDeployUser {
 		t.Fatalf("the recreated Recommendation should be applied: %+v", st.History)
+	}
+}
+
+// An installation that upgrades before the chart's CRDs are applied must not watch a kind that does not exist:
+// the informer never syncs and the applier stops reconciling while looking healthy.
+func TestPoliciesInstalled(t *testing.T) {
+	mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{v1alpha1.GroupVersion})
+	if policiesInstalled(mapper) {
+		t.Fatal("neither policy kind is mapped, so neither can be watched")
+	}
+	mapper.Add(v1alpha1.GroupVersion.WithKind("ClusterApplyPolicy"), meta.RESTScopeRoot)
+	if policiesInstalled(mapper) {
+		t.Fatal("a mapping for one kind is not both of them")
+	}
+	mapper.Add(v1alpha1.GroupVersion.WithKind("ApplyPolicy"), meta.RESTScopeNamespace)
+	if !policiesInstalled(mapper) {
+		t.Fatal("both kinds are mapped")
 	}
 }

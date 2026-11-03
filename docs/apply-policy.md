@@ -189,7 +189,10 @@ the applier tries again every minute.
 
 A policy that **cannot be read from the API server at all** (RBAC, an API outage) holds the same way. The one
 exception is the CRDs being missing: an installation upgraded without applying `charts/resourcerer/crds` runs
-ungated and says so in the log, rather than refusing every apply.
+ungated and says so in the log, rather than refusing every apply. It has to: a controller that watched a kind the
+API server does not have would never sync its informers, so it would look healthy while every apply stopped. Apply
+the CRDs with the release (`kubectl apply --server-side -f charts/resourcerer/crds`); an applier that started
+before them sees the policies after its next restart, which is the release that installs them.
 
 ## Metrics
 

@@ -14,6 +14,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
@@ -69,15 +70,36 @@ func (r *Reconciler) remember(key, id string) {
 func Setup(mgr ctrl.Manager) error {
 	r := &Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("resourcerer-applier"),
 		Now: time.Now, applying: map[types.NamespacedName]time.Time{}}
-	if err := ctrl.NewControllerManagedBy(mgr).Named("applier").For(&v1alpha1.Recommendation{}).
+	b := ctrl.NewControllerManagedBy(mgr).Named("applier").For(&v1alpha1.Recommendation{})
+	if policiesInstalled(mgr.GetRESTMapper()) {
 		// A policy change has to reach the workloads it governs at once: a freeze or a narrower window is
 		// often written because something is about to happen.
-		Watches(&v1alpha1.ClusterApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.everyWorkload)).
-		Watches(&v1alpha1.ApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.namespaceWorkloads)).
-		Complete(r); err != nil {
+		b = b.Watches(&v1alpha1.ClusterApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.everyWorkload)).
+			Watches(&v1alpha1.ApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.namespaceWorkloads))
+	} else {
+		// An installation upgraded before `charts/resourcerer/crds` was applied. Watching a kind the API server
+		// does not have keeps the informer from ever syncing, and then nothing reconciles at all: the applier
+		// would look healthy while every apply stops. It runs ungated instead, and a policy written after the
+		// CRDs land is seen on the next restart, which is the release that installs them.
+		log.Log.WithName("setup").Info("the apply policy CRDs are not installed: applies are not gated by any policy",
+			"crds", "charts/resourcerer/crds")
+	}
+	if err := b.Complete(r); err != nil {
 		return err
 	}
 	return mgr.Add(&policyReporter{Reconciler: r})
+}
+
+// policiesInstalled reports whether the apply policy kinds can be watched, which is what an upgrade that skipped
+// the chart's CRDs does not have.
+func policiesInstalled(mapper meta.RESTMapper) bool {
+	for _, kind := range []string{"ClusterApplyPolicy", "ApplyPolicy"} {
+		gvk := v1alpha1.GroupVersion.WithKind(kind)
+		if _, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // everyWorkload enqueues every Recommendation, for a change to a cluster-scoped policy.
