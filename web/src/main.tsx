@@ -32,7 +32,7 @@ function App() {
   // The session is the one call the server answers without a signed-in caller, so it comes first and everything else
   // waits for it: asking as nobody would answer every request with 401.
   const session = useSession();
-  const boot = bootState(session, readSignRecord());
+  const boot = bootState(session, readSignRecord(), window.location.search);
   const me = session.data?.authenticated ? session.data : undefined;
   const asks = boot.view === "app";
   const info = useInfo(asks);
@@ -60,6 +60,7 @@ function App() {
       </div>
     );
   else if (boot.view === "signing-in") body = <div className="rz-loading">Signing in…</div>;
+  else if (boot.view === "signed-out") body = <SignedOut />;
   else if (boot.view === "cookie-dropped") body = <CookieDropped />;
   else if (boot.view === "no-access") body = <NoAccess me={boot.me} />;
   else if (parts[0] === "w" && parts.length >= 4) {
@@ -221,6 +222,33 @@ function NoAccess({ me }: { me: Me }) {
 }
 
 /**
+ * Sign-out ended this browser's session and left it on the address that says so. Nothing happens here on its own: the
+ * provider still has a session of its own, so the round trip the SPA would otherwise make ends with the user signed
+ * back in and the screen that told them otherwise gone.
+ */
+function SignedOut() {
+  return (
+    <div className="rz-page">
+      <section className="rz-card">
+        <div className="rz-cardhd">
+          <div>
+            <h2>Signed out</h2>
+            <p className="rz-dim rz-xs">
+              This browser holds no resourcerer session any more. The identity provider was not told: its own session
+              stays open until it expires or you sign out there, so the next person at this machine is one click from
+              your access, and signing in again here will not ask for a password.
+            </p>
+          </div>
+        </div>
+        <a className="rz-btn" href="/auth/login">
+          Sign in again
+        </a>
+      </section>
+    </div>
+  );
+}
+
+/**
  * The provider signed the browser in and it came back with no session cookie, so the SPA stopped sending it there.
  * Only the browser or the install's configuration can fix that, so this names them instead of looping.
  */
@@ -232,10 +260,12 @@ function CookieDropped() {
           <div>
             <h2>The session cookie was not kept</h2>
             <p className="rz-dim rz-xs">
-              You signed in, but the browser carried no session cookie back to resourcerer, so it stopped asking the
-              provider again rather than loop through it. Allow cookies for this site, and check{" "}
-              <code>auth.cookieSecure</code>: a <code>Secure</code> cookie needs TLS, so it has to be <code>false</code>{" "}
-              when the install is reached over plain HTTP.
+              The provider signed you in, but the cookie coming back held no session resourcerer could read, so it
+              stopped asking the provider rather than loop through it. A session is sealed with the key at{" "}
+              <code>auth.session.keySecretRef</code> and names the issuer and client it was minted for, so a cookie
+              written before either changed, one from another install, or one a proxy stripped on the way here all read
+              the same way. Check that the server's replicas all mount the same session key, and that nothing between
+              the browser and the server drops cookies.
             </p>
           </div>
         </div>

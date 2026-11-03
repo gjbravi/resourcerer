@@ -288,9 +288,14 @@ func (p *OIDC) exchange(r *http.Request, cfg Config, code string, st loginState)
 		Expires: p.now().Add(cfg.TTL()).Unix()}, nil
 }
 
+// signedOutPath is where signing out leaves the browser. The marker in the query is what the UI reads to show a
+// signed-out screen instead of asking the provider to sign the user straight back in: "/" would bounce into a new
+// sign-in, which is the opposite of what was asked for.
+const signedOutPath = "/?signed-out"
+
 func (p *OIDC) logout(w http.ResponseWriter, r *http.Request) {
 	p.setCookie(w, r, SessionCookie, "", -1)
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, signedOutPath, http.StatusFound)
 }
 
 // client discovers the issuer once and builds the OAuth2 client. A failed discovery is retried only after

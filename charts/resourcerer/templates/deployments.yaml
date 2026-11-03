@@ -8,11 +8,11 @@
       anonymous install renders neither, so its pod spec is the one every existing install already runs. */ -}}
 {{- $serverArgs := list "--http-bind-address=:8080" "--metrics-bind-address=0" }}
 {{- $serverEnv := list }}
-{{- /* Go's flag package keeps the last occurrence, so an --auth-* flag in extraArgs would win over the ones the
-      chart adds below and silently change how the server authenticates — while the ConfigMap, the environment and
-      the install notes would still describe the configured strategy. */ -}}
+{{- /* Go's flag package keeps the last occurrence and accepts one or two dashes, so an --auth-* or -auth-* flag in
+      extraArgs would win over the ones the chart adds below and silently change how the server authenticates — while
+      the ConfigMap, the environment and the install notes would still describe the configured strategy. */ -}}
 {{- range $arg := .Values.server.extraArgs | default list }}
-{{-   if hasPrefix "--auth-" $arg }}
+{{-   if regexMatch "^--?auth-" $arg }}
 {{-     fail (printf "server.extraArgs must not set %s: the chart passes the authentication flags from auth.*, and a later duplicate on the command line would win. Set auth.strategy instead." $arg) }}
 {{-   end }}
 {{- end }}

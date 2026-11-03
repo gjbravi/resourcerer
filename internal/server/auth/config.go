@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,12 +106,23 @@ func (c *Config) complete() error {
 	return nil
 }
 
-// httpURL accepts what the chart's values schema accepts: an http(s) URL whose authority is a real host, so a value
-// that renders never turns into a server that refuses to start.
+// httpURL accepts what the chart's values schema accepts, and refuses a little more: an http(s) URL whose authority is
+// a real host, carrying neither credentials nor a character a browser would resolve somewhere else. The schema only
+// guards what the chart renders, while this also guards --auth-config-inline, which no schema ever looks at, so the
+// rule is that the schema admits nothing this refuses. url.Parse alone would not hold that line: it takes userinfo,
+// and it accepts a backslash or a control character in places where a browser reads a different address.
 func httpURL(field, raw string) error {
+	if strings.ContainsRune(raw, '\\') || hasControl(raw) {
+		return fmt.Errorf("%s must be an http(s) URL with a host: it contains a backslash or a control character", field)
+	}
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("%s must be an http(s) URL with a host", field)
+	}
+	// The client secret goes to the token endpoint in the request body, so credentials in the issuer would only ever
+	// be a way to point the server at a host someone else named.
+	if u.User != nil {
+		return fmt.Errorf("%s must be an http(s) URL with a host: it must not carry credentials", field)
 	}
 	return nil
 }

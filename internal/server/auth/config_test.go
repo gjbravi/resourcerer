@@ -52,6 +52,14 @@ func TestParseConfig(t *testing.T) {
 		"issuer not a URL":    "issuer: idp.example.com\nclientID: rz\n",
 		"issuer without host": "issuer: https://\nclientID: rz\n",
 		"issuer not http(s)":  "issuer: ssh://idp.example.com\nclientID: rz\n",
+		// url.Parse takes each of these and the http client then dials somewhere other than the address written here,
+		// so the parser refuses them and values.schema.json admits none of them either.
+		"issuer credentials":  "issuer: https://user@idp.example.com\nclientID: rz\n",
+		"issuer bad port":     "issuer: https://idp.example.com:abc\nclientID: rz\n",
+		"issuer bad escape":   "issuer: https://idp.example.com/a%zz\nclientID: rz\n",
+		"issuer unclosed":     "issuer: \"https://[::1\"\nclientID: rz\n",
+		"issuer backslash":    "issuer: \"https://idp.example.com\\\\realms\"\nclientID: rz\n",
+		"issuer control char": "issuer: \"https://idp.example.com/a\\tb\"\nclientID: rz\n",
 		"no client":           "issuer: https://idp.example.com\n",
 		"no openid scope":     "issuer: https://idp.example.com\nclientID: rz\nscopes: [profile]\n",
 		"bad ttl":             "issuer: https://idp.example.com\nclientID: rz\nsessionTTL: forever\n",
@@ -70,11 +78,15 @@ func TestParseConfig(t *testing.T) {
 	}
 
 	for name, data := range map[string]string{
-		"issuer with a port":   "issuer: https://idp.example.com:8443\nclientID: rz\n",
-		"issuer trailing path": "issuer: https://idp.example.com/realms/example\nclientID: rz\n",
-		"plain http":           "issuer: http://localhost:8080/realms/x\nclientID: rz\n",
-		"redirect with port":   "issuer: https://idp.example.com\nclientID: rz\nredirectURL: http://localhost:8080/auth/callback\n",
-		"ttl boundaries":       "issuer: https://idp.example.com\nclientID: rz\nsessionTTL: 5m\nroles: {}\n",
+		"issuer with a port":    "issuer: https://idp.example.com:8443\nclientID: rz\n",
+		"issuer trailing path":  "issuer: https://idp.example.com/realms/example\nclientID: rz\n",
+		"issuer with an escape": "issuer: https://idp.example.com/realms%20platform\nclientID: rz\n",
+		"plain http":            "issuer: http://localhost:8080/realms/x\nclientID: rz\n",
+		"redirect with port":    "issuer: https://idp.example.com\nclientID: rz\nredirectURL: http://localhost:8080/auth/callback\n",
+		// A leading zero is decimal here, as it is in the chart: templates/auth-configmap.yaml converts with atoi so
+		// that its range check reads the number time.ParseDuration reads.
+		"ttl leading zero": "issuer: https://idp.example.com\nclientID: rz\nsessionTTL: 09m\n",
+		"ttl boundaries":   "issuer: https://idp.example.com\nclientID: rz\nsessionTTL: 5m\nroles: {}\n",
 	} {
 		if _, err := ParseConfig(data); err != nil {
 			t.Errorf("%s: %v", name, err)

@@ -122,7 +122,9 @@
             "oidc": {
               "required": ["issuer", "clientID", "clientSecretSecretRef"],
               "properties": {
-                "issuer": { "pattern": "^https?://[^/\\s?#]+([/?#][^\\s]*)?$" },
+                "issuer": {
+                  "pattern": "^https?://[A-Za-z0-9._-]+(?::[0-9]{1,5})?(?:[/?#](?:[^\\s\\\\%\\x00-\\x1f\\x7f]|%[0-9A-Fa-f]{2})*)?$"
+                },
                 "clientID": { "minLength": 1 },
                 "scopes": { "anyOf": [{ "maxItems": 0 }, { "contains": { "const": "openid" } }] },
                 "clientSecretSecretRef": { "$ref": "#/definitions/secretRef" }
@@ -187,9 +189,15 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "issuer": { "type": "string", "pattern": "^$|^https?://[^/\\s?#]+([/?#][^\\s]*)?$" },
+        "issuer": {
+          "type": "string",
+          "pattern": "^$|^https?://[A-Za-z0-9._-]+(?::[0-9]{1,5})?(?:[/?#](?:[^\\s\\\\%\\x00-\\x1f\\x7f]|%[0-9A-Fa-f]{2})*)?$"
+        },
         "clientID": { "type": "string" },
-        "redirectURL": { "type": "string", "pattern": "^$|^https?://[^/\\s?#]+([/?#][^\\s]*)?$" },
+        "redirectURL": {
+          "type": "string",
+          "pattern": "^$|^https?://[A-Za-z0-9._-]+(?::[0-9]{1,5})?(?:[/?#](?:[^\\s\\\\%\\x00-\\x1f\\x7f]|%[0-9A-Fa-f]{2})*)?$"
+        },
         "scopes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "usernameClaim": { "type": "string" },
         "groupsClaim": { "type": "string" },

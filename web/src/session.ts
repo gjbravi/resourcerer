@@ -91,10 +91,19 @@ export function signMove(now: number, record: SignRecord): "sign-in" | "wait" {
 }
 
 /**
+ * The marker sign-out leaves on the address the browser lands on. Sitting there with no session is a state the user
+ * asked for, so it is the one place an unauthenticated `/me` must not hand the browser to the provider: the provider
+ * has its own session and would sign the user straight back in.
+ */
+export const signedOutMarker = "signed-out";
+export const signedOut = (search: string) => new URLSearchParams(search).has(signedOutMarker);
+
+/**
  * Hand the browser to the provider, keeping the page it was on so the way back is the same page. An attempt inside
  * `loopWindow` is not repeated: the message on screen says what a second one would not fix.
  */
 export function sendToSignIn(page: Page = window.location, store: Store = signStore, now = Date.now()) {
+  if (signedOut(page.search)) return;
   const to = signInURL(page);
   if (!to) return;
   if (signMove(now, readSignRecord(store)) === "wait") {
@@ -107,12 +116,19 @@ export function sendToSignIn(page: Page = window.location, store: Store = signSt
 }
 
 /**
- * What the answer from `GET /api/v1/me` means for this tab: a session makes the sign-in record stale, and no session
+ * What the answer from `GET /api/v1/me` means for this tab: a session retires the sign-in record, and no session
  * starts the sign-in that the record may decide to hold back.
  */
 export function afterMe(session: Session, page: Page = window.location, store: Store = signStore, now = Date.now()) {
-  if (session.authenticated) clearSignRecord(store);
-  else sendToSignIn(page, store, now);
+  if (!session.authenticated) {
+    sendToSignIn(page, store, now);
+    return;
+  }
+  // An answer inside the window is not evidence that the last attempt worked: a session cookie the server refuses
+  // reads as signed in for one call and as a 401 on the next, and clearing the record here would start the round trip
+  // over with a clean slate every time. Retire it once the window has passed, which is a session that stayed.
+  const record = readSignRecord(store);
+  if (record.at === undefined || now - record.at >= loopWindow) clearSignRecord(store);
 }
 
 /** Whether the caller may change anything, and what to say where a control is disabled instead. */
@@ -138,6 +154,7 @@ export type Boot =
   | { view: "loading" }
   | { view: "error"; error: unknown }
   | { view: "signing-in" }
+  | { view: "signed-out" }
   | { view: "cookie-dropped" }
   | { view: "no-access"; me: Me }
   | { view: "app"; me: Me };
@@ -145,11 +162,19 @@ export type Boot =
 /**
  * The boot decision. An answer outranks an error: when `/me` fails after having answered once, the page stays up with
  * the error in the header, which is what an install did before there was a session to ask about. Only a `/me` that
- * never answered leaves the app with nothing to render, and that has to say so rather than load forever.
+ * never answered leaves the app with nothing to render, and that has to say so rather than load forever. Of the three
+ * ways to have no session, the one the user asked for comes first: `search` carries the marker sign-out left there.
  */
-export function bootState(session: { data: Session | undefined; error: unknown }, record: SignRecord = {}): Boot {
+export function bootState(
+  session: { data: Session | undefined; error: unknown },
+  record: SignRecord = {},
+  search = "",
+): Boot {
   const me = session.data;
   if (!me) return session.error ? { view: "error", error: session.error } : { view: "loading" };
-  if (!me.authenticated) return record.stopped === undefined ? { view: "signing-in" } : { view: "cookie-dropped" };
+  if (!me.authenticated) {
+    if (signedOut(search)) return { view: "signed-out" };
+    return record.stopped === undefined ? { view: "signing-in" } : { view: "cookie-dropped" };
+  }
   return me.role === "none" ? { view: "no-access", me } : { view: "app", me };
 }

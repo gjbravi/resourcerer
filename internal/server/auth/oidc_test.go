@@ -17,13 +17,17 @@ import (
 
 func TestSafeRedirect(t *testing.T) {
 	for in, want := range map[string]string{
-		"":                       "/",
-		"/":                      "/",
-		"/workloads/demo/api":    "/workloads/demo/api",
-		"/workloads/":            "/workloads/",
-		"/w?range=1d":            "/w?range=1d",
-		"/w#impact":              "/w#impact",
-		"/?x=//evil.com":         "/?x=//evil.com",
+		"":                    "/",
+		"/":                   "/",
+		"/workloads/demo/api": "/workloads/demo/api",
+		"/workloads/":         "/workloads/",
+		"/w?range=1d":         "/w?range=1d",
+		"/w#impact":           "/w#impact",
+		"/?x=//evil.com":      "/?x=//evil.com",
+		// The marker sign-out puts on the address the browser lands on has to survive here too, or signing in again
+		// from the signed-out screen would lose the user where they were.
+		"/?signed-out":           "/?signed-out",
+		"/w?range=1d&x=2":        "/w?range=1d&x=2",
 		"/a/../b":                "/b",
 		"https://evil.com":       "/",
 		"//evil.com":             "/",

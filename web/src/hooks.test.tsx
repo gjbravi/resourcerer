@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Me, Unauthenticated } from "./api";
 import { useSession } from "./hooks";
-import { readSignRecord } from "./session";
+import { loopWindow, readSignRecord } from "./session";
 
 const signedIn: Me = {
   authenticated: true,
@@ -30,9 +30,9 @@ function answer(body: unknown) {
   );
 }
 
-function location(pathname: string) {
+function location(pathname: string, search = "") {
   const assign = vi.fn();
-  vi.stubGlobal("location", { pathname, search: "", hash: "", assign });
+  vi.stubGlobal("location", { pathname, search, hash: "", assign });
   return assign;
 }
 
@@ -64,14 +64,35 @@ describe("useSession", () => {
     expect(assign).not.toHaveBeenCalled();
   });
 
-  it("keeps a signed-in caller where they are, and stops holding their next sign-in against the loop", async () => {
+  it("keeps a signed-in caller where they are, and stops holding a sign-in that aged out against the loop", async () => {
     const assign = location("/");
-    sessionStorage.setItem("resourcerer.sign-in", String(Date.now()));
+    sessionStorage.setItem("resourcerer.sign-in", String(Date.now() - loopWindow));
     answer(signedIn);
     const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.data?.authenticated).toBe(true));
     expect(assign).not.toHaveBeenCalled();
     expect(readSignRecord().at).toBeUndefined();
     expect(readSignRecord().stopped).toBeUndefined();
+  });
+
+  // A round trip that came back with a session and loses it a second later is the loop this breaker exists for, so
+  // the answer that arrived inside the window does not retire the attempt that made it.
+  it("holds on to an attempt that only just came back, even though `/me` says it worked", async () => {
+    const assign = location("/");
+    sessionStorage.setItem("resourcerer.sign-in", String(Date.now()));
+    answer(signedIn);
+    const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(true));
+    expect(assign).not.toHaveBeenCalled();
+    expect(readSignRecord().at).toBeTypeOf("number");
+  });
+
+  it("leaves the signed-out screen alone, which is where the sign-out link lands", async () => {
+    const assign = location("/", "?signed-out");
+    answer(nobody);
+    const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(false));
+    expect(assign).not.toHaveBeenCalled();
+    expect(readSignRecord()).toEqual({ at: undefined, stopped: undefined });
   });
 });

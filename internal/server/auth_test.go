@@ -384,8 +384,10 @@ func TestOIDCFlow(t *testing.T) {
 	}
 
 	w = call(t, h, http.MethodGet, "/auth/logout", "", sess)
-	if w.Code != http.StatusFound || cookie(w, auth.SessionCookie) != nil {
-		t.Errorf("logout = %d, cookies %v", w.Code, w.Result().Cookies())
+	// The session cookie goes and the browser lands on the signed-out screen: back at "/" it would be sent to the
+	// provider again and the user would never see that signing out worked.
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/?signed-out" || cookie(w, auth.SessionCookie) != nil {
+		t.Errorf("logout = %d, location %q, cookies %v", w.Code, w.Header().Get("Location"), w.Result().Cookies())
 	}
 }
 

@@ -214,14 +214,21 @@ func TestSchemaAcceptsOnlyWhatTheParserDoes(t *testing.T) {
 	}
 
 	// One direction, the one that hurts: whatever the schema wave through has to be a value the parser takes. The
-	// schema may be stricter, which only costs an install that has to reword a value.
+	// schema may be stricter, which only costs an install that has to reword a value. It is stricter in three known
+	// places: an IPv6 literal host, a host with a character outside the hostname alphabet, and a value with a space
+	// anywhere but a percent escape.
 	for _, value := range []string{
 		"https://sso.example.com/realms/example", "https://sso.example.com", "https://sso.example.com/",
 		"https://sso.example.com:8443/realms/example", "http://localhost:8080/realms/example",
-		"https://sso.example.com/auth/callback?x=1",
+		"https://sso.example.com/auth/callback?x=1", "https://sso.example.com/a%20b?r=%2Fx#frag",
 		// Rejected by the schema and by the parser alike: no host, whitespace, no scheme, a scheme that is not http.
 		"https://", "http://", "https://sso.example.com /realms", "https://sso.example.com/x y",
 		"sso.example.com", "//sso.example.com/realms", "ftp://sso.example.com/realms",
+		// And the shapes url.Parse alone let through, which the schema and httpURL now both refuse: credentials,
+		// a port that is not a number, an escape that is not one, a bracketed host with no bracket, a backslash.
+		"https://user@sso.example.com/realms", "https://user@", "https://sso.example.com:abc",
+		"https://sso.example.com/a%zz", "https://[::1", "https://sso.example.com\\realms",
+		"https://sso.example.com/a\tb", "http://sso.example.com:8080/realms\x01",
 	} {
 		for _, field := range []string{"issuer", "redirectURL"} {
 			if !patterns[field].MatchString(value) {
@@ -252,6 +259,87 @@ func TestSchemaAcceptsOnlyWhatTheParserDoes(t *testing.T) {
 		}
 		if _, err := ParseConfig("issuer: https://sso.example.com\nclientID: rz\nsessionTTL: " + value); err != nil {
 			t.Errorf("the schema accepts sessionTTL %q and the parser refuses it: %v", value, err)
+		}
+	}
+}
+
+// TestSessionTTLRangeIsTheSameOnBothSides renders the chart once per TTL and compares its verdict with the server's.
+// The chart's own range check is the only thing standing between a typo and a pod that exits at startup, and the two
+// sides convert the number differently: Helm's int reads a leading zero as octal, where time.ParseDuration reads
+// decimal, so "09m" was a refusal here and an acceptance there and "0200h" the other way round. The values all match
+// the schema's TTL pattern, so a refusal by the chart is the range check and not the shape check.
+func TestSessionTTLRangeIsTheSameOnBothSides(t *testing.T) {
+	helm := lookupHelm(t)
+	for _, ttl := range []string{
+		"5m", "05m", "09m", "30m", "10080m", "1h", "012h", "168h",
+		"0m", "1m", "01m", "4m", "10081m", "169h", "0200h", "020000m",
+	} {
+		rendered := exec.Command(helm, "template", "rz", chartDir, "-n", "resourcerer", "-f", valuesFile,
+			"--set", "auth.oidc.sessionTTL="+ttl).Run() == nil
+		_, err := ParseConfig("issuer: https://sso.example.com\nclientID: rz\nsessionTTL: " + ttl)
+		if rendered != (err == nil) {
+			t.Errorf("sessionTTL %s: the chart rendered it = %v, the server accepts it = %v (%v)",
+				ttl, rendered, err == nil, err)
+		}
+	}
+}
+
+// TestBothCopiesOfTheURLPatternAreOnePattern reads the URL pattern from both places the schema states it — the
+// definition every field uses, and the copy the strategy=oidc branch needs because there an unset issuer is not
+// allowed — and fails when they drift, since the branch is what validates a real install and the definition is what
+// the test above proves against the parser.
+func TestBothCopiesOfTheURLPatternAreOnePattern(t *testing.T) {
+	var schema struct {
+		Properties struct {
+			Auth struct {
+				OneOf []struct {
+					Properties struct {
+						OIDC struct {
+							Properties struct {
+								Issuer jsonPattern `json:"issuer"`
+							} `json:"properties"`
+						} `json:"oidc"`
+					} `json:"properties"`
+				} `json:"oneOf"`
+			} `json:"auth"`
+		} `json:"properties"`
+		Definitions struct {
+			OIDC struct {
+				Properties struct {
+					Issuer      jsonPattern `json:"issuer"`
+					RedirectURL jsonPattern `json:"redirectURL"`
+				} `json:"properties"`
+			} `json:"oidcConfig"`
+		} `json:"definitions"`
+	}
+	raw, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", schemaPath, err)
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	// The definition also admits the empty string, which is how values.yaml spells unset; the branch does not.
+	want := strings.TrimPrefix(schema.Definitions.OIDC.Properties.Issuer.Pattern, "^$|")
+	branch := ""
+	for _, one := range schema.Properties.Auth.OneOf {
+		if p := one.Properties.OIDC.Properties.Issuer.Pattern; p != "" {
+			if branch != "" {
+				t.Fatal("two strategy branches state an issuer pattern; this test reads one")
+			}
+			branch = p
+		}
+	}
+	if branch == "" {
+		t.Fatal("no strategy branch states an issuer pattern")
+	}
+	for name, got := range map[string]string{
+		"the strategy=oidc branch": branch,
+		"redirectURL":              schema.Definitions.OIDC.Properties.RedirectURL.Pattern,
+	} {
+		other := strings.TrimPrefix(got, "^$|")
+		if other != want {
+			t.Errorf("%s uses a different URL pattern than auth.oidc.issuer:\n%s\n%s", name, want, other)
 		}
 	}
 }

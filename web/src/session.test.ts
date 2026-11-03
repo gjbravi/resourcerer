@@ -10,6 +10,7 @@ import {
   readSignRecord,
   sendToSignIn,
   signInURL,
+  signedOut,
   signMove,
   writeLock,
   type Store,
@@ -121,6 +122,28 @@ describe("sendToSignIn", () => {
       vi.unstubAllGlobals();
     }
   });
+  // Sign-out leaves the browser on an address that says it asked for this, and an unauthenticated `/me` there is the
+  // point of the page rather than a reason to visit the provider again.
+  it("leaves the signed-out screen signed out", () => {
+    const s = store();
+    const { assign, page: p } = page("/", "?signed-out");
+    sendToSignIn(p, s, 1_000);
+    expect(assign).not.toHaveBeenCalled();
+    expect(readSignRecord(s)).toEqual({ at: undefined, stopped: undefined });
+  });
+});
+
+describe("signedOut", () => {
+  for (const [search, want] of [
+    ["?signed-out", true],
+    ["?signed-out=1", true],
+    ["?a=1&signed-out", true],
+    ["", false],
+    ["?x=signed-out", false],
+    ["?signedout", false],
+  ] as [string, boolean][]) {
+    it(`${search || "no query"}: ${want}`, () => expect(signedOut(search)).toBe(want));
+  }
 });
 
 /** What a browser with storage turned off for the site hands back: a SecurityError on every touch. */
@@ -187,14 +210,30 @@ describe("afterMe", () => {
     expect(second.assign).not.toHaveBeenCalled();
     expect(readSignRecord(s).stopped).toBe(2_000);
   });
-  it("drops the record when a session did come back, so a later sign-out is not held against it", () => {
+  it("holds the record when a session answers inside the window, so the 401 after it is the second attempt", () => {
     const s = store();
     afterMe(nobody, page("/").page, s, 1_000);
     afterMe(signedIn, page("/").page, s, 2_000);
+    expect(readSignRecord(s).at).toBe(1_000);
+    const bounce = page("/");
+    afterMe(nobody, bounce.page, s, 2_500);
+    expect(bounce.assign).not.toHaveBeenCalled();
+    expect(readSignRecord(s).stopped).toBe(2_500);
+  });
+  it("retires the record once the window has passed, so a session that stayed is not held against it", () => {
+    const s = store();
+    afterMe(nobody, page("/").page, s, 1_000);
+    afterMe(signedIn, page("/").page, s, 1_000 + loopWindow);
     expect(readSignRecord(s)).toEqual({ at: undefined, stopped: undefined });
     const again = page("/");
-    afterMe(nobody, again.page, s, 2_500);
+    afterMe(nobody, again.page, s, 1_000 + loopWindow + 1);
     expect(again.assign).toHaveBeenCalledTimes(1);
+  });
+  it("leaves the signed-out screen to the page that explains it", () => {
+    const s = store();
+    const { assign, page: p } = page("/", "?signed-out");
+    afterMe(nobody, p, s, 1_000);
+    expect(assign).not.toHaveBeenCalled();
   });
 });
 
@@ -203,7 +242,7 @@ describe("bootState", () => {
   const viewer = session({ authenticated: true, role: "viewer", strategy: "oidc", user: "vera", groups: [] });
   const noRole = session({ authenticated: true, role: "none", strategy: "oidc", user: "dana", groups: ["dev"] });
   const anonymous = session({ authenticated: true, role: "editor", strategy: "anonymous", user: "anonymous" });
-  const signedOut = session({ authenticated: false, strategy: "oidc" });
+  const noSession = session({ authenticated: false, strategy: "oidc" });
   const down = new Error("Failed to fetch");
 
   for (const [name, session_, record, view] of [
@@ -212,21 +251,40 @@ describe("bootState", () => {
     ["the answer is the anonymous editor", { data: anonymous, error: null }, {}, "app"],
     ["the answer is a viewer", { data: viewer, error: null }, {}, "app"],
     ["signed in without a role", { data: noRole, error: null }, {}, "no-access"],
-    ["nobody is signed in", { data: signedOut, error: null }, {}, "signing-in"],
+    ["nobody is signed in", { data: noSession, error: null }, {}, "signing-in"],
     [
       "nobody is signed in and the last attempt found no cookie",
-      { data: signedOut, error: null },
+      { data: noSession, error: null },
       { at: 9, stopped: 9 },
       "cookie-dropped",
     ],
     ["a session that outlived a stopped attempt", { data: editor, error: null }, { at: 9, stopped: 9 }, "app"],
-    // I3: without this row the page sits on "Loading…" forever, on every install including anonymous ones.
+    // Without this row the page sits on "Loading…" forever, on every install including anonymous ones.
     ["the only answer was an error", { data: undefined, error: down }, {}, "error"],
     ["an error after a good answer keeps the page", { data: editor, error: down }, {}, "app"],
-    ["an error while the browser is with the provider", { data: signedOut, error: down }, {}, "signing-in"],
+    ["an error while the browser is with the provider", { data: noSession, error: down }, {}, "signing-in"],
   ] as [string, { data: Session | undefined; error: unknown }, ReturnType<typeof readSignRecord>, string][]) {
     it(name, () => expect(bootState(session_, record)).toMatchObject({ view }));
   }
+
+  // The address sign-out leaves the browser on is the user's own answer to "who is signed in here", so it outranks
+  // both ways of explaining the missing session, and loses to a session that came back anyway.
+  it("shows the signed-out screen rather than signing straight back in", () => {
+    expect(bootState({ data: noSession, error: null }, {}, "?signed-out")).toEqual({ view: "signed-out" });
+  });
+  it("shows it even where the last attempt had found no cookie", () => {
+    expect(bootState({ data: noSession, error: null }, { at: 9, stopped: 9 }, "?signed-out")).toEqual({
+      view: "signed-out",
+    });
+  });
+  it("shows the app to a session that came back with the marker still in the address", () => {
+    expect(bootState({ data: editor, error: null }, {}, "?signed-out")).toEqual({ view: "app", me: editor });
+  });
+  it("reads no marker in a query that only looks like one", () => {
+    for (const search of ["", "?signed-off", "?x=signed-out", "?signedout"]) {
+      expect(bootState({ data: noSession, error: null }, {}, search)).toMatchObject({ view: "signing-in" });
+    }
+  });
 
   it("hands the error to the page to name", () => {
     expect(bootState({ data: undefined, error: down })).toEqual({ view: "error", error: down });
