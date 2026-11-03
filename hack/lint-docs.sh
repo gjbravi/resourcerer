@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 docs=(AGENTS.md CONTRIBUTING.md README.md .agents/skills/*/SKILL.md)
-while IFS= read -r f; do docs+=("$f"); done < <(find docs -name '*.md' -o -name '*.mdx' | sort)
+while IFS= read -r f; do docs+=("$f"); done < <(find docs -name '*.md' | sort)
 errors=0
 err() {
   echo "lint-docs: $*" >&2
@@ -48,6 +48,16 @@ for listed in $(grep -oE '^\| `resourcerer-[a-z-]+` \|' AGENTS.md | grep -oE 're
   [[ -f ".agents/skills/$listed/SKILL.md" ]] || err "AGENTS.md lists skill $listed, which does not exist"
 done
 [[ "$(readlink .claude/skills)" == "../.agents/skills" ]] || err ".claude/skills must link to ../.agents/skills"
+
+# Every page of the documentation site is in the navigation of mkdocs.yml, and every page there exists. The site's
+# strict build catches broken links, not a page nobody can reach.
+nav=$(sed -nE 's/^ *- [^:]+: ([A-Za-z0-9_/.-]+\.md)$/\1/p' mkdocs.yml | sort -u)
+for page in $(cd docs && find . -name '*.md' -not -path './assets/*' | sed 's|^\./||' | sort); do
+  grep -qx "$page" <<<"$nav" || err "docs/$page is not in the nav of mkdocs.yml"
+done
+for page in $nav; do
+  [[ -f "docs/$page" ]] || err "mkdocs.yml: nav lists $page, which does not exist in docs/"
+done
 
 # Mermaid diagrams render. Needs Node and Chrome; CI sets MERMAID=1.
 if [[ "${MERMAID:-0}" == 1 ]]; then

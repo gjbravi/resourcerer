@@ -85,7 +85,7 @@ Behind a TLS-intercepting proxy, pass its root CA: `EXTRA_CA_CERT=/path/ca.pem m
 To run the components locally against the kind cluster: `make prom-forward` in one terminal, `make run` in another,
 and `make web-dev` for the UI with hot reload.
 
-The documentation site: `make docs-dev` serves it with live reload on http://localhost:4321/resourcerer/.
+The documentation site: `make docs-dev` serves it with live reload on http://localhost:8000/resourcerer/.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -5,7 +5,7 @@ description: What each component's ServiceAccount may read and write in the clus
 
 The chart creates one ServiceAccount, ClusterRole and ClusterRoleBinding per component (`rbac.create: true`), so each
 component can do only its part. The full rules are in
-[`charts/resourcerer/templates/rbac.yaml`](../../charts/resourcerer/templates/rbac.yaml).
+[`charts/resourcerer/templates/rbac.yaml`](https://github.com/gjbravi/resourcerer/blob/main/charts/resourcerer/templates/rbac.yaml).
 
 ## controller
 

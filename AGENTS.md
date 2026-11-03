@@ -33,7 +33,7 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 | `hack/` | kind environment: cluster, Prometheus, demo workloads, a fake Karpenter exporter |
 | `test/e2e/run.sh` | End-to-end checks against kind |
 | `docs/` | The user docs, by section (`getting-started/`, `concepts/`, `configuration/`, `guides/`, `reference/`), and `architecture.md` (components, data flow, diagrams) |
-| `website/` | Astro + Starlight site built from `docs/` and published to GitHub Pages by `.github/workflows/docs.yaml` |
+| `mkdocs.yml`, `website/` | The documentation site: Zensical builds `docs/` (config in `mkdocs.yml`, pinned version in `website/requirements.txt`), published to GitHub Pages by `.github/workflows/docs.yaml` |
 
 ## Commands
 
@@ -47,8 +47,8 @@ make kind-up         # kind cluster with Prometheus, metrics-server, VPA, demo w
 make kind-deploy     # build the image, load it into kind, install the chart with hack/resourcerer-values.yaml
 make e2e             # end-to-end checks against kind
 make web-dev         # UI dev server proxied to a running server on :8080
-make docs-dev        # documentation site with live reload on :4321
-make docs-build      # build the documentation site; fails on broken links
+make docs-dev        # documentation site with live reload on :8000
+make docs-build      # build the documentation site strictly; fails on broken links
 ```
 
 Behind a TLS-intercepting proxy, pass `EXTRA_CA_CERT=/path/to/ca.pem` to `make kind-up`.

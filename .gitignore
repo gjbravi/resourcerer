@@ -6,9 +6,9 @@ coverage.*
 web/node_modules/
 web/dist/**
 !web/dist/.gitkeep
-website/node_modules/
-website/dist/
-website/.astro/
+website/.venv/
+website/site/
+.cache/
 .DS_Store
 .idea/
 .vscode/

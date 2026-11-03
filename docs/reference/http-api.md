@@ -6,11 +6,11 @@ description: The endpoints the UI uses, under /api/v1, for scripts and integrati
 The UI is a client of the server's HTTP API, served on the same Service under `/api/v1`. Scripts can use it too: it is
 the simplest way to apply a reviewed recommendation from a pipeline.
 
-:::caution
-The API has the same authentication as the UI: none, for now. Anyone who reaches it can apply and revert. See
-[Exposing the UI](../guides/exposing-the-ui.md). The API is in beta like the rest of resourcerer: responses can gain
-and lose fields between minor versions. `web/src/api.ts` mirrors the response types.
-:::
+!!! warning
+    The API has the same authentication as the UI: none, for now. Anyone who reaches it can apply and revert. See
+    [Exposing the UI](../guides/exposing-the-ui.md). The API is in beta like the rest of resourcerer: responses can gain
+    and lose fields between minor versions. `web/src/api.ts` mirrors the response types.
+
 
 `{kind}` is the workload kind as in the manifest: `Deployment`, `StatefulSet`, `DaemonSet` or `Rollout`.
 

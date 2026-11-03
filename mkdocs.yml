@@ -1,0 +1,161 @@
+# The documentation site, built with Zensical from docs/ and published to GitHub Pages
+# (.github/workflows/docs.yaml). `make docs-dev` previews it, `make docs-build` builds it strictly.
+site_name: resourcerer
+site_url: https://gjbravi.github.io/resourcerer/
+site_description: >-
+  Self-hosted Kubernetes rightsizing: CPU and memory recommendations from your own Prometheus, with the savings, the
+  risk and the reasons behind every number.
+repo_name: gjbravi/resourcerer
+repo_url: https://github.com/gjbravi/resourcerer
+edit_uri: edit/main/docs/
+copyright: Apache-2.0
+
+docs_dir: docs
+site_dir: website/site
+
+extra_css:
+  - assets/stylesheets/extra.css
+extra_javascript:
+  - assets/javascripts/diagrams.js
+
+theme:
+  name: material
+  variant: modern
+  logo: logo.svg
+  favicon: logo.svg
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+    previous: fontawesome/solid/angle-left
+    next: fontawesome/solid/angle-right
+    admonition:
+      note: octicons/tag-16
+      info: octicons/info-16
+      tip: octicons/squirrel-16
+      warning: octicons/alert-16
+      danger: octicons/zap-16
+  features:
+    - content.action.edit
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - content.tooltips
+    - navigation.footer
+    - navigation.indexes
+    - navigation.path
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: lucide/moon-star
+        name: Switch to dark mode
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: lucide/sun
+        name: Switch to light mode
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.betterem
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  # Mermaid blocks get their own class, so the theme leaves them alone and assets/javascripts/diagrams.js renders
+  # them with zoom and full screen.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: rz-mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+plugins:
+  - search
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/gjbravi/resourcerer
+
+# Every page in docs/ is listed here, in reading order; `make lint-docs` fails on a page that is not.
+nav:
+  - Home: index.md
+  - Getting started:
+      - Introduction: getting-started/introduction.md
+      - Quickstart: getting-started/quickstart.md
+      - Requirements: getting-started/requirements.md
+      - Installation: getting-started/installation.md
+      - Upgrade and uninstall: getting-started/upgrade-and-uninstall.md
+  - Concepts:
+      - How it works: concepts/how-it-works.md
+      - Recommendations: concepts/recommendations.md
+      - Phases: concepts/phases.md
+      - Verdict and evidence: concepts/verdict-and-evidence.md
+      - Costs: concepts/costs.md
+      - Workloads: concepts/workloads.md
+      - Glossary: concepts/glossary.md
+  - Configuration:
+      - Overview: configuration/overview.md
+      - Goals and limits: configuration/goals-and-limits.md
+      - Learning period and schedule: configuration/learning-period-and-schedule.md
+      - Prometheus: configuration/prometheus.md
+      - Cost estimates: configuration/cost-estimates.md
+  - Guides:
+      - Using the UI: guides/using-the-ui.md
+      - Apply and revert: guides/apply-and-revert.md
+      - Roll out auto-deploy: guides/auto-deploy.md
+      - Apply policies: guides/apply-policies.md
+      - Reliability signals: guides/reliability-signals.md
+      - GitOps: guides/gitops.md
+      - Argo Rollouts: guides/argo-rollouts.md
+      - Karpenter costs: guides/karpenter-costs.md
+      - Exposing the UI: guides/exposing-the-ui.md
+      - Large clusters: guides/large-clusters.md
+      - Try it on kind: guides/try-on-kind.md
+  - Reference:
+      - Settings and annotations: reference/settings.md
+      - Helm values: reference/helm-values.md
+      - Custom resources: reference/custom-resources.md
+      - HTTP API: reference/http-api.md
+      - Metrics and events: reference/metrics-and-events.md
+      - Permissions: reference/permissions.md
+      - Troubleshooting: reference/troubleshooting.md
+      - FAQ: reference/faq.md
+  - Project:
+      - Architecture: architecture.md
+      - Roadmap: roadmap.md
+      - Contributing: https://github.com/gjbravi/resourcerer/blob/main/CONTRIBUTING.md
+      - Changelog: https://github.com/gjbravi/resourcerer/blob/main/CHANGELOG.md

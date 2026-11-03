@@ -1,17 +1,18 @@
 ---
 name: resourcerer-docs
-description: Write or change resourcerer's user documentation (docs/) and its Starlight site (website/), published on GitHub Pages. Use when behaviour, a setting, a chart value, a CRD field or the UI changes in a way users see, or when adding, moving or renaming a page.
+description: Write or change resourcerer's user documentation (docs/) and its Zensical site (mkdocs.yml, website/), published on GitHub Pages. Use when behaviour, a setting, a chart value, a CRD field or the UI changes in a way users see, or when adding, moving or renaming a page.
 ---
 
 # Documentation
 
-The pages are Markdown in `docs/`, readable on GitHub as they are. `website/` is an Astro + Starlight project that
-turns them into the site at https://gjbravi.github.io/resourcerer/, built and deployed by `.github/workflows/docs.yaml`
-on every push to `main` that touches `docs/` or `website/`.
+The pages are Markdown in `docs/`, readable on GitHub as they are. [Zensical](https://zensical.org) (the Material
+theme, `variant: modern`) builds them into the site at https://gjbravi.github.io/resourcerer/, configured in
+`mkdocs.yml` at the repository root, and `.github/workflows/docs.yaml` deploys it on every push to `main` that touches
+`docs/`, `website/` or `mkdocs.yml`.
 
 ## Where a page goes
 
-| Section | Directory | For |
+| Section (tab) | Directory | For |
 |---|---|---|
 | Getting started | `docs/getting-started/` | Install, first recommendation, upgrade: the path of someone new |
 | Concepts | `docs/concepts/` | What the UI shows and why: one page per idea (phases, verdict, costs…) |
@@ -39,41 +40,50 @@ explain again. `docs/architecture.md` keeps the component view and the sequence 
 
 ## Writing a page
 
-- **Front matter:** `title` (required by Starlight) and `description` (one sentence, used by search engines and link
-  cards). Quote the description if it contains `: `. The page starts below it, without a `#` heading: Starlight renders
-  the title.
-- **Add it to the sidebar** in `website/src/sidebar.mjs`, in reading order. The build fails when a page in `docs/` is
-  missing from the sidebar or an entry has no page.
-- **`.md` by default.** Asides need no MDX: `:::note`, `:::tip`, `:::caution`, `:::danger`, optionally with a title
-  (`:::caution[Beta]`). Use `.mdx` only for components (`import { Tabs, TabItem } from '@astrojs/starlight/components'`),
-  as `docs/index.mdx` does.
-- **Links are relative paths to the `.md` file** (`[Phases](../concepts/phases.md#what-to-do-in-each-phase)`), so they
-  work on GitHub too. `website/src/markdown-links.mjs` turns them into site URLs, turns links to other files of the
-  repository (`../../charts/resourcerer/values.yaml`) into GitHub URLs, and fails the build when the target does not
-  exist. Anchors are not checked: keep them in step with the headings.
-- **Moving or renaming a page** breaks external links: add the old path to `redirects` in `website/astro.config.mjs`.
-- **Diagrams** are ` ```mermaid ` blocks, rendered in the browser and following the theme. `make lint-docs` with
-  `MERMAID=1` checks that they render.
-- **Code blocks** take a title: ` ```yaml title="values.yaml" `. PromQL blocks use ` ```promql ` (shown as plain text).
-- **Tone:** concrete, short sentences, the user's decision first. Show the setting, its default and the trade-off; give
-  a command or a manifest the reader can copy. Use fictional names (`payments/checkout`, `demo/api`) and nothing
+- **Front matter:** `title` and `description` (one sentence, for search engines and link previews). The page starts
+  below it, without a `#` heading: the theme renders the title.
+- **Add it to `nav` in `mkdocs.yml`**, under its tab, in reading order. `make lint-docs` fails on a page in `docs/`
+  that is not in the nav, and on a nav entry without a page.
+- **Admonitions** use the Material syntax, with the content indented by four spaces:
+
+  ```markdown
+  !!! warning "CRDs left behind"
+      A release upgraded without its CRDs keeps working…
+  ```
+
+  Kinds in use: `note`, `tip`, `warning`, `danger`. `???` instead of `!!!` makes a collapsible one.
+- **Tabs:** `=== "Helm"` followed by indented content (`pymdownx.tabbed`).
+- **Links between pages are relative paths to the `.md` file** (`[Phases](../concepts/phases.md#what-to-do-in-each-phase)`),
+  so they work on GitHub too; the strict build fails when the target page does not exist. Link to files outside
+  `docs/` (the chart, `CONTRIBUTING.md`) with their full GitHub URL: the site only has `docs/`.
+- **Moving or renaming a page** breaks links people saved; avoid it, or say so in the PR.
+- **Diagrams** are ` ```mermaid ` blocks. `docs/assets/javascripts/diagrams.js` renders them with zoom, pan and full
+  screen, in the colors of `docs/assets/stylesheets/extra.css`; the theme's own Mermaid support is bypassed because it
+  renders into a closed shadow root that cannot be zoomed. `make lint-docs` with `MERMAID=1` checks that they render.
+- **Code blocks** take a title: ` ```yaml title="values.yaml" `. PromQL blocks use ` ```promql `.
+- **The home page** (`docs/index.md`) is HTML inside Markdown with the `rz-` classes of `extra.css`, like a landing
+  page; keep its claims in step with the concept pages.
+- **Tone:** concrete, short sentences, the user's decision first. Show the setting, its default and the trade-off;
+  give a command or a manifest the reader can copy. Use fictional names (`payments/checkout`, `demo/api`) and nothing
   specific to a company's environment, as everywhere in the repository.
 - **Other products' docs** can inspire structure and ideas, never text, and are not named.
 
 ## Preview and check
 
 ```bash
-make docs-dev      # http://localhost:4321/resourcerer/ with live reload
-make docs-build    # what CI runs: fails on broken links, missing sidebar entries and invalid front matter
-make lint-docs     # paths and make targets in backticks exist (MERMAID=1 also renders the diagrams)
+make docs-dev      # http://localhost:8000/resourcerer/ with live reload (creates website/.venv on first run)
+make docs-build    # what CI runs: zensical build --strict, fails on broken links and other warnings
+make lint-docs     # pages in the nav, paths and make targets in backticks exist (MERMAID=1 renders the diagrams)
 ```
 
-Check new pages in both themes (the selector is in the header) and at a phone width.
+Check new pages in both themes (the toggle is in the header) and at a phone width.
 
 ## The site itself
 
-- `website/astro.config.mjs`: site URL and base (`/resourcerer`), redirects, Starlight options.
-- `website/src/content.config.ts`: loads the pages from `../docs`.
-- `website/src/sidebar.mjs`: the sidebar and the check that it matches `docs/`.
-- `website/src/styles/custom.css`: the theme, taken from the UI's `web/src/styles.css`.
-- Dependencies are pinned in `website/package-lock.json` and updated by Dependabot.
+- `mkdocs.yml`: site URL, theme and features (tabs, instant navigation, search), Markdown extensions, and the nav.
+- `docs/assets/stylesheets/extra.css`: the lavender theme from the UI's `web/src/styles.css`, the home page and the
+  diagram styles.
+- `docs/assets/javascripts/diagrams.js`: Mermaid rendering with zoom; it hooks the theme's instant navigation through
+  `document$`.
+- `website/requirements.txt`: the pinned Zensical version, updated by Dependabot. `website/.venv` and the built
+  `website/site` are not committed.
