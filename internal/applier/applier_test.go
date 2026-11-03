@@ -325,3 +325,37 @@ func TestAFailedAutoApplyIsRetried(t *testing.T) {
 		t.Fatalf("the second attempt should be in the history: %+v", st.History)
 	}
 }
+
+// A Recommendation deleted and written again is a new object with an empty history, so the applier may apply the
+// same hash again: the resource that opt-out deletes would otherwise never be applied while the applier lives.
+func TestARecreatedRecommendationIsAppliedAgain(t *testing.T) {
+	f := newFixture(t, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+	f.reconcile(t)
+	if got := f.cpu(t); got != "500m" {
+		t.Fatalf("cpu = %s, want the recommendation applied", got)
+	}
+
+	// The same values, a new object: what the controller writes after a user opts out and back in.
+	var rec v1alpha1.Recommendation
+	if err := f.reconciler.Get(context.Background(), types.NamespacedName{Namespace: "demo", Name: "deployment-api"}, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.reconciler.Delete(context.Background(), &rec); err != nil {
+		t.Fatal(err)
+	}
+	fresh := &v1alpha1.Recommendation{ObjectMeta: metav1.ObjectMeta{Name: "deployment-api", Namespace: "demo"},
+		Spec: rec.Spec, Status: *rec.Status.DeepCopy()}
+	fresh.UID = "e2e-second-life"
+	fresh.Status.History = nil
+	fresh.Status.ApplyPolicy = nil
+	fresh.Status.Containers[0].Current = corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1")}}
+	if err := f.reconciler.Create(context.Background(), fresh); err != nil {
+		t.Fatal(err)
+	}
+
+	f.reconcile(t)
+	st := f.status(t)
+	if len(st.History) == 0 || st.History[0].By != AutoDeployUser {
+		t.Fatalf("the recreated Recommendation should be applied: %+v", st.History)
+	}
+}

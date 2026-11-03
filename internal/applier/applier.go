@@ -152,7 +152,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			r.event(ctx, rec, corev1.EventTypeNormal, "ApplyDeferred", "Defer", "Automatic apply held by %s: %s", d.Policy, d.Reason)
 			return requeue, nil
 		}
-		id := "auto:" + rec.Status.Hash
+		// The object as well as the hash: a Recommendation deleted and written again is a new one, with a history
+		// that no longer says the hash was ever applied.
+		id := "auto:" + string(rec.UID) + ":" + rec.Status.Hash
 		if r.seen(key, id) {
 			return requeue, nil
 		}
