@@ -372,6 +372,13 @@ func (p *OIDC) setCookie(w http.ResponseWriter, r *http.Request, base, value str
 		Secure: secure, SameSite: http.SameSiteLaxMode})
 }
 
+// localPath reports whether p is a path on this host: it starts with a slash whose next character is neither another
+// slash nor a backslash, which is what a browser reads as the start of another host when it follows a redirect
+// ("//host" and "/\host" both leave this site).
+func localPath(p string) bool {
+	return strings.HasPrefix(p, "/") && (len(p) == 1 || (p[1] != '/' && p[1] != '\\'))
+}
+
 // SafeRedirect keeps a post-login destination on this site: a path on this host, never another one. It checks the
 // path as http.Redirect will send it, cleaned, because a cleaned "/./\host" is "/\host", which browsers follow as
 // "//host".
@@ -385,14 +392,14 @@ func SafeRedirect(s string) string {
 		return "/"
 	}
 	clean := path.Clean(u.Path)
-	if !strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "//") {
+	if !localPath(clean) {
 		return "/"
 	}
 	if strings.HasSuffix(u.Path, "/") && clean != "/" {
 		clean += "/"
 	}
 	out := (&url.URL{Path: clean, RawQuery: u.RawQuery, Fragment: u.Fragment}).String()
-	if !strings.HasPrefix(out, "/") || strings.HasPrefix(out, "//") {
+	if !localPath(out) {
 		return "/"
 	}
 	return out

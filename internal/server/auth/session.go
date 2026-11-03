@@ -67,7 +67,9 @@ func (c *Codec) Seal(name string, v any, expires time.Time) (string, error) {
 		return "", fmt.Errorf("encode: %w", err)
 	}
 	aead := c.keys[0]
-	nonce := make([]byte, aead.NonceSize(), aead.NonceSize()+len(plain)+aead.Overhead())
+	// Sealed without a capacity hint: the size would come from a value the provider signed, and a length that overflowed
+	// an int would panic the process rather than fail the sign-in.
+	nonce := make([]byte, aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return "", fmt.Errorf("generate nonce: %w", err)
 	}
