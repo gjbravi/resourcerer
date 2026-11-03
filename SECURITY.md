@@ -26,7 +26,8 @@ Please do not open public issues for security problems. You will get an acknowle
   `allowedGroups` and `anyAuthenticatedIsViewer` default open, so **an `oidc` install with the defaults lets every
   user the provider authenticates read**, and nobody write. Set `allowedGroups` when not everyone who can sign in may
   read it, and `editorGroups` to say who may change things. A user the rules leave with no role is refused: an error
-  on sign-in, and `403 forbidden` on every call but `GET /api/v1/me`.
+  on sign-in, and `403 forbidden` on every call but `GET /api/v1/me`. The exchange itself — provider redirect, PKCE,
+  ID token, sealed cookie — is diagrammed in [docs/architecture.md](docs/architecture.md#the-server-and-the-ui).
 - **`readOnly: true`** makes the API refuse every change, and the server's ClusterRole drops its `patch` verbs.
 - **The authentication configuration is the trust boundary.** Whoever can write the OIDC ConfigMap can point `issuer`
   at a provider they run and sign in as an editor; whoever can read the session-key Secret can mint a cookie for any

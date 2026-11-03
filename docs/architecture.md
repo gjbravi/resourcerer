@@ -331,6 +331,39 @@ flowchart LR
     api -->|apply, revert, regenerate, settings| kapi[Kubernetes API]
 ```
 
+Under `auth.strategy=oidc`, a sign-in from end to end, and what each request after it costs:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant S as resourcerer
+    participant I as Identity provider
+
+    B->>S: GET /api/v1/me
+    S-->>B: 200 {"authenticated": false, "strategy": "oidc"}
+    B->>S: GET /auth/login?redirect=/workloads/demo/api
+    Note over S: discovery of the issuer, cached,<br/>state, nonce and the PKCE verifier sealed<br/>into resourcerer_login, good for 10 minutes
+    S-->>B: 302 /authorize?code_challenge=…<br/>code_challenge_method=S256&state&nonce
+    B->>I: sign in, or no prompt while its own session lasts
+    I-->>B: 302 /auth/callback?code=…&state=…
+    B->>S: GET /auth/callback
+    Note over S: state compared in constant time,<br/>the code exchanged with the verifier and the client secret
+    S->>I: POST /token
+    I-->>S: id_token
+    Note over S: signature against the JWKS, issuer, audience<br/>and expiry, then the nonce, in constant time
+    Note over S: allowedGroups grants viewer, roles.editorGroups grants editor,<br/>no role is a 403 without a session
+    S-->>B: 302 /workloads/demo/api<br/>Set-Cookie resourcerer_session: sealed, HttpOnly, SameSite=Lax
+    B->>S: GET /api/v1/workloads, with the cookie
+    Note over S: cookie opened, issuer and clientID must be the configured ones,<br/>role resolved from the groups against the configuration in force
+    S-->>B: 200
+    B->>S: POST …/apply, cookie + X-Resourcerer-Request: 1 + JSON body
+    Note over S: CSRF guard, then editors only.<br/>The requester recorded is the user in the cookie
+    S-->>B: 200
+    B->>S: GET /auth/logout
+    S-->>B: 302 /?signed-out, cookie cleared
+```
+
 - **Endpoints**: `me` (who is signed in; the only endpoint served without authentication), `info` (cluster, auth
   strategy, settings defaults, cost and reliability configuration, Prometheus status), `workloads` (list),
   `workloads/{ns}/{kind}/{name}` (detail) and its `series`, `impact`, `reliability` and `placement`,
