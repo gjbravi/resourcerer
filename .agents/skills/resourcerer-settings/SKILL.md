@@ -21,7 +21,8 @@ Settings are how users tune resourcerer per workload. Each one resolves per key:
 3. **UI:** the server lists every setting (`settingInfos`), so it shows up in the Settings tab and the cluster
    defaults automatically, with `Options` as choices. Add its label, group, help and suggested values to `SETTINGS`
    in `web/src/settings.ts`.
-4. **Docs:** add a row to the settings table in `README.md` (annotation, default, values).
+4. **Docs:** add a row to `docs/reference/settings.md` (annotation, default, values) and explain it on its
+   configuration page (see the `resourcerer-docs` skill).
 5. **Chart:** `defaults` in the values is a free map rendered into the ConfigMap, so no schema change is needed; set
    it in `hack/resourcerer-values.yaml` if kind or e2e should use a non-default value.
 

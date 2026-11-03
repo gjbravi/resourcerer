@@ -6,7 +6,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-docs=(AGENTS.md CONTRIBUTING.md README.md docs/*.md .agents/skills/*/SKILL.md)
+docs=(AGENTS.md CONTRIBUTING.md README.md .agents/skills/*/SKILL.md)
+while IFS= read -r f; do docs+=("$f"); done < <(find docs -name '*.md' -o -name '*.mdx' | sort)
 errors=0
 err() {
   echo "lint-docs: $*" >&2
@@ -18,7 +19,7 @@ for f in "${docs[@]}"; do
   grep -oE '`[^` ]+`' "$f" | tr -d '`' | sort -u | while read -r p; do
     p="${p%%:*}"
     p="${p%[.,;)]}"
-    [[ "$p" =~ ^(cmd|api|internal|web|charts|hack|test|docs|\.github|\.agents)/ ]] || continue
+    [[ "$p" =~ ^(cmd|api|internal|web|website|charts|hack|test|docs|\.github|\.agents)/ ]] || continue
     [[ "$p" == *"..."* || "$p" == *"<"* || "$p" == *"*"* || "$p" == *"{"* ]] && continue
     [[ -e "$p" ]] || echo "$f: $p"
   done

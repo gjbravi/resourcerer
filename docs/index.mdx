@@ -1,0 +1,65 @@
+---
+title: resourcerer
+description: Self-hosted Kubernetes rightsizing. CPU and memory recommendations from your own Prometheus, with the savings, the risk and the reasons behind every number.
+template: splash
+hero:
+  tagline: Rightsize Kubernetes workloads from the usage history already in your Prometheus, and apply each recommendation knowing what it saves, what it risks and why the numbers can be trusted.
+  image:
+    file: ./logo.svg
+  actions:
+    - text: Quickstart
+      link: /resourcerer/getting-started/quickstart/
+      icon: right-arrow
+    - text: How it works
+      link: /resourcerer/concepts/how-it-works/
+      variant: minimal
+    - text: GitHub
+      link: https://github.com/gjbravi/resourcerer
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+:::caution[Beta]
+resourcerer is in beta. The annotations, the custom resources and the chart values may change between minor versions; the
+[changelog](https://github.com/gjbravi/resourcerer/blob/main/CHANGELOG.md) says when they do.
+:::
+
+## Why resourcerer
+
+<CardGrid>
+  <Card title="Runs in your cluster" icon="server">
+    One Helm chart, three small Deployments. Usage history comes from the Prometheus you already run; state lives in a
+    `Recommendation` custom resource. No SaaS, no agent, no database.
+  </Card>
+  <Card title="Explainable numbers" icon="magnifier">
+    Every value is a documented percentile of usage plus a margin, such as "p95 + 10% over 7d". There is no model to
+    trust blindly: you can check each number against the charts.
+  </Card>
+  <Card title="A verdict, not just data" icon="approve-check">
+    Under the apply button, the workload page says whether to apply: "Safe to apply", "Review before applying" or
+    "Apply to fix reliability", from history coverage, a replay of usage and reliability signals.
+  </Card>
+  <Card title="Costs that match your nodes" icon="star">
+    Monthly costs from configured rates, or calibrated to Karpenter's price estimates, and optionally priced at the
+    nodes each workload actually ran on, spot or on-demand.
+  </Card>
+  <Card title="Applies on your terms" icon="setting">
+    Apply and revert from the UI, copy a Kustomize or Helm patch into Git, or turn on auto-deploy. Apply policies
+    decide when an apply may start: windows, freezes and rate limits.
+  </Card>
+  <Card title="GitOps friendly" icon="random">
+    Settings are annotations, policies are custom resources, applies use server-side apply with their own field
+    manager, so Argo CD and Flux can tell them apart.
+  </Card>
+</CardGrid>
+
+## Start here
+
+<CardGrid>
+  <LinkCard title="Quickstart" description="Install with Helm and get your first recommendations in minutes." href="/resourcerer/getting-started/quickstart/" />
+  <LinkCard title="How it works" description="The components, the Recommendation resource and the path from usage to an applied change." href="/resourcerer/concepts/how-it-works/" />
+  <LinkCard title="Configure resourcerer" description="The settings that matter most, and how cluster, namespace and workload levels combine." href="/resourcerer/configuration/overview/" />
+  <LinkCard title="Roll out auto-deploy" description="From reviewing the first recommendations by hand to applying them automatically, safely." href="/resourcerer/guides/auto-deploy/" />
+</CardGrid>

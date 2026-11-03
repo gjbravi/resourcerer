@@ -32,7 +32,8 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 | `charts/resourcerer` | Helm chart; `values.schema.json` rejects unknown keys |
 | `hack/` | kind environment: cluster, Prometheus, demo workloads, a fake Karpenter exporter |
 | `test/e2e/run.sh` | End-to-end checks against kind |
-| `docs/` | `architecture.md` (components, data flow, diagrams) and user docs such as `reliability-signals.md` and `apply-policy.md` |
+| `docs/` | The user docs, by section (`getting-started/`, `concepts/`, `configuration/`, `guides/`, `reference/`), and `architecture.md` (components, data flow, diagrams) |
+| `website/` | Astro + Starlight site built from `docs/` and published to GitHub Pages by `.github/workflows/docs.yaml` |
 
 ## Commands
 
@@ -46,6 +47,8 @@ make kind-up         # kind cluster with Prometheus, metrics-server, VPA, demo w
 make kind-deploy     # build the image, load it into kind, install the chart with hack/resourcerer-values.yaml
 make e2e             # end-to-end checks against kind
 make web-dev         # UI dev server proxied to a running server on :8080
+make docs-dev        # documentation site with live reload on :4321
+make docs-build      # build the documentation site; fails on broken links
 ```
 
 Behind a TLS-intercepting proxy, pass `EXTRA_CA_CERT=/path/to/ca.pem` to `make kind-up`.
@@ -59,10 +62,10 @@ A redeploy replaces the pods, so restart the port-forward afterwards.
 2. Controller, server, chart or query changes: `make kind-deploy e2e` passes, with an e2e check for the new
    behaviour when it can be observed in kind (`test/e2e/run.sh`, using `pass`/`fail`/`wait_for`).
 3. UI changes: checked in the browser against kind, light and dark themes.
-4. Docs, chart values (`values.yaml` comments, schema, chart README table) and `hack/resourcerer-values.yaml` updated
-   when behaviour or configuration changed; `docs/architecture.md`, this file and the skills updated when a
-   component, flow or convention they describe changed (`make lint-docs` catches stale paths and targets, not stale
-   explanations).
+4. Docs (`docs/`, see the `resourcerer-docs` skill; `make docs-build` passes), chart values (`values.yaml` comments,
+   schema, chart README table) and `hack/resourcerer-values.yaml` updated when behaviour or configuration changed;
+   `docs/architecture.md`, this file and the skills updated when a component, flow or convention they describe
+   changed (`make lint-docs` catches stale paths and targets, not stale explanations).
 
 ## Conventions
 
@@ -124,8 +127,8 @@ cluster") and fictional examples (`payments/checkout`, `demo/api`). Grep the dif
   a rate. Every policy that selects the workload must allow it, so a namespace can be stricter but never looser.
   The applier records the decision in `status.applyPolicy`, with the rule that blocked and when it stops; the server
   answers a held click with 409, a revert is never held, and a policy that cannot be read holds.
-- **Reliability signals** are built-in or declared as PromQL templates (`docs/reliability-signals.md`). A signal with
-  no data does not apply to a workload.
+- **Reliability signals** are built-in or declared as PromQL templates (`docs/guides/reliability-signals.md`). A
+  signal with no data does not apply to a workload.
 - **Live data** for the workload page (reliability windows, placement) is computed by the server on request and
   cached; the controller's `status` stays small and drives lists and auto-deploy.
 
@@ -175,3 +178,4 @@ Words the code and the UI use with a specific meaning:
 | `resourcerer-chart-values` | Add or change a chart value |
 | `resourcerer-release` | Open, merge and release changes; recover a failed release |
 | `resourcerer-design-issue` | Write a design issue for a larger feature |
+| `resourcerer-docs` | Write or change the user docs and the documentation site |

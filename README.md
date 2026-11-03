@@ -33,33 +33,10 @@ of usage plus headroom, so you can see exactly why a value was chosen.
   and `ApplyPolicy` objects a team writes itself.
 - No database: state lives in a `Recommendation` CRD, history in Prometheus.
 
-## Architecture
-
-One image, three components, each with its own ServiceAccount:
-
-| Component | Does | Writes |
-|---|---|---|
-| `controller` | Discovers workloads, resolves settings, queries Prometheus, computes recommendations, exports them as metrics | `Recommendation` objects, Events |
-| `applier` | Applies or reverts on request, and auto-deploys | Workload resources, HPA targets |
-| `server` | REST API and UI | Apply requests on `Recommendation`, `resourcerer.io/*` annotations |
-
-The applier is the only component that changes workloads; disable it (`applier.enabled=false`) for a recommend-only
-install, or set `readOnly=true` to make the UI read-only.
-
-How each component works, how recommendations are computed, priced and applied, with diagrams:
-[docs/architecture.md](docs/architecture.md).
-
-Authentication is `anonymous` for now, like Kiali's anonymous strategy: anyone who reaches the UI can use it. Keep the
-Service internal (port-forward) or put an authenticating proxy in front.
-
-## Requirements
-
-- Kubernetes 1.33+
-- A Prometheus-compatible API (Prometheus, Thanos, Mimir, VictoriaMetrics) with cAdvisor and kube-state-metrics,
-  retaining at least the longest learning period (7 days by default), and scraping the controller's metrics Service
-  (annotated with `prometheus.io/scrape` by default) for recommendation history.
-
 ## Install
+
+Requires Kubernetes 1.33+ and a Prometheus-compatible API (Prometheus, Thanos, Mimir, VictoriaMetrics) with cAdvisor
+and kube-state-metrics data, retaining at least the learning period (7 days by default).
 
 ```bash
 helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> \
@@ -69,106 +46,29 @@ kubectl -n resourcerer port-forward svc/resourcerer 8080:80
 ```
 
 Versions are listed on the [releases page](https://github.com/gjbravi/resourcerer/releases). Images and charts are
-signed with cosign; see [SECURITY.md](SECURITY.md#verifying-releases). From a checkout:
-`helm install resourcerer ./charts/resourcerer -n resourcerer --create-namespace`.
+signed with cosign; see [SECURITY.md](SECURITY.md#verifying-releases).
 
-See [charts/resourcerer/values.yaml](charts/resourcerer/values.yaml) for all options.
+Authentication is `anonymous` for now: anyone who reaches the UI can use it. Keep the Service internal
+(port-forward) or put an authenticating proxy in front.
 
-## How recommendations are computed
+## Documentation
 
-For each container, over the learning period, using the busiest pod at each sample:
+The documentation is at **[gjbravi.github.io/resourcerer](https://gjbravi.github.io/resourcerer/)**, built from
+[`docs/`](docs/):
 
-| Goal | CPU request | Memory request |
-|---|---|---|
-| Savings | p85 + 5% | p99 + 10% |
-| Balanced (default) | p95 + 10% | max + 15% |
-| Reliability | p99 + 20% | max + 30% |
-
-Then the minimum is applied and values are rounded (CPU to 1m below 100m and 5m above, memory to 1Mi). Limits
-follow the limits policy:
-
-| Policy | Limits |
-|---|---|
-| `RequestsRaiseLimitsIfNeeded` (default) | Kept, unless the new request exceeds them: then request × ratio |
-| `RequestsOnly` | Kept |
-| `RequestsAndLimits` | request × ratio |
-| `DoNotOptimize` | Requests and limits kept |
-
-Phases: **Pending** (collecting history), **Learning** (preliminary, learning period not covered), **Ready**,
-**Warning** (e.g. scaled to zero), **Unsupported** (HPA scales on CPU and memory utilization), **Error** (metrics
-unavailable). Auto-deploy only applies Ready recommendations.
-
-The score (0–100) is how closely current requests match the recommendation, weighted by cost; net impact is requests
-× average replicas × hourly rates × 730. With Karpenter, `cost.source: auto` (the default) calibrates the rates to what
-the nodes cost, spot or on-demand, from Karpenter's price estimates; without it, the rates are `cost.rates`.
-`cost.allocation: node` goes further and prices each workload at the nodes its pods ran on, so a workload on on-demand
-nodes costs more than the same requests on spot.
-
-## Reliability signals
-
-Built-in signals (CPU throttling, memory headroom, restarts, crash loops, HPA at its maximum, BestEffort pods) flag
-workloads whose requests or limits may be too tight. Declare your own as PromQL templates under
-`reliability.signals`, such as error rates or latency; they show in the workload list, the Reliability tab and the
-verdict on whether to apply. See [docs/reliability-signals.md](docs/reliability-signals.md).
-
-## Apply policies
-
-`ApplyPolicy` (a namespace) and `ClusterApplyPolicy` (the platform) decide **when** an apply may start: working
-hours in a time zone, a freeze around a launch, one rollout at a time per namespace, a cooldown per workload, and an
-`Audit` mode to watch a policy before enforcing it. Every policy that selects a workload has to allow the apply, so
-a namespace can be stricter than the platform and never looser, and a revert is never held. See
-[docs/apply-policy.md](docs/apply-policy.md).
-
-## Settings
-
-Set cluster defaults in the Helm values under `defaults`; override them per namespace or workload with annotations:
-
-```bash
-kubectl annotate namespace payments resourcerer.io/auto-deploy=Enabled
-kubectl -n payments annotate deployment ledger resourcerer.io/memory.optimization-goal=Reliability
-```
-
-| Annotation (`resourcerer.io/…`) | Default | Values |
-|---|---|---|
-| `cpu.optimization-goal`, `memory.optimization-goal` | `Balanced` | `Savings`, `Balanced`, `Reliability` |
-| `learning-period` | `P7D` | ISO 8601 duration, e.g. `PT1H`, `P1D`, `P14D` |
-| `schedule` | `@daily` | `@hourly`, `@daily`, `@weekly`, `@every <duration>` |
-| `auto-deploy` | `Disabled` | `Enabled`, `Disabled` |
-| `auto-deploy.threshold` | `10%` | Minimum relative change (also at least 10m CPU or 16Mi memory) |
-| `apply-method` | `PatchImmediateRollout` | `PatchImmediateRollout` |
-| `cpu.limits-policy`, `memory.limits-policy` | `RequestsRaiseLimitsIfNeeded` | See above |
-| `cpu.limit-request-ratio`, `memory.limit-request-ratio` | `2.0`, `1.5` | Number ≥ 1 |
-| `cpu.requests.min`, `memory.requests.min` | `10m`, `16Mi` | Quantity |
-| `containers.skip` | `istio-proxy,linkerd-proxy` | Comma-separated names, or `none` |
-| `hpa.preserve-scale-point` | `true` | `true`, `false` |
-
-Which workloads get a recommendation: `selection: all` (default; opt out with the label
-`resourcerer.io/enabled=false` on the workload or namespace) or `selection: label` (opt in with
-`resourcerer.io/enabled=true`).
-
-### Argo Rollouts
-
-Rollouts are picked up automatically when the `rollouts.argoproj.io` CRD is installed; resourcerer reads them as
-unstructured objects and does not depend on the Argo Rollouts Go module.
-
-- A Rollout with its own `spec.template` is patched like a Deployment. Applying starts a progressive rollout that
-  follows the Rollout's strategy (canary or blue-green), not an immediate restart.
-- A Rollout with `spec.workloadRef` gets the recommendation; the referenced Deployment does not get one of its own.
-  Applying patches the referenced Deployment's template, which Argo Rollouts then rolls out.
-- An HPA targeting a Rollout is handled like one targeting a Deployment.
-
-### GitOps
-
-Applied values are owned by the field manager `resourcerer`. With Argo CD, ignore them so they are not reverted:
-
-```yaml
-ignoreDifferences:
-  - group: apps
-    kind: Deployment
-    managedFieldsManagers: [resourcerer]
-```
-
-Or copy the patch from the workload's **Patches** tab into Git instead of applying from the UI.
+- [Quickstart](https://gjbravi.github.io/resourcerer/getting-started/quickstart/) and
+  [installation](https://gjbravi.github.io/resourcerer/getting-started/installation/)
+- [How it works](https://gjbravi.github.io/resourcerer/concepts/how-it-works/) and
+  [how recommendations are computed](https://gjbravi.github.io/resourcerer/concepts/recommendations/)
+- [Configuration](https://gjbravi.github.io/resourcerer/configuration/overview/) and the
+  [settings reference](https://gjbravi.github.io/resourcerer/reference/settings/)
+- Guides: [auto-deploy](https://gjbravi.github.io/resourcerer/guides/auto-deploy/),
+  [apply policies](https://gjbravi.github.io/resourcerer/guides/apply-policies/),
+  [reliability signals](https://gjbravi.github.io/resourcerer/guides/reliability-signals/),
+  [GitOps](https://gjbravi.github.io/resourcerer/guides/gitops/),
+  [Argo Rollouts](https://gjbravi.github.io/resourcerer/guides/argo-rollouts/),
+  [Karpenter costs](https://gjbravi.github.io/resourcerer/guides/karpenter-costs/)
+- [Architecture](https://gjbravi.github.io/resourcerer/architecture/), with diagrams of each component and flow
 
 ## Development
 
@@ -184,6 +84,8 @@ Behind a TLS-intercepting proxy, pass its root CA: `EXTRA_CA_CERT=/path/ca.pem m
 
 To run the components locally against the kind cluster: `make prom-forward` in one terminal, `make run` in another,
 and `make web-dev` for the UI with hot reload.
+
+The documentation site: `make docs-dev` serves it with live reload on http://localhost:4321/resourcerer/.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 

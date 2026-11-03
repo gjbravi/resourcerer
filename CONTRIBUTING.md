@@ -22,6 +22,8 @@ chart values, releases, design issues). They are written for coding agents and a
 - Recommendation rules live in `internal/engine` (pure, no I/O) and `internal/settings`; controllers and handlers stay thin.
 - UI: decisions about what to show live in pure, tested modules (`web/src/verdict.ts`, `placement.ts`, `reliability.ts`); components reuse the `rz-` styles and theme variables; actions that change the cluster ask for confirmation.
 - Chart: every new value is documented in `values.yaml` and validated in `values.schema.json`.
+- Docs: user-facing changes update the pages in `docs/`, published at https://gjbravi.github.io/resourcerer/;
+  `make docs-dev` previews them. The `resourcerer-docs` skill says which page covers what.
 
 ## Reporting security issues
 

@@ -1,4 +1,7 @@
-# Apply policies
+---
+title: Apply policies
+description: Decide when an apply may start, with windows, freezes, rate limits and cooldowns, as ClusterApplyPolicy and ApplyPolicy objects.
+---
 
 An apply policy decides **when** an apply may start. Without one, an apply that is due starts at once: the applier
 patches the pod template and the pods restart. A policy lets a release run automatic applies in namespaces where
@@ -234,6 +237,6 @@ Later phases of the design, in the open issue, add:
 
 ## See also
 
-- [architecture.md](architecture.md): where the applier decides and writes.
-- [reliability-signals.md](reliability-signals.md): the signals behind "Review before applying".
+- [Architecture](../architecture.md): where the applier decides and writes.
+- [Reliability signals](reliability-signals.md): the signals behind "Review before applying".
 - The `Recommendation` CRD in `api/v1alpha1/recommendation_types.go` for the status field.

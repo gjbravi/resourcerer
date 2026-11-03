@@ -71,6 +71,16 @@ prom-forward: ## Port-forward the kind Prometheus to localhost:9090
 web-dev: ## Run the UI dev server with /api proxied to :8080
 	cd web && npm run dev
 
+##@ Documentation site
+
+.PHONY: docs-dev
+docs-dev: ## Serve the documentation site with live reload on :4321
+	cd website && npm ci --no-audit --no-fund && npm run dev
+
+.PHONY: docs-build
+docs-build: ## Build the documentation site into website/dist; fails on broken links
+	cd website && npm ci --no-audit --no-fund && npm run build
+
 ##@ Container image
 
 .PHONY: image
