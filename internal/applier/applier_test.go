@@ -2,6 +2,7 @@ package applier
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
 	"github.com/gjbravi/resourcerer/internal/policy"
@@ -35,6 +37,12 @@ type fixture struct {
 }
 
 func newFixture(t *testing.T, now time.Time, policies ...client.Object) *fixture {
+	t.Helper()
+	return newFixtureWith(t, now, interceptor.Funcs{}, policies...)
+}
+
+// newFixtureWith lets a test break single API calls, to see what the applier does with a failure.
+func newFixtureWith(t *testing.T, now time.Time, funcs interceptor.Funcs, policies ...client.Object) *fixture {
 	t.Helper()
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "demo", Labels: map[string]string{"env": "production"}}}
 	deploy := &appsv1.Deployment{
@@ -64,7 +72,8 @@ func newFixture(t *testing.T, now time.Time, policies ...client.Object) *fixture
 	}
 	objs := append([]client.Object{ns, deploy, rec}, policies...)
 	c := fake.NewClientBuilder().WithScheme(scheme.New()).WithObjects(objs...).
-		WithStatusSubresource(&v1alpha1.Recommendation{}, &v1alpha1.ApplyPolicy{}, &v1alpha1.ClusterApplyPolicy{}).Build()
+		WithStatusSubresource(&v1alpha1.Recommendation{}, &v1alpha1.ApplyPolicy{}, &v1alpha1.ClusterApplyPolicy{}).
+		WithInterceptorFuncs(funcs).Build()
 	f := &fixture{now: now, rec: rec}
 	f.reconciler = &Reconciler{Client: c, APIReader: c, Recorder: nopRecorder{}, Now: func() time.Time { return f.now },
 		applying: map[types.NamespacedName]time.Time{}}
@@ -279,5 +288,40 @@ func TestRequeueAfterIsQuietUnlessAnApplyWaits(t *testing.T) {
 	if got := requeueAfter(policy.Result{NextChange: far.Time, Auto: v1alpha1.ApplyDecision{
 		State: v1alpha1.ApplyBlocked, BlockedBy: "windows", NextAllowed: &far}}, now, true); got != time.Hour {
 		t.Errorf("far requeue = %v, want 1h", got)
+	}
+}
+
+// An apply that fails must be tried again: the applier remembers a recommendation only once it worked, or a
+// conflict with the controller writing the Recommendation would skip that hash until the applier restarts.
+func TestAFailedAutoApplyIsRetried(t *testing.T) {
+	fail := true
+	funcs := interceptor.Funcs{Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+		if _, isDeployment := obj.(*appsv1.Deployment); isDeployment && fail {
+			fail = false
+			return fmt.Errorf("the server said no")
+		}
+		return c.Patch(ctx, obj, patch, opts...)
+	}}
+	f := newFixtureWith(t, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC), funcs)
+
+	res, err := f.reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Namespace: "demo", Name: "deployment-api"}})
+	if err != nil {
+		t.Fatalf("a failed apply is recorded, not returned: %v", err)
+	}
+	_ = res
+	if got := f.cpu(t); got != "1" {
+		t.Fatalf("cpu = %s, want the workload untouched after the failure", got)
+	}
+	if r := f.status(t).LastApplyResult; r == nil || r.Result != "Failed" {
+		t.Fatalf("the failure should be recorded: %+v", r)
+	}
+
+	f.reconcile(t)
+	if got := f.cpu(t); got != "500m" {
+		t.Fatalf("cpu = %s, want the recommendation applied on the next attempt", got)
+	}
+	if st := f.status(t); len(st.History) == 0 || st.History[0].By != AutoDeployUser {
+		t.Fatalf("the second attempt should be in the history: %+v", st.History)
 	}
 }

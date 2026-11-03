@@ -212,14 +212,13 @@ jq -e '.error | test("e2e-closed-window")' /tmp/rz-held.json >/dev/null \
 k delete cap e2e-closed-window >/dev/null
 
 # An automatic apply that is due while the window is closed is deferred, not dropped, and starts by itself once
-# nothing holds it. worker is the workload here: its Recommendation is pending, and no run of this script applies it.
-worker_cpu=$(k -n demo get deploy worker -o jsonpath='{.spec.template.spec.containers[?(@.name=="worker")].resources.requests.cpu}')
+# nothing holds it. worker is the workload here: the script lowers its requests, so the recommendation has
+# something to change, and a short learning period makes it Ready in a cluster this young.
+worker_cpu=10m
 window_policy e2e-auto-window worker
-# A short learning period, so the recommendation is Ready in a cluster this young, and a Recommendation with no
-# history, because the applier applies a hash once: a second run of this script would otherwise see the hash the
-# first one applied. The annotation that follows the delete is what makes the controller write it again.
 k -n demo annotate deploy worker resourcerer.io/learning-period=PT2M --overwrite >/dev/null
 k -n demo delete rec deployment-worker --ignore-not-found >/dev/null
+k -n demo set resources deploy worker --containers=worker --requests=cpu=$worker_cpu >/dev/null
 k -n demo annotate deploy worker resourcerer.io/auto-deploy=Enabled --overwrite >/dev/null
 wait_for "a due automatic apply under the closed window" 300 decision demo deployment-worker \
   '.status.phase == "Ready" and .status.pending == true
