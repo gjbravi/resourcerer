@@ -32,7 +32,14 @@ wait_for() {
 }
 
 API="http://localhost:$PORT/api/v1"
-MPORT="${E2E_METRICS_PORT:-18091}"
+free_port() { # <first port to try>: the first one nothing answers on
+  local p
+  for p in $(seq "$1" $(($1 + 30))); do
+    curl -s -o /dev/null --max-time 1 "http://localhost:$p" || { echo "$p"; return 0; }
+  done
+  return 1
+}
+MPORT="${E2E_METRICS_PORT:-$(free_port 18091)}"
 PF=""
 MPF=""
 trap 'kill $PF $MPF 2>/dev/null || true' EXIT
@@ -49,7 +56,7 @@ done
 wait_for "server answers" 30 curl -fs "$API/info"
 
 # The applier's counters are the only place an apply, a hold or a slot shows up as a number.
-if curl -s -o /dev/null --max-time 2 "http://localhost:$MPORT/metrics"; then
+if [[ -n "$E2E_METRICS_PORT" ]] && curl -s -o /dev/null --max-time 2 "http://localhost:$MPORT/metrics"; then
   fail "port $MPORT already answers: set E2E_METRICS_PORT to a free port"
 fi
 k -n resourcerer port-forward svc/resourcerer-applier-metrics "$MPORT:8081" >/dev/null 2>&1 &
