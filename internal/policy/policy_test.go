@@ -261,6 +261,23 @@ func TestFreeze(t *testing.T) {
 	}
 }
 
+// The cooldown is about the workload settling, not about a queue of applies: it holds a person too, while the
+// limits that count concurrent applies never do.
+func TestCooldownHoldsBothKindsOfApply(t *testing.T) {
+	now := mustTime(t, "2026-11-03T12:00:00Z")
+	policies := []Policy{{Name: "p", Spec: v1alpha1.ApplyRules{
+		AppliesTo: []v1alpha1.ApplyKind{v1alpha1.ApplyKindAuto, v1alpha1.ApplyKindManual},
+		Rate:      &v1alpha1.ApplyRate{Cooldown: &metav1.Duration{Duration: 24 * time.Hour}}}}}
+	got := decide(t, now, policies, func(in *Input) {
+		in.Target.Changed = mustTime(t, "2026-11-03T06:00:00Z")
+	})
+	for _, d := range []v1alpha1.ApplyDecision{got.Auto, got.Manual} {
+		if d.State != v1alpha1.ApplyBlocked || d.BlockedBy != "rate.cooldown" {
+			t.Fatalf("both kinds should be cooling down: %+v", d)
+		}
+	}
+}
+
 func TestCooldown(t *testing.T) {
 	now := mustTime(t, "2026-11-03T12:00:00Z")
 	policies := []Policy{{Name: "p", Spec: v1alpha1.ApplyRules{

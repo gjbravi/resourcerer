@@ -395,8 +395,9 @@ func (c compiled) blocks(kind v1alpha1.ApplyKind, in Input, now time.Time) (bloc
 		return block{field: "windows", reason: "outside the apply windows (" + c.describeWindows() + ")", next: next}, true
 	}
 	if kind == v1alpha1.ApplyKindManual {
-		// A person is not a queue: the rules about how many run at once never hold a reviewed apply.
-		return block{}, false
+		// A person is not a queue: the rules about how many run at once never hold a reviewed apply. A cooldown
+		// is not a queue, though: it is the stability of the workload, so it holds either kind of apply.
+		return c.cooling(in, now)
 	}
 	if in.Target.RollingOut {
 		return block{field: "rollout", reason: "its rollout has not finished"}, true
@@ -409,11 +410,17 @@ func (c compiled) blocks(kind v1alpha1.ApplyKind, in Input, now time.Time) (bloc
 	if b, ok := c.slot(in, now); ok {
 		return b, true
 	}
-	if c.rate.cooldown > 0 && !in.Target.Changed.IsZero() {
-		if until := in.Target.Changed.Add(c.rate.cooldown); now.Before(until) {
-			return block{field: "rate.cooldown", reason: fmt.Sprintf("changed less than %s ago, cooling down until %s",
-				c.rate.cooldown, until.UTC().Format(time.RFC3339)), next: until}, true
-		}
+	return c.cooling(in, now)
+}
+
+// cooling holds a workload that changed less than the cooldown ago, whatever kind of apply asks for it.
+func (c compiled) cooling(in Input, now time.Time) (block, bool) {
+	if c.rate.cooldown == 0 || in.Target.Changed.IsZero() {
+		return block{}, false
+	}
+	if until := in.Target.Changed.Add(c.rate.cooldown); now.Before(until) {
+		return block{field: "rate.cooldown", reason: fmt.Sprintf("changed less than %s ago, cooling down until %s",
+			c.rate.cooldown, until.UTC().Format(time.RFC3339)), next: until}, true
 	}
 	return block{}, false
 }

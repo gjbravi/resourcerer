@@ -264,6 +264,30 @@ wait_for "a rate of zero holds the automatic apply and leaves the manual one fre
    and .status.applyPolicy.manual.state == "Allowed"'
 k delete cap e2e-slots >/dev/null
 
+# A cooldown is about the workload settling, so unlike the limits above it holds a person too. The revert check
+# left api with a change in its history a moment ago.
+policy <<'EOF'
+apiVersion: resourcerer.io/v1alpha1
+kind: ClusterApplyPolicy
+metadata:
+  name: e2e-cooldown
+spec:
+  namespaceSelector:
+    matchLabels: { kubernetes.io/metadata.name: demo }
+  workloadSelector:
+    matchLabels: { app: api }
+  appliesTo: [Auto, Manual]
+  rate: { cooldown: 1h }
+EOF
+wait_for "a cooldown holds both kinds of apply" 120 decision demo deployment-api \
+  '.status.applyPolicy.auto.blockedBy == "rate.cooldown" and .status.applyPolicy.manual.blockedBy == "rate.cooldown"'
+cooled=$(curl -s -o /tmp/rz-cooled.json -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/api/apply" \
+  -d "{\"hash\":\"$(rec_field demo deployment-api '{.status.hash}')\"}")
+[[ "$cooled" == 409 ]] && pass "a click during the cooldown is refused" || fail "a click during the cooldown is refused (got $cooled)"
+jq -e '.error | test("e2e-cooldown")' /tmp/rz-cooled.json >/dev/null \
+  && pass "the cooldown refusal names the policy" || fail "the cooldown refusal names the policy"
+k delete cap e2e-cooldown >/dev/null
+
 # Audit records what it would block, and blocks nothing.
 policy <<'EOF'
 apiVersion: resourcerer.io/v1alpha1
