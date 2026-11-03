@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/gjbravi/resourcerer/compare/v0.7.0...v0.8.0) (2026-11-03)
+
+
+### Features
+
+* **applier:** apply policies for when an apply may start ([#40](https://github.com/gjbravi/resourcerer/issues/40)) ([fcda845](https://github.com/gjbravi/resourcerer/commit/fcda845e9fde295bc9be97d2ce2356495a12582b))
+
 ## [0.7.0](https://github.com/gjbravi/resourcerer/compare/v0.6.0...v0.7.0) (2026-11-02)
 
 
