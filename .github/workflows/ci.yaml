@@ -151,15 +151,23 @@ jobs:
           OIDC_VALUES: internal/server/auth/testdata/chart-values.yaml
           OIDC_GOLDEN: internal/server/auth/testdata/oidc.full.yaml
         run: |
+          # Helm 3 ends a rendered manifest with one newline and Helm 4 with three, which is the manifest trailer and
+          # not part of the ConfigMap, so the comparison normalizes it: the check is about the document the server
+          # parses, where a difference is a key or a value, not a trailing blank line.
           helm template rz charts/resourcerer -n resourcerer -f "$OIDC_VALUES" \
             -s templates/auth-configmap.yaml |
             sed -n '/^  oidc.yaml: |$/,$p' | tail -n +2 | sed 's/^    //' |
+            python3 -c 'import sys; sys.stdout.write(sys.stdin.read().rstrip("\n") + "\n")' |
             diff -u "$OIDC_GOLDEN" -
       - name: Values the server would refuse never render
         env:
           OIDC_VALUES: internal/server/auth/testdata/chart-values.yaml
         run: |
           refuse() {
+            # An extended regex: the render has to be turned down, and by the rule under test. It is not a literal
+            # because two Helm majors are in play — setup-helm installs the latest, so the job runs Helm 4 here and
+            # Helm 3 on a workstation — and each words a schema failure its own way ("issuer is required" against
+            # "missing property 'issuer'"). Both name the field, which is what makes the refusal the right one.
             want=$1
             shift
             # Refusing is not enough on its own: a render that fails for some other reason leaves the value under test
@@ -167,7 +175,7 @@ jobs:
             if out=$(helm template rz charts/resourcerer -n resourcerer -f "$OIDC_VALUES" "$@" 2>&1); then
               echo "rendered, but the server refuses it: $*" >&2
               exit 1
-            elif ! grep -qF "$want" <<<"$out"; then
+            elif ! grep -Eqi -- "$want" <<<"$out"; then
               echo "turned down for a reason other than \"$want\": $*" >&2
               printf '%s\n' "$out" >&2
               exit 1
@@ -175,7 +183,8 @@ jobs:
           }
           # null removes a key from the merged values, so each of these is a configuration missing that field.
           for key in auth.oidc.issuer auth.oidc.clientID auth.oidc.clientSecretSecretRef auth.session.keySecretRef; do
-            refuse "is required" --set "$key=null"
+            leaf=${key##*.}
+            refuse "$leaf is required|missing property '$leaf'" --set "$key=null"
           done
           # A session the server would not mint, a URL with no host to sign in at, a flag that would undo the strategy.
           refuse "is out of range" --set auth.oidc.sessionTTL=1m
