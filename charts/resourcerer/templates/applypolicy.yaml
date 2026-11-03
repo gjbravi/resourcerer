@@ -1,0 +1,15 @@
+{{- range .Values.applyPolicies.cluster }}
+---
+apiVersion: resourcerer.io/v1alpha1
+kind: ClusterApplyPolicy
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "resourcerer.labels" $ | nindent 4 }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- toYaml .spec | nindent 2 }}
+{{- end }}

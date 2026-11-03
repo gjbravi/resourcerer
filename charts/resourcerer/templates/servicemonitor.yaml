@@ -12,7 +12,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      {{- include "resourcerer.selectorLabels" (dict "root" . "component" "controller") | nindent 6 }}
+      resourcerer.io/metrics: "true"
   endpoints:
     - port: metrics
       interval: {{ .Values.metrics.serviceMonitor.interval }}

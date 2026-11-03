@@ -99,6 +99,34 @@ reliability:
   #     sum(rate(istio_requests_total{destination_workload_namespace="{{ .Namespace }}",
   #       destination_workload="{{ .Name }}"}[{{ .Window }}]))
 
+# -- Apply policies decide when an apply may start: the windows it may start in, freezes, and how many run at
+# once. They are ordinary ClusterApplyPolicy objects, listed here so a release can create them from the values
+# (teams can still write ApplyPolicy objects in their own namespaces). Without a policy, an apply that is due
+# starts at once, as before. The `spec` of each entry is the ClusterApplyPolicy spec: the CRD validates it.
+applyPolicies:
+  cluster: []
+  # - name: business-hours
+  #   spec:
+  #     namespaceSelector:
+  #       matchLabels: { resourcerer.io/environment: production }
+  #     appliesTo: [Auto, Manual]      # default Auto: a policy never holds a person back unless it says so
+  #     mode: Enforce                  # or Audit, which records what it would have blocked
+  #     windows:
+  #       - days: [Mon, Tue, Wed, Thu, Fri]
+  #         from: "09:00"
+  #         to: "17:30"
+  #         timeZone: Europe/Lisbon
+  #     freezes:
+  #       - from: 2026-11-27T00:00:00Z
+  #         to: 2026-12-01T00:00:00Z
+  #         reason: Black Friday
+  #     rate:
+  #       maxConcurrent: 1            # or a percentage, such as 25%
+  #       maxPerHour: 4
+  #       perNamespace: { maxConcurrent: 1 }
+  #       cooldown: 24h
+  #       spread: 15m
+
 auth:
   # -- Only `anonymous` for now: anyone who reaches the UI can use it, with the server's
   # ServiceAccount. Keep the Service internal or put an authenticating proxy in front.
@@ -154,11 +182,12 @@ server:
     tls: []
 
 metrics:
-  # -- Add prometheus.io/scrape annotations to the controller metrics Service. The UI charts
-  # recommendation history from the resourcerer_recommendation metric, so Prometheus must scrape it.
+  # -- Add prometheus.io/scrape annotations to the metrics Services: the controller's, and the applier's
+  # when it is enabled. The UI charts recommendation history from the resourcerer_recommendation metric, and
+  # the applier's `resourcerer_apply_*` counters are how a held herd of applies becomes visible.
   scrapeAnnotations: true
   serviceMonitor:
-    # -- Create a Prometheus Operator ServiceMonitor instead.
+    # -- Create a Prometheus Operator ServiceMonitor instead, for both metrics Services.
     enabled: false
     interval: 30s
     labels: {}

@@ -260,6 +260,9 @@ type RecommendationStatus struct {
 	Reliability *Reliability `json:"reliability,omitempty"`
 	// +optional
 	Warnings []string `json:"warnings,omitempty"`
+	// TargetLabels are the workload's labels and its pod template's, which apply policy selectors match.
+	// +optional
+	TargetLabels map[string]string `json:"targetLabels,omitempty"`
 
 	// Fields below are written by the applier.
 
@@ -272,6 +275,9 @@ type RecommendationStatus struct {
 	LastHandledRequestAt *metav1.Time `json:"lastHandledRequestAt,omitempty"`
 	// +optional
 	LastApplyResult *ApplyResult `json:"lastApplyResult,omitempty"`
+	// ApplyPolicy is when an apply may start, from the apply policies that select the workload.
+	// +optional
+	ApplyPolicy *ApplyPolicyStatus `json:"applyPolicy,omitempty"`
 }
 
 // Recommendation holds the resource recommendation for one workload.

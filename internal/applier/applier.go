@@ -19,9 +19,12 @@ import (
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
+	"github.com/gjbravi/resourcerer/internal/policy"
 	"github.com/gjbravi/resourcerer/internal/settings"
 	"github.com/gjbravi/resourcerer/internal/workload"
 )
@@ -43,6 +46,9 @@ type Reconciler struct {
 	// status patch the cache can still serve the old object, which would apply the same thing twice.
 	mu   sync.Mutex
 	done map[string]string
+	// applying remembers the applies whose rollout has not finished, which a rate limit counts. The
+	// applier is leader-elected, so one process sees every apply it starts.
+	applying map[types.NamespacedName]time.Time
 }
 
 func (r *Reconciler) seen(key, id string) bool {
@@ -61,8 +67,45 @@ func (r *Reconciler) remember(key, id string) {
 }
 
 func Setup(mgr ctrl.Manager) error {
-	r := &Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("resourcerer-applier"), Now: time.Now}
-	return ctrl.NewControllerManagedBy(mgr).Named("applier").For(&v1alpha1.Recommendation{}).Complete(r)
+	r := &Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Recorder: mgr.GetEventRecorder("resourcerer-applier"),
+		Now: time.Now, applying: map[types.NamespacedName]time.Time{}}
+	if err := ctrl.NewControllerManagedBy(mgr).Named("applier").For(&v1alpha1.Recommendation{}).
+		// A policy change has to reach the workloads it governs at once: a freeze or a narrower window is
+		// often written because something is about to happen.
+		Watches(&v1alpha1.ClusterApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.everyWorkload)).
+		Watches(&v1alpha1.ApplyPolicy{}, handler.EnqueueRequestsFromMapFunc(r.namespaceWorkloads)).
+		Complete(r); err != nil {
+		return err
+	}
+	return mgr.Add(&policyReporter{Reconciler: r})
+}
+
+// everyWorkload enqueues every Recommendation, for a change to a cluster-scoped policy.
+func (r *Reconciler) everyWorkload(ctx context.Context, _ client.Object) []reconcile.Request {
+	var recs v1alpha1.RecommendationList
+	if err := r.List(ctx, &recs); err != nil {
+		log.FromContext(ctx).Error(err, "list recommendations for a policy change")
+		return nil
+	}
+	out := make([]reconcile.Request, 0, len(recs.Items))
+	for i := range recs.Items {
+		out = append(out, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&recs.Items[i])})
+	}
+	return out
+}
+
+// namespaceWorkloads enqueues the Recommendations of the policy's namespace.
+func (r *Reconciler) namespaceWorkloads(ctx context.Context, obj client.Object) []reconcile.Request {
+	var recs v1alpha1.RecommendationList
+	if err := r.List(ctx, &recs, client.InNamespace(obj.GetNamespace())); err != nil {
+		log.FromContext(ctx).Error(err, "list recommendations for a policy change")
+		return nil
+	}
+	out := make([]reconcile.Request, 0, len(recs.Items))
+	for i := range recs.Items {
+		out = append(out, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&recs.Items[i])})
+	}
+	return out
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -71,23 +114,54 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	key := req.String()
-	if ar := rec.Spec.ApplyRequest; ar != nil && ar.ID != "" && ar.ID != rec.Status.LastHandledRequestID {
-		id := "request:" + ar.ID
-		if r.seen(key, id) {
+	// A revert is never held by a policy: it is how a bad apply is undone, and a freeze or the cooldown
+	// right after that apply is exactly when it has to stay possible.
+	if ar := rec.Spec.ApplyRequest; ar != nil && ar.ID != "" && ar.ID != rec.Status.LastHandledRequestID && ar.Action == v1alpha1.ActionRevert {
+		if r.seen(key, "request:"+ar.ID) {
 			return ctrl.Result{}, nil
 		}
-		r.remember(key, id)
-		return ctrl.Result{}, r.handle(ctx, rec, *ar)
+		r.remember(key, "request:"+ar.ID)
+		return ctrl.Result{}, r.revert(ctx, rec, *ar)
+	}
+
+	res, err := r.policyDecision(ctx, rec)
+	if err != nil {
+		// "Could not read the rules" never means "no rules": nothing is applied, and the reason is recorded.
+		log.FromContext(ctx).Error(err, "read the apply policies")
+		if perr := r.recordPolicy(ctx, rec, policyRefused(err)); perr != nil {
+			return ctrl.Result{}, perr
+		}
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+	if err := r.recordPolicy(ctx, rec, res); err != nil {
+		return ctrl.Result{}, err
+	}
+	r.releaseApplying(ctx, rec)
+	due := r.autoDue(rec) || (rec.Spec.ApplyRequest != nil && rec.Spec.ApplyRequest.ID != rec.Status.LastHandledRequestID)
+	requeue := ctrl.Result{RequeueAfter: requeueAfter(res, r.Now(), due)}
+
+	if ar := rec.Spec.ApplyRequest; ar != nil && ar.ID != "" && ar.ID != rec.Status.LastHandledRequestID {
+		if r.seen(key, "request:"+ar.ID) {
+			return requeue, nil
+		}
+		r.remember(key, "request:"+ar.ID)
+		return requeue, r.handle(ctx, rec, *ar, res)
 	}
 	if r.autoDue(rec) {
+		if d := res.Auto; d.State == v1alpha1.ApplyBlocked {
+			// Held, not skipped: the applier looks again when the rule that holds it changes.
+			deferApply(d.BlockedBy)
+			r.event(ctx, rec, corev1.EventTypeNormal, "ApplyDeferred", "Defer", "Automatic apply held by %s: %s", d.Policy, d.Reason)
+			return requeue, nil
+		}
 		id := "auto:" + rec.Status.Hash
 		if r.seen(key, id) {
-			return ctrl.Result{}, nil
+			return requeue, nil
 		}
 		r.remember(key, id)
-		return ctrl.Result{}, r.apply(ctx, rec, AutoDeployUser, nil)
+		return requeue, r.apply(ctx, rec, AutoDeployUser, nil)
 	}
-	return ctrl.Result{}, nil
+	return requeue, nil
 }
 
 func (r *Reconciler) autoDue(rec *v1alpha1.Recommendation) bool {
@@ -104,20 +178,23 @@ func (r *Reconciler) autoDue(rec *v1alpha1.Recommendation) bool {
 	return true
 }
 
-func (r *Reconciler) handle(ctx context.Context, rec *v1alpha1.Recommendation, ar v1alpha1.ApplyRequest) error {
-	switch ar.Action {
-	case v1alpha1.ActionApply:
-		if ar.Hash != rec.Status.Hash {
-			return r.finish(ctx, rec, &ar, "Rejected", "the recommendation changed since it was reviewed; reload and review it again")
-		}
-		if rec.Status.Phase != v1alpha1.PhaseReady && rec.Status.Phase != v1alpha1.PhaseLearning {
-			return r.finish(ctx, rec, &ar, "Rejected", fmt.Sprintf("cannot apply a %s recommendation", rec.Status.Phase))
-		}
-		return r.apply(ctx, rec, ar.RequestedBy, &ar)
-	case v1alpha1.ActionRevert:
-		return r.revert(ctx, rec, ar)
+func (r *Reconciler) handle(ctx context.Context, rec *v1alpha1.Recommendation, ar v1alpha1.ApplyRequest, res policy.Result) error {
+	if ar.Action != v1alpha1.ActionApply {
+		return r.finish(ctx, rec, &ar, "Rejected", "unknown action "+string(ar.Action))
 	}
-	return r.finish(ctx, rec, &ar, "Rejected", "unknown action "+string(ar.Action))
+	if ar.Hash != rec.Status.Hash {
+		return r.finish(ctx, rec, &ar, "Rejected", "the recommendation changed since it was reviewed; reload and review it again")
+	}
+	if rec.Status.Phase != v1alpha1.PhaseReady && rec.Status.Phase != v1alpha1.PhaseLearning {
+		return r.finish(ctx, rec, &ar, "Rejected", fmt.Sprintf("cannot apply a %s recommendation", rec.Status.Phase))
+	}
+	// The server refuses a held click before writing the request, but a policy may have changed since the
+	// decision in the status was recorded, so the applier decides once more on what it reads now.
+	if d := res.Manual; d.State == v1alpha1.ApplyBlocked {
+		deferApply(d.BlockedBy)
+		return r.finish(ctx, rec, &ar, "Rejected", heldReason(d))
+	}
+	return r.apply(ctx, rec, ar.RequestedBy, &ar)
 }
 
 func (r *Reconciler) apply(ctx context.Context, rec *v1alpha1.Recommendation, by string, ar *v1alpha1.ApplyRequest) error {
@@ -140,9 +217,14 @@ func (r *Reconciler) apply(ctx context.Context, rec *v1alpha1.Recommendation, by
 			return r.finish(ctx, rec, ar, "Failed", "resources applied, HPA target not updated: "+err.Error())
 		}
 	}
+	r.markApplying(rec)
 	entry := v1alpha1.HistoryEntry{Time: metav1.Time{Time: r.Now()}, Action: v1alpha1.ActionApply, By: by, Hash: rec.Status.Hash, Containers: changes}
 	r.event(ctx, rec, corev1.EventTypeNormal, "RecommendationApplied", "Apply", "Applied %s by %s: %s", rec.Status.Hash, by, describe(changes))
-	return r.record(ctx, rec, ar, entry)
+	if err := r.record(ctx, rec, ar, entry); err != nil {
+		return err
+	}
+	countApply("Succeeded")
+	return nil
 }
 
 func (r *Reconciler) revert(ctx context.Context, rec *v1alpha1.Recommendation, ar v1alpha1.ApplyRequest) error {
@@ -165,7 +247,13 @@ func (r *Reconciler) revert(ctx context.Context, rec *v1alpha1.Recommendation, a
 	}
 	entry := v1alpha1.HistoryEntry{Time: metav1.Time{Time: r.Now()}, Action: v1alpha1.ActionRevert, By: ar.RequestedBy, Hash: last.Hash, Containers: changes}
 	r.event(ctx, rec, corev1.EventTypeNormal, "RecommendationReverted", "Revert", "Reverted %s by %s: %s", last.Hash, ar.RequestedBy, describe(changes))
-	return r.record(ctx, rec, &ar, entry)
+	if err := r.record(ctx, rec, &ar, entry); err != nil {
+		return err
+	}
+	// A revert starts a rollout like any other apply, and counts against the limits while it runs.
+	r.markApplying(rec)
+	revertedCounter.WithLabelValues("manual").Inc()
+	return nil
 }
 
 // liveResources reads container resources from the API server, not the cache, so history records what was really replaced.
@@ -245,6 +333,7 @@ func (r *Reconciler) record(ctx context.Context, rec *v1alpha1.Recommendation, a
 func (r *Reconciler) finish(ctx context.Context, rec *v1alpha1.Recommendation, ar *v1alpha1.ApplyRequest, result, msg string) error {
 	patch := client.MergeFrom(rec.DeepCopy())
 	r.mark(rec, ar, result, msg)
+	countApply(result)
 	if result != "Succeeded" {
 		r.event(ctx, rec, corev1.EventTypeWarning, "ApplyFailed", "Apply", "%s: %s", result, msg)
 		log.FromContext(ctx).Info("apply not done", "result", result, "message", msg)

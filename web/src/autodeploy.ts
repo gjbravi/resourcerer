@@ -1,6 +1,7 @@
 import type { Detail } from "./api";
+import { autoHold, holdText } from "./policy";
 
-export type AutoTone = "on" | "off" | "wait" | "done";
+export type AutoTone = "on" | "off" | "hold" | "wait" | "done";
 
 export interface AutoDeploy {
   on: boolean;
@@ -10,6 +11,8 @@ export interface AutoDeploy {
   /** Where the setting comes from: cluster, namespace or workload. */
   source: string;
   threshold: string;
+  /** The policy that holds it, when one does. */
+  heldBy?: string;
 }
 
 const AUTO_USER = "auto-deploy";
@@ -32,6 +35,9 @@ export function autoDeploy(d: Detail): AutoDeploy {
   if (seen?.action === "Revert") return { ...base, tone: "wait", text: "Skips this recommendation: it was reverted." };
   if (seen) return { ...base, tone: "done", text: seen.by === AUTO_USER ? "Applied it automatically." : "Applied." };
   if (!d.pending) return { ...base, tone: "done", text: `Nothing to apply: requests are within ${threshold}.` };
+  const held = autoHold(d);
+  if (held.blocked)
+    return { ...base, tone: "hold", text: `Held, not cancelled: ${holdText(held)}.`, heldBy: held.policy };
   if (d.phase === "Ready") return { ...base, tone: "on", text: "Applies this recommendation in a moment." };
   if (d.phase === "Learning" || d.phase === "Pending")
     return { ...base, tone: "wait", text: "Applies it once the recommendation is Ready." };

@@ -44,3 +44,20 @@ reliability:
         /
         max by (container) (kube_pod_container_resource_requests{namespace="{{ .Namespace }}", resource="memory"}
           * on (namespace, pod) group_left () {{ .OwnedPods }})
+
+# Rendered by the chart: it selects namespaces labelled resourcerer.io/apply-policy=strict, which the e2e
+# adds and removes. Declaring it here is what checks the chart path, not the policy itself.
+applyPolicies:
+  cluster:
+    - name: strict-namespace-window
+      spec:
+        namespaceSelector:
+          matchLabels:
+            resourcerer.io/apply-policy: strict
+        appliesTo: [Auto, Manual]
+        windows:
+          - days: [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
+            from: "00:00"
+            to: "23:59"
+        rate:
+          maxConcurrent: 1

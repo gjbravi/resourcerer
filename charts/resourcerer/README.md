@@ -22,6 +22,7 @@ helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <ver
 | `cost.source` | `auto` | `static` (`cost.rates`), `karpenter` (rates calibrated to Karpenter node prices, an error when missing) or `auto` (Karpenter when available). |
 | `reliability.builtin.<id>` | all enabled | Turn a built-in signal off (`enabled: false`) or set its `warn` level. See `docs/reliability-signals.md`. |
 | `reliability.signals` | `[]` | Signals declared as PromQL templates, evaluated per workload (at most 20). |
+| `applyPolicies.cluster` | `[]` | `ClusterApplyPolicy` objects created with the release: when an apply may start, and how many run at once. See `docs/apply-policy.md`. |
 | `cost.allocation` | `cluster` | `cluster` (every workload at the cluster's average rates) or `node` (each workload at the rates of the nodes its pods ran on; needs Karpenter prices). |
 | `cost.rates.cpuCoreHour`, `cost.rates.memoryGiBHour` | `0.0316`, `0.0042` | USD rates; with Karpenter, the CPU to memory ratio. |
 | `cost.karpenter.refreshInterval` | `10m` | How often rates are recalibrated from Karpenter prices; at least `30s`. |
@@ -31,7 +32,9 @@ helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <ver
 | `controller.replicas`, `applier.replicas`, `server.replicas` | `1` | Leader election above 1 for controller and applier. |
 | `server.ui` | `true` | Serve the embedded UI. |
 | `server.service`, `server.ingress` | ClusterIP, disabled | The Ingress has no authentication. |
-| `metrics.scrapeAnnotations` | `true` | `prometheus.io/scrape` on the controller metrics Service. |
-| `metrics.serviceMonitor.enabled` | `false` | Prometheus Operator ServiceMonitor instead. |
+| `metrics.scrapeAnnotations` | `true` | `prometheus.io/scrape` on the controller and applier metrics Services. |
+| `metrics.serviceMonitor.enabled` | `false` | Prometheus Operator ServiceMonitor instead, for both. |
 
-The CRD is in `crds/` and installed by Helm on first install; upgrade it with `kubectl apply -f charts/resourcerer/crds`.
+The CRDs are in `crds/` and installed by Helm on first install; upgrade them with
+`kubectl apply --server-side -f charts/resourcerer/crds`. An installation upgraded without them runs ungated:
+the applier says so in its log instead of refusing every apply.

@@ -239,6 +239,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	rec.Status.Pending = out.Phase != "Pending" && engine.Pending(in.Containers, out, threshold)
 	rec.Status.Settings = toSettings(eff)
 	rec.Status.Warnings = eff.Warnings
+	rec.Status.TargetLabels = w.Labels()
 	rec.Status.Containers = toContainers(in.Containers, out)
 	rec.Status.HPA = nil
 	if out.HPA != nil {

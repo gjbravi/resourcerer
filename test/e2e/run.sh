@@ -32,8 +32,10 @@ wait_for() {
 }
 
 API="http://localhost:$PORT/api/v1"
+MPORT="${E2E_METRICS_PORT:-18081}"
 PF=""
-trap 'kill $PF 2>/dev/null || true' EXIT
+MPF=""
+trap 'kill $PF $MPF 2>/dev/null || true' EXIT
 # Right after a rollout the forward can land on a terminating pod and exit; reopen it until the API answers.
 k -n resourcerer rollout status deploy/resourcerer-server --timeout=120s >/dev/null
 for _ in $(seq 1 20); do
@@ -46,8 +48,16 @@ for _ in $(seq 1 20); do
 done
 wait_for "server answers" 30 curl -fs "$API/info"
 
+# The applier's counters are the only place an apply, a hold or a slot shows up as a number.
+k -n resourcerer port-forward svc/resourcerer-applier-metrics "$MPORT:8081" >/dev/null 2>&1 &
+MPF=$!
+metric() { curl -fs "http://localhost:$MPORT/metrics" | grep -qE "$1"; }
+
 # Start from the manifests, also when an earlier run stopped halfway.
 k apply --server-side --force-conflicts -f "$(dirname "$0")/../../hack/demo.yaml" >/dev/null
+k delete cap e2e-closed-window e2e-slots e2e-audit e2e-bad-zone --ignore-not-found >/dev/null 2>&1 || true
+k label ns demo resourcerer.io/apply-policy- >/dev/null 2>&1 || true
+k -n demo annotate deploy api resourcerer.io/auto-deploy- resourcerer.io/cpu.optimization-goal- >/dev/null 2>&1 || true
 k -n demo annotate deploy worker resourcerer.io/memory.optimization-goal- >/dev/null 2>&1 || true
 k -n payments annotate deploy checkout resourcerer.io/learning-period- >/dev/null 2>&1 || true
 
@@ -142,5 +152,150 @@ k -n demo label deploy worker resourcerer.io/enabled=false --overwrite >/dev/nul
 wait_for "opt-out deletes the Recommendation" 60 bash -c "! kubectl --context $CTX -n demo get rec deployment-worker"
 k -n demo label deploy worker resourcerer.io/enabled- >/dev/null
 wait_for "removing the opt-out recreates it" 60 k -n demo get rec deployment-worker
+
+# Apply policies: when an apply may start. hack/resourcerer-values.yaml ships one through the chart, which
+# selects namespaces labelled resourcerer.io/apply-policy=strict.
+policy() { k apply -f - >/dev/null; }
+decision() { # <namespace> <recommendation> <jq filter over the Recommendation>
+  k -n "$1" get rec "$2" -o json | jq -e "$3" >/dev/null
+}
+policy_status() { # <policy> <jq filter over .status>
+  k get cap "$1" -o json | jq -e ".status | $2" >/dev/null
+}
+wait_for "the chart renders its ClusterApplyPolicy" 120 policy_status strict-namespace-window '.workloads == 0'
+k label ns demo resourcerer.io/apply-policy=strict >/dev/null
+wait_for "a policy selects the workloads of a labelled namespace" 120 policy_status strict-namespace-window '.workloads > 0'
+k label ns demo resourcerer.io/apply-policy- >/dev/null
+
+# A window open one minute a week: closed for every run of this script, to the minute.
+window_policy() { # <name> <app label>
+  policy <<EOF
+apiVersion: resourcerer.io/v1alpha1
+kind: ClusterApplyPolicy
+metadata:
+  name: $1
+spec:
+  namespaceSelector:
+    matchLabels: { kubernetes.io/metadata.name: demo }
+  workloadSelector:
+    matchLabels: { app: $2 }
+  appliesTo: [Auto, Manual]
+  windows:
+    - days: [Mon]
+      from: "00:00"
+      to: "00:01"
+EOF
+}
+
+# A click during a closed window is refused and named, and nothing changes.
+window_policy e2e-closed-window api
+wait_for "a closed window holds both kinds of apply, and says when it opens" 120 decision demo deployment-api \
+  '.status.applyPolicy.auto.state == "Blocked" and .status.applyPolicy.auto.blockedBy == "windows"
+   and .status.applyPolicy.auto.policy == "ClusterApplyPolicy/e2e-closed-window"
+   and .status.applyPolicy.auto.nextAllowed != null and .status.applyPolicy.manual.state == "Blocked"'
+held=$(curl -s -o /tmp/rz-held.json -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/api/apply" \
+  -d "{\"hash\":\"$(rec_field demo deployment-api '{.status.hash}')\"}")
+[[ "$held" == 409 ]] && pass "a held apply is refused with 409" || fail "a held apply is refused with 409 (got $held)"
+jq -e '.error | test("e2e-closed-window")' /tmp/rz-held.json >/dev/null \
+  && pass "the refusal names the policy" || fail "the refusal names the policy"
+k delete cap e2e-closed-window >/dev/null
+
+# An automatic apply that is due while the window is closed is deferred, not dropped, and starts by itself once
+# nothing holds it. worker is the workload here: its Recommendation is pending, and no run of this script applies it.
+worker_cpu=$(k -n demo get deploy worker -o jsonpath='{.spec.template.spec.containers[?(@.name=="worker")].resources.requests.cpu}')
+window_policy e2e-auto-window worker
+k -n demo annotate deploy worker resourcerer.io/auto-deploy=Enabled --overwrite >/dev/null
+wait_for "a due automatic apply under the closed window" 240 decision demo deployment-worker \
+  '.status.pending == true and .status.settings["auto-deploy"].value == "Enabled"
+   and .status.applyPolicy.auto.blockedBy == "windows"'
+sleep 5
+[[ "$(k -n demo get deploy worker -o jsonpath='{.spec.template.spec.containers[?(@.name=="worker")].resources.requests.cpu}')" == "$worker_cpu" ]] \
+  && pass "a held automatic apply leaves the workload alone ($worker_cpu)" \
+  || fail "a held automatic apply leaves the workload alone (want $worker_cpu)"
+k delete cap e2e-auto-window >/dev/null
+wait_for "the deferred apply goes through once nothing holds it" 120 decision demo deployment-worker \
+  '.status.applyPolicy.auto.state == "Allowed"'
+wait_for "and the applier did it, not a person" 120 decision demo deployment-worker \
+  '.status.history[0].by == "auto-deploy"'
+k -n demo annotate deploy worker resourcerer.io/auto-deploy=Disabled --overwrite >/dev/null
+
+# A revert is never held: it is how a bad apply is undone, and the window that would hold an apply is exactly
+# when it has to stay possible.
+api_before=$(api_cpu)
+curl -fs -X POST "$API/workloads/demo/Deployment/api/apply" -d "{\"hash\":\"$(rec_field demo deployment-api '{.status.hash}')\"}" >/dev/null
+wait_for "an apply goes through while no window holds it" 60 bash -c \
+  "[[ \$(kubectl --context $CTX -n demo get deploy api -o jsonpath='{.spec.template.spec.containers[?(@.name==\"api\")].resources.requests.cpu}') != '$api_before' ]]"
+window_policy e2e-closed-window api
+wait_for "the window holds the workload again" 120 decision demo deployment-api \
+  '.status.applyPolicy.manual.state == "Blocked"'
+curl -fs -X POST "$API/workloads/demo/Deployment/api/revert" >/dev/null
+wait_for "a revert is never held: it restores $api_before during a closed window" 60 bash -c \
+  "[[ \$(kubectl --context $CTX -n demo get deploy api -o jsonpath='{.spec.template.spec.containers[?(@.name==\"api\")].resources.requests.cpu}') == '$api_before' ]]"
+k delete cap e2e-closed-window >/dev/null
+
+# A rate of zero holds every automatic apply in the namespace, and no manual one: a person is not a queue.
+policy <<'EOF'
+apiVersion: resourcerer.io/v1alpha1
+kind: ClusterApplyPolicy
+metadata:
+  name: e2e-slots
+spec:
+  namespaceSelector:
+    matchLabels: { kubernetes.io/metadata.name: payments }
+  rate: { maxConcurrent: 0 }
+EOF
+wait_for "a rate of zero holds the automatic apply and leaves the manual one free" 120 decision payments deployment-checkout \
+  '.status.applyPolicy.auto.state == "Blocked" and .status.applyPolicy.auto.blockedBy == "rate.maxConcurrent"
+   and .status.applyPolicy.manual.state == "Allowed"'
+k delete cap e2e-slots >/dev/null
+
+# Audit records what it would block, and blocks nothing.
+policy <<'EOF'
+apiVersion: resourcerer.io/v1alpha1
+kind: ClusterApplyPolicy
+metadata:
+  name: e2e-audit
+spec:
+  namespaceSelector:
+    matchLabels: { kubernetes.io/metadata.name: pricing }
+  mode: Audit
+  windows:
+    - days: [Mon]
+      from: "00:00"
+      to: "00:01"
+EOF
+wait_for "an Audit policy records what it would block without blocking" 120 decision pricing deployment-on-demand-app \
+  '.status.applyPolicy.auto.state == "Allowed" and (.status.applyPolicy.auto.wouldBlock | length) == 1
+   and (.status.applyPolicy.auto.wouldBlock[0] | test("e2e-audit"))'
+k delete cap e2e-audit >/dev/null
+
+# A policy that cannot be read holds instead of opening the door, and its status says why.
+policy <<'EOF'
+apiVersion: resourcerer.io/v1alpha1
+kind: ClusterApplyPolicy
+metadata:
+  name: e2e-bad-zone
+spec:
+  namespaceSelector:
+    matchLabels: { kubernetes.io/metadata.name: demo }
+  windows:
+    - days: [Mon]
+      from: "09:00"
+      to: "17:00"
+      timeZone: Not/AZone
+EOF
+wait_for "a policy with an unknown time zone holds the workloads it selects" 120 decision demo deployment-worker \
+  '.status.applyPolicy.auto.state == "Blocked" and .status.applyPolicy.auto.blockedBy == "policy"'
+wait_for "the policy reports itself invalid" 120 policy_status e2e-bad-zone \
+  '(.conditions[0].type == "Valid" and .conditions[0].status == "False")'
+k delete cap e2e-bad-zone >/dev/null
+wait_for "with every policy gone, applies are allowed again" 120 decision demo deployment-worker \
+  '.status.applyPolicy.auto.state == "Allowed" and .status.applyPolicy.manual.state == "Allowed"'
+
+# The metrics the issue asks for: applies by result, holds by rule, reverts, and slots left per policy.
+wait_for "the applier exports the apply counters" 60 metric '^resourcerer_apply_total\{result="Succeeded"\} [1-9]'
+wait_for "the applier counts the holds by the rule that held them" 60 metric '^resourcerer_apply_deferred_total\{reason="window"\} [1-9]'
+wait_for "the applier counts the reverts" 60 metric '^resourcerer_apply_reverted_total\{reason="manual"\} [1-9]'
+wait_for "a policy exports the slots it has left" 60 metric '^resourcerer_applypolicy_slots_available\{policy="ClusterApplyPolicy/e2e-slots"\}'
 
 echo "all e2e checks passed"

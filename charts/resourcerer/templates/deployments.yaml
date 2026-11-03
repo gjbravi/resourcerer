@@ -15,5 +15,5 @@
 {{- if .Values.applier.enabled }}
 ---
 {{ include "resourcerer.deployment" (dict "root" . "component" "applier" "values" .Values.applier
-  "args" (list "--metrics-bind-address=0") "ports" list) }}
+  "args" (list "--metrics-bind-address=:8081") "ports" (list (dict "name" "metrics" "port" 8081))) }}
 {{- end }}

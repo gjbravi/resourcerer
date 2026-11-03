@@ -10,6 +10,7 @@ import {
   Flame,
   Hourglass,
   Info,
+  Lock,
   MemoryStick,
   Pencil,
   RefreshCw,
@@ -40,6 +41,7 @@ import {
 } from "../components";
 import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, isoSeconds, Mi, quantity } from "../format";
 import { autoDeploy } from "../autodeploy";
+import { holdText, manualHold } from "../policy";
 import { fmtWindow } from "../placement";
 import { toast, useAction, useImpact, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
 import { resolved, signals, type Signal } from "../reliability";
@@ -88,7 +90,9 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
     );
 
   const containers = d.containers ?? [];
-  const canApply = !readOnly && !!d.hash && d.pending && (d.phase === "Ready" || d.phase === "Learning");
+  const held = manualHold(d);
+  const canApply =
+    !readOnly && !!d.hash && d.pending && (d.phase === "Ready" || d.phase === "Learning") && !held.blocked;
   const lastApply = d.history.find((h) => h.action === "Apply");
   const net = d.current.monthlyCost - d.recommended.monthlyCost;
   const sig = signals(d);
@@ -194,10 +198,16 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
               disabled={!canApply}
               onClick={() => setConfirm(true)}
               title={
-                readOnly ? "Read-only" : !d.pending ? "Current requests already match the recommendation" : d.message
+                readOnly
+                  ? "Read-only"
+                  : !d.pending
+                    ? "Current requests already match the recommendation"
+                    : held.blocked
+                      ? holdText(held)
+                      : d.message
               }
             >
-              <Sparkles size={15} /> Apply recommendation
+              {held.blocked ? <Lock size={15} /> : <Sparkles size={15} />} Apply recommendation
             </button>
             <button
               className="rz-btn ghost"
@@ -217,6 +227,11 @@ export function Details({ wref, tab, readOnly }: { wref: Ref; tab: string; readO
             </button>
             <StatusBadge phase={d.phase} title={d.message} />
           </div>
+          {held.blocked && (
+            <span className="rz-recmeta" style={{ marginTop: 0 }} title={held.policy}>
+              <Lock size={13} /> {holdText(held)}
+            </span>
+          )}
           {lastApply && (
             <span className="rz-recmeta" style={{ marginTop: 0 }}>
               <span>

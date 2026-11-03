@@ -29,6 +29,8 @@ of usage plus headroom, so you can see exactly why a value was chosen.
 - UI: cluster overview, workload list with bulk apply, per-workload impact, usage percentile charts with current and
   recommended requests over time, Kustomize/Helm/kubectl patches, and effective settings with their source.
 - Apply Now, Revert and auto-deploy with thresholds, through server-side apply with field manager `resourcerer`.
+- Apply policies: apply windows in a time zone, freezes, and how many rollouts run at once, as `ClusterApplyPolicy`
+  and `ApplyPolicy` objects a team writes itself.
 - No database: state lives in a `Recommendation` CRD, history in Prometheus.
 
 ## Architecture
@@ -108,6 +110,14 @@ Built-in signals (CPU throttling, memory headroom, restarts, crash loops, HPA at
 workloads whose requests or limits may be too tight. Declare your own as PromQL templates under
 `reliability.signals`, such as error rates or latency; they show in the workload list, the Reliability tab and the
 verdict on whether to apply. See [docs/reliability-signals.md](docs/reliability-signals.md).
+
+## Apply policies
+
+`ApplyPolicy` (a namespace) and `ClusterApplyPolicy` (the platform) decide **when** an apply may start: working
+hours in a time zone, a freeze around a launch, one rollout at a time per namespace, a cooldown per workload, and an
+`Audit` mode to watch a policy before enforcing it. Every policy that selects a workload has to allow the apply, so
+a namespace can be stricter than the platform and never looser, and a revert is never held. See
+[docs/apply-policy.md](docs/apply-policy.md).
 
 ## Settings
 
