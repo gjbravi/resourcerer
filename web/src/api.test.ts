@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api } from "./api";
-import { ajaxHeader, ajaxValue, readSignRecord } from "./session";
+import { ajaxHeader, ajaxValue, loopWindow, readSignRecord } from "./session";
 
 /** What the browser was asked to send, as `call` built it. */
 interface Sent {
@@ -34,15 +34,17 @@ function reply(status: number, body: unknown = {}) {
 
 const last = () => sent[sent.length - 1];
 
-const location = (pathname: string, hash = "") => {
+const location = (pathname: string, hash = "", search = "") => {
   const assign = vi.fn();
-  vi.stubGlobal("location", { pathname, search: "", hash, assign });
+  vi.stubGlobal("location", { pathname, search, hash, assign });
   return assign;
 };
 
 beforeEach(() => {
   sent.length = 0;
   sessionStorage.clear();
+  // One browser per test, including the one thing it keeps across tabs.
+  localStorage.clear();
   reply(200, { ok: true });
   location("/");
 });
@@ -150,6 +152,55 @@ describe("a refused request", () => {
     await api.info().catch(() => undefined);
     expect(assign).toHaveBeenCalledTimes(1);
     // The mark that tells the page to stop and explain rather than send the browser off again.
+    expect(readSignRecord().stopped).toEqual(expect.any(Number));
+  });
+
+  // The counter behind that explanation: only a page that believes it has a session gets this far, so a second refusal
+  // of the same cookie is the server answering itself two ways, and the page says so rather than keep asking.
+  it("counts the refusals of a session the page believed in", async () => {
+    location("/");
+    reply(401, { error: "sign in", reason: "unauthenticated" });
+    await api.info().catch(() => undefined);
+    expect(readSignRecord()).toMatchObject({ refusals: 1 });
+    await api.info().catch(() => undefined);
+    expect(readSignRecord()).toMatchObject({ refused: expect.any(Number), refusals: 2 });
+  });
+  it("counts nothing when the refusal was not about the session", async () => {
+    location("/");
+    reply(403, { error: "view-only", reason: "forbidden" });
+    await api.info().catch(() => undefined);
+    await api.info().catch(() => undefined);
+    expect(readSignRecord().refusals).toBeUndefined();
+  });
+  // A browser someone signed out expects a 401: counting those would hand the next session a card about a disagreement
+  // that never happened.
+  it("counts no refusal from a browser that was signed out on purpose", async () => {
+    const assign = location("/", "", "?signed-out");
+    reply(401, { error: "sign in", reason: "unauthenticated" });
+    await api.info().catch(() => undefined);
+    await api.info().catch(() => undefined);
+    expect(assign).not.toHaveBeenCalled();
+    expect(readSignRecord().refusals).toBeUndefined();
+  });
+  it("holds that answer for a tab that carries no marker of its own", async () => {
+    localStorage.setItem("resourcerer.signed-out", String(Date.now()));
+    const assign = location("/deep/", "#/workloads");
+    reply(401, { error: "sign in", reason: "unauthenticated" });
+    await api.info().catch(() => undefined);
+    expect(assign).not.toHaveBeenCalled();
+    expect(readSignRecord()).toEqual({ at: undefined, stopped: undefined });
+  });
+  // The shape of a disagreement between replicas over one cookie: an attempt old enough to be retried, and a run of
+  // refusals that says a retry is the wrong answer. The page stops here rather than authorize again every window.
+  it("asks the provider no more once the refusals add up, window or no window", async () => {
+    const now = Date.now();
+    sessionStorage.setItem("resourcerer.sign-in", String(now - loopWindow - 1));
+    sessionStorage.setItem("resourcerer.refused", String(now - 1_000));
+    sessionStorage.setItem("resourcerer.refusals", "2");
+    const assign = location("/");
+    reply(401, { error: "sign in", reason: "unauthenticated" });
+    await api.info().catch(() => undefined);
+    expect(assign).not.toHaveBeenCalled();
     expect(readSignRecord().stopped).toEqual(expect.any(Number));
   });
 });

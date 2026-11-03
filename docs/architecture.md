@@ -343,8 +343,10 @@ flowchart LR
   reaches the server do anything. `oidc` signs users in at an OpenID Connect provider (`/auth/login`,
   `/auth/callback`, `/auth/logout`, authorization code with PKCE) and keeps the identity in an AES-GCM sealed cookie,
   so no replica holds sessions. Signing out clears that cookie and lands the browser on `/?signed-out`, which the UI
-  shows as a signed-out screen instead of starting another sign-in; the provider's own session is not touched and
-  outlives it. Its parameters are read from their own ConfigMap (`oidc.yaml`), fail-closed at start
+  shows as a signed-out screen instead of starting another sign-in; the UI remembers that choice for the whole browser,
+  in `localStorage`, so a tab left open on the sign-in screen does not quietly sign itself back in next to it, and only
+  pressing Sign in again clears it. The provider's own session is not touched and outlives it. Its parameters are read
+  from their own ConfigMap (`oidc.yaml`), fail-closed at start
   and reread every 30s, keeping the last good configuration on errors; secrets come from the environment. Roles are
   resolved from groups on every request, so a change to `editorGroups` applies without signing in again.
 - **`GET /api/v1/me`** always answers `200` with `Cache-Control: no-store`, so the UI learns whether to sign in

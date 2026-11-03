@@ -1,16 +1,18 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { api, refKey, type Range, type Ref, type ReliabilityWindow, type Resource } from "./api";
-import { afterMe } from "./session";
+import { api, refKey, type Range, type Ref, type ReliabilityWindow, type Resource, type Session } from "./api";
+import { afterMe, staleMarker, withoutSignedOut } from "./session";
 
 /**
  * Who is calling, from `GET /api/v1/me`: the only call the server answers without a session, so the app asks it
  * before anything else. It is rechecked when the window regains focus, which is how a session that ended while the
  * page sat there is noticed; a caller who is gone from it is sent back to the provider, unless that round trip is what
- * keeps bringing them here.
+ * keeps bringing them here. The answer also settles the address it came to: an unauthenticated one starts the sign-in
+ * that the record may hold back, and an authenticated one retires the marker a sign-out left behind, because a tab
+ * with a session is no longer where that sign-out left anyone.
  */
-export const useSession = () =>
-  useQuery({
+export function useSession() {
+  const session = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
       const s = await api.me();
@@ -18,6 +20,22 @@ export const useSession = () =>
       return s;
     },
   });
+  useStaleSignOutMarker(session.data);
+  return session;
+}
+
+/**
+ * An address saying a sign-out left the browser here describes a tab that has no session. Once `/me` reports one the
+ * address is stale, and keeping it means the next time this session ends the page reads an expiry as a sign-out nobody
+ * asked for. Only the query goes: the hash is the page itself.
+ */
+function useStaleSignOutMarker(session: Session | undefined) {
+  useEffect(() => {
+    if (staleMarker(session, window.location.search)) {
+      window.history.replaceState("", "", withoutSignedOut(window.location));
+    }
+  }, [session]);
+}
 
 /** The cluster's configuration; nothing to ask for until someone is signed in to ask as. */
 export const useInfo = (enabled = true) =>

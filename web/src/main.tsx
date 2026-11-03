@@ -1,18 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  Boxes,
-  LayoutDashboard,
-  LogOut,
-  Moon,
-  Server,
-  Settings as SettingsIcon,
-  Sun,
-  Unlock,
-  UserRound,
-} from "lucide-react";
+import { LogOut, Moon, Sun, Unlock, UserRound } from "lucide-react";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { HatLogo } from "./art";
 import type { Me, Session } from "./api";
 import { ErrorBox, Toasts } from "./components";
 import { useHash, useInfo, useSession, useWorkloads } from "./hooks";
@@ -21,7 +10,16 @@ import { Overview } from "./pages/Overview";
 import { SettingsPage } from "./pages/SettingsPage";
 import { Workloads } from "./pages/Workloads";
 import { configureSignals } from "./reliability";
-import { bootState, clearSignRecord, readSignRecord, shellLabels, writeLock } from "./session";
+import {
+  bootState,
+  clearSignOutIntent,
+  clearSignRecord,
+  readSignOutIntent,
+  readSignRecord,
+  shellLabels,
+  writeLock,
+} from "./session";
+import { Crumbs, Sidebar } from "./shell";
 import "./styles.css";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, retry: 1 } } });
@@ -32,7 +30,7 @@ function App() {
   // The session is the one call the server answers without a signed-in caller, so it comes first and everything else
   // waits for it: asking as nobody would answer every request with 401.
   const session = useSession();
-  const boot = bootState(session, readSignRecord(), window.location.search);
+  const boot = bootState(session, readSignRecord(), window.location.search, readSignOutIntent());
   const me = session.data?.authenticated ? session.data : undefined;
   const asks = boot.view === "app";
   const info = useInfo(asks);
@@ -46,11 +44,6 @@ function App() {
   const cluster = shell.cluster ?? "";
   const readOnly = info.data?.readOnly ?? false;
   const lock = writeLock(session.data, readOnly);
-  const nav = [
-    ["#/overview", "overview", "Overview", LayoutDashboard],
-    ["#/workloads", "workloads", "Workloads", Boxes],
-    ["#/settings", "settings", "Settings", SettingsIcon],
-  ] as const;
 
   let body;
   if (boot.view === "loading") body = <div className="rz-loading">Loading…</div>;
@@ -83,61 +76,11 @@ function App() {
 
   return (
     <div className={`rz${dark ? " dark" : ""}`}>
-      <aside className="rz-side">
-        <a className="rz-logo" href="#/overview">
-          <HatLogo /> <span>resourcerer</span>
-          <span className="rz-beta" title="Beta: APIs, annotations and the CRD may change">
-            Beta
-          </span>
-        </a>
-        {shell.cluster && (
-          <div className="rz-cluster">
-            <Server size={14} />
-            <div>
-              <div className="rz-dim rz-xs">Cluster</div>
-              <b>{shell.cluster}</b>
-            </div>
-          </div>
-        )}
-        <nav>
-          {nav.map(([href, id, label, Icon]) => (
-            <a key={id} href={href} className={page === id ? "on" : ""} aria-current={page === id ? "page" : undefined}>
-              <Icon size={17} /> {label}
-            </a>
-          ))}
-        </nav>
-        {(shell.version || shell.prometheus || me?.configStale) && (
-          <div className="rz-sidefoot">
-            {shell.version && <div className="rz-dim rz-xs">{shell.version}</div>}
-            {shell.prometheus && <div className="rz-dim rz-xs">Prometheus · {shell.prometheus}</div>}
-            {me?.configStale && (
-              <div className="rz-xs t-warn" title={me.configError || "The sign-in configuration could not be reread."}>
-                Sign-in configuration is out of date
-              </div>
-            )}
-          </div>
-        )}
-      </aside>
+      <Sidebar page={page} shell={shell} configStale={me?.configStale} configError={me?.configError} />
       <div className="rz-main">
         <div className="rz-surface">
           <header className="rz-top">
-            <div className="rz-crumbs rz-dim">
-              {shell.cluster && (
-                <>
-                  {shell.cluster} <span>/</span>
-                </>
-              )}
-              {parts[0] === "w" ? (
-                <>
-                  <a href="#/workloads">Workloads</a> <span>/</span>{" "}
-                  <b>
-                    {parts[1]}/{parts[3]}
-                  </b>
-                </>
-              ) : (
-                <b>{page[0].toUpperCase() + page.slice(1)}</b>
-              )}
-            </div>
+            <Crumbs page={page} parts={parts} shell={shell} />
             <div className="rz-topright">
               <Who session={session.data} readOnly={readOnly} />
               <button
@@ -218,12 +161,14 @@ function NoAccess({ me }: { me: Me }) {
             </p>
           </div>
         </div>
-        <div className="rz-chips">
-          {me.groups.length ? (
-            me.groups.map((g) => <code key={g}>{g}</code>)
-          ) : (
-            <span className="rz-dim">The provider presented no groups.</span>
-          )}
+        <div className="rz-cardft">
+          <div className="rz-chips">
+            {me.groups.length ? (
+              me.groups.map((g) => <code key={g}>{g}</code>)
+            ) : (
+              <span className="rz-dim">The provider presented no groups.</span>
+            )}
+          </div>
         </div>
       </section>
     </div>
@@ -233,7 +178,9 @@ function NoAccess({ me }: { me: Me }) {
 /**
  * Sign-out ended this browser's session and left it on the address that says so. Nothing happens here on its own: the
  * provider still has a session of its own, so the round trip the SPA would otherwise make ends with the user signed
- * back in and the screen that told them otherwise gone.
+ * back in and the screen that told them otherwise gone. Holding that back is the browser's own business, not this
+ * tab's — every tab shares one cookie — so the intent is kept where all of them read it, and this card's button is the
+ * only thing that lifts it.
  */
 function SignedOut() {
   return (
@@ -243,23 +190,28 @@ function SignedOut() {
           <div>
             <h2>Signed out</h2>
             <p className="rz-dim rz-xs">
-              This browser holds no resourcerer session any more. The identity provider was not told: its own session
-              stays open until it expires or you sign out there, so the next person at this machine is one click from
-              your access, and signing in again here will not ask for a password.
+              This browser holds no resourcerer session any more, and no tab of it will start one on its own — not on a
+              reload, not after the browser is closed and opened again — until someone presses Sign in again here. The
+              identity provider was not told: its own session stays open, so in another browser or profile on this
+              machine, which this answer does not reach, opening this address signs straight in with no click and no
+              password. Signing out of resourcerer is not signing out of the provider: whoever needs this machine to
+              forget them signs out there too.
             </p>
           </div>
         </div>
-        <a className="rz-btn" href="/auth/login">
-          Sign in again
-        </a>
+        <div className="rz-cardft">
+          <a className="rz-btn" href="/auth/login" onClick={() => clearSignOutIntent()}>
+            Sign in again
+          </a>
+        </div>
       </section>
     </div>
   );
 }
 
 /**
- * The provider signed the browser in and it came back with no session cookie, so the SPA stopped sending it there.
- * Only the browser or the install's configuration can fix that, so this names them instead of looping.
+ * The session cookie this page carries is not one the server will accept, so the SPA stopped sending the browser to
+ * the provider. Only the browser or the install's configuration can fix that, so this names them instead of looping.
  */
 function CookieDropped() {
   return (
@@ -269,25 +221,30 @@ function CookieDropped() {
           <div>
             <h2>The session cookie was not kept</h2>
             <p className="rz-dim rz-xs">
-              The provider signed you in, but the cookie coming back held no session resourcerer could read, so it
-              stopped asking the provider rather than loop through it. A session is sealed with the key at{" "}
+              Either the cookie coming back from the provider held no session resourcerer could read, or this page reads
+              it fine while the calls that follow it are refused — one cookie, two answers. Either way the page stopped
+              asking rather than loop through it. A session is sealed with the key at{" "}
               <code>auth.session.keySecretRef</code> and names the issuer and client it was minted for, so a cookie
-              written before either changed, one from another install, or one a proxy stripped on the way here all read
-              the same way. Check that the server's replicas all mount the same session key, and that nothing between
-              the browser and the server drops cookies.
+              written before either changed, one sealed with a key a rollout has since retired, one from another
+              install, or one a proxy stripped on the way here all read the same way. Check that the server's replicas
+              all mount the same session key, including <code>auth.session.keyPreviousSecretRef</code> while a rotation
+              is in flight, and that nothing between the browser and the server drops cookies.
             </p>
           </div>
         </div>
-        <button
-          className="rz-btn"
-          onClick={() => {
-            // Retrying is the user's decision, which is the one thing that earns another round trip to the provider.
-            clearSignRecord();
-            window.location.reload();
-          }}
-        >
-          Try again
-        </button>
+        <div className="rz-cardft">
+          <button
+            className="rz-btn"
+            onClick={() => {
+              // Retrying is the user's decision: it is the one action that ends a run of refusals, and the one that
+              // earns another round trip to the provider.
+              clearSignRecord();
+              window.location.reload();
+            }}
+          >
+            Try again
+          </button>
+        </div>
       </section>
     </div>
   );

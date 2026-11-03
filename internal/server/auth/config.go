@@ -106,11 +106,13 @@ func (c *Config) complete() error {
 	return nil
 }
 
-// httpURL accepts what the chart's values schema accepts, and refuses a little more: an http(s) URL whose authority is
-// a real host, carrying neither credentials nor a character a browser would resolve somewhere else. The schema only
-// guards what the chart renders, while this also guards --auth-config-inline, which no schema ever looks at, so the
-// rule is that the schema admits nothing this refuses. url.Parse alone would not hold that line: it takes userinfo,
-// and it accepts a backslash or a control character in places where a browser reads a different address.
+// httpURL is the server's own gate on the two URLs of the OIDC configuration: an http(s) URL whose authority is a real
+// host, carrying neither credentials nor a character a browser would resolve somewhere else. values.schema.json checks
+// the same shapes earlier and is the stricter side of the pair, which is the rule chart_test.go enforces: the schema
+// admits nothing this refuses. That only covers what helm renders with validation on. The flag is off the path
+// altogether for a ConfigMap an operator hand-edits or writes with kubectl, and --skip-schema-validation turns it off
+// by choice, so this is what reads those values. url.Parse alone would not hold the line: it takes userinfo, and it
+// accepts a backslash or a control character in places where a browser reads a different address.
 func httpURL(field, raw string) error {
 	if strings.ContainsRune(raw, '\\') || hasControl(raw) {
 		return fmt.Errorf("%s must be an http(s) URL with a host: it contains a backslash or a control character", field)

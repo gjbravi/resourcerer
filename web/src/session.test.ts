@@ -3,16 +3,25 @@ import type { Info, Session } from "./api";
 import {
   afterMe,
   bootState,
+  clearSignOutIntent,
   clearSignRecord,
+  countRefusal,
+  holdingAtSignIn,
   loopWindow,
+  noteRefusal,
   onAuthPath,
   pagePath,
+  readSignOutIntent,
   readSignRecord,
+  refusedTwice,
   sendToSignIn,
+  setSignOutIntent,
   shellLabels,
   signInURL,
   signedOut,
   signMove,
+  staleMarker,
+  withoutSignedOut,
   writeLock,
   type Store,
 } from "./session";
@@ -102,6 +111,19 @@ describe("sendToSignIn", () => {
     expect(second.assign).not.toHaveBeenCalled();
     expect(readSignRecord(s)).toEqual({ at: 1_000, stopped: 1_000 + loopWindow - 1 });
   });
+  // The run of refusals is a different animal from a round trip that came back empty: it is one cookie answered two
+  // ways by the server, and once it adds up another authorization cannot fix it, so the window ageing out does not
+  // earn one. The card with the retry in it is where this ends.
+  it("stops for good once the refusals add up, window or no window", () => {
+    const s = store();
+    sendToSignIn(page("/").page, s, 1_000, store());
+    noteRefusal(s, 1_200);
+    noteRefusal(s, 1_400);
+    const late = page("/");
+    sendToSignIn(late.page, s, 1_000 + loopWindow, store());
+    expect(late.assign).not.toHaveBeenCalled();
+    expect(readSignRecord(s)).toMatchObject({ at: 1_000, stopped: 1_000 + loopWindow, refusals: 2 });
+  });
   it("tries again once the window has passed, and forgets it stopped", () => {
     const s = store();
     sendToSignIn(page("/").page, s, 1_000);
@@ -159,6 +181,125 @@ const blockedStorage = {
     throw new Error("storage is blocked");
   },
 };
+
+/**
+ * One browser, several tabs, one cookie. The marker belongs to a single tab's address, so it cannot be what keeps the
+ * others from signing the whole browser back in; these tests share one store the way tabs share `localStorage`.
+ */
+describe("the sign-out intent", () => {
+  const signedIn = session({ authenticated: true, role: "editor", strategy: "oidc", user: "ada", groups: ["sre"] });
+  const nobody = session({ authenticated: false, strategy: "oidc" });
+
+  it("is left by the tab a sign-out landed on", () => {
+    const browser = store();
+    afterMe(nobody, page("/", "?signed-out").page, store(), 1_000, browser);
+    expect(readSignOutIntent(browser)).toBe(true);
+  });
+  it("is not left by a session, nor by a page nobody signed out", () => {
+    const browser = store();
+    afterMe(signedIn, page("/", "?signed-out").page, store(), 1_000, browser);
+    afterMe(nobody, page("/").page, store(), 1_001, browser);
+    expect(readSignOutIntent(browser)).toBe(false);
+  });
+  // The bug the marker alone leaves behind: the other tab polls, takes the same 401, and its address says nothing about
+  // a sign-out, so it hands the browser to a provider that still has its own session open.
+  it("holds a tab that carries no marker of its own", () => {
+    const browser = store();
+    afterMe(nobody, page("/", "?signed-out").page, store(), 1_000, browser);
+    const other = page("/", "", "#/workloads");
+    const record = store();
+    sendToSignIn(other.page, record, 2_000, browser);
+    expect(other.assign).not.toHaveBeenCalled();
+    expect(readSignRecord(record).at).toBeUndefined();
+    expect(bootState({ data: nobody, error: null }, {}, "", readSignOutIntent(browser))).toEqual({
+      view: "signed-out",
+    });
+  });
+  it("lifts only when someone asks for a session again", () => {
+    const browser = store();
+    afterMe(nobody, page("/", "?signed-out").page, store(), 1_000, browser);
+    sendToSignIn(page("/").page, store(), 2_000, browser);
+    clearSignOutIntent(browser);
+    expect(readSignOutIntent(browser)).toBe(false);
+    const back = page("/");
+    sendToSignIn(back.page, store(), 3_000, browser);
+    expect(back.assign).toHaveBeenCalledTimes(1);
+  });
+  it("is absent rather than fatal where the browser will not hold it", () => {
+    vi.stubGlobal("localStorage", blockedStorage);
+    try {
+      expect(readSignOutIntent()).toBe(false);
+      expect(() => setSignOutIntent()).not.toThrow();
+      expect(() => clearSignOutIntent()).not.toThrow();
+      // With nothing shared to read, the tab's own address is still enough to keep it signed out.
+      const { assign, page: p } = page("/", "?signed-out");
+      sendToSignIn(p, store());
+      expect(assign).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("holdingAtSignIn", () => {
+  it("reads either half of the answer, and neither once the intent is lifted", () => {
+    const browser = store();
+    expect(holdingAtSignIn("", browser)).toBe(false);
+    expect(holdingAtSignIn("?signed-out", browser)).toBe(true);
+    setSignOutIntent(browser, 1_000);
+    expect(holdingAtSignIn("", browser)).toBe(true);
+    expect(holdingAtSignIn("?signed-out", browser)).toBe(true);
+    clearSignOutIntent(browser);
+    expect(holdingAtSignIn("", browser)).toBe(false);
+    expect(holdingAtSignIn("?x=signed-out", browser)).toBe(false);
+  });
+});
+
+describe("countRefusal", () => {
+  for (const [name, now, record, want] of [
+    ["a first refusal", 1_000, {}, 1],
+    ["a second inside the window", 1_000 + loopWindow - 1, { refused: 1_000, refusals: 1 }, 2],
+    ["a third, still inside it", 1_000 + loopWindow - 1, { refused: 1_000, refusals: 2 }, 3],
+    ["one after the window starts the run over", 1_000 + loopWindow, { refused: 1_000, refusals: 2 }, 1],
+    ["a time with no count behind it", 1_000, { refused: 900 }, 1],
+    ["a count with no time behind it", 1_000, { refusals: 4 }, 1],
+  ] as [string, number, ReturnType<typeof readSignRecord>, number][]) {
+    it(`${name}: ${want}`, () => expect(countRefusal(now, record)).toBe(want));
+  }
+});
+
+// A caller `/me` signed in and the API refused is the same cookie answered two ways. One is worth another request;
+// a run of them is a disagreement about who this browser is, and the page has to say so rather than keep asking.
+describe("noteRefusal", () => {
+  it("keeps the time and the count of a run", () => {
+    const s = store();
+    noteRefusal(s, 1_000);
+    expect(readSignRecord(s)).toMatchObject({ refused: 1_000, refusals: 1 });
+    expect(refusedTwice(readSignRecord(s))).toBe(false);
+    noteRefusal(s, 1_500);
+    expect(readSignRecord(s)).toMatchObject({ refused: 1_500, refusals: 2 });
+    expect(refusedTwice(readSignRecord(s))).toBe(true);
+  });
+  it("is over when the card's own retry clears the record, which is the action that ends a run", () => {
+    const s = store();
+    noteRefusal(s, 1_000);
+    noteRefusal(s, 1_500);
+    clearSignRecord(s);
+    expect(readSignRecord(s)).toEqual({ at: undefined, stopped: undefined });
+    expect(refusedTwice(readSignRecord(s))).toBe(false);
+    noteRefusal(s, 2_000);
+    expect(readSignRecord(s)).toMatchObject({ refusals: 1 });
+  });
+  it("counts nothing where the browser keeps no record", () => {
+    vi.stubGlobal("sessionStorage", blockedStorage);
+    try {
+      expect(() => noteRefusal()).not.toThrow();
+      expect(refusedTwice(readSignRecord())).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 
 describe("signMove", () => {
   for (const [name, now, record, want] of [
@@ -230,6 +371,17 @@ describe("afterMe", () => {
     afterMe(nobody, again.page, s, 1_000 + loopWindow + 1);
     expect(again.assign).toHaveBeenCalledTimes(1);
   });
+  // `/me` is the half of a cookie disagreement that keeps answering, so it retires the sign-in attempt its answer
+  // explains and leaves the count the card reads alone. Wiping it here would hide the explanation until the next 401.
+  it("retires the attempt a session settled, but not a run of refusals", () => {
+    const s = store();
+    noteRefusal(s, 900);
+    noteRefusal(s, 1_000);
+    sendToSignIn(page("/").page, s, 1_500, store());
+    afterMe(signedIn, page("/").page, s, 1_500 + loopWindow);
+    expect(readSignRecord(s)).toMatchObject({ at: undefined, stopped: undefined, refused: 1_000, refusals: 2 });
+    expect(bootState({ data: signedIn, error: null }, readSignRecord(s))).toMatchObject({ view: "cookie-dropped" });
+  });
   it("leaves the signed-out screen to the page that explains it", () => {
     const s = store();
     const { assign, page: p } = page("/", "?signed-out");
@@ -295,6 +447,75 @@ describe("bootState", () => {
   });
   it("hands the page the session it renders", () => {
     expect(bootState({ data: viewer, error: null })).toEqual({ view: "app", me: viewer });
+  });
+});
+
+// Two decisions the boot screen makes with more than `/me` in front of it: what the rest of the browser was told, and
+// whether the API has been refusing the session `/me` accepted.
+describe("bootState with what the browser knows, and what the API answered", () => {
+  const editor = session({ authenticated: true, role: "editor", strategy: "oidc", user: "ada", groups: ["sre"] });
+  const noRole = session({ authenticated: true, role: "none", strategy: "oidc", user: "dana", groups: ["dev"] });
+  const noSession = session({ authenticated: false, strategy: "oidc" });
+
+  for (const [name, me, record, search, browserSignedOut, view] of [
+    ["a tab held by the browser's answer", noSession, {}, "", true, "signed-out"],
+    [
+      "a tab held by it, even where its own last attempt found no cookie",
+      noSession,
+      { at: 9, stopped: 9 },
+      "",
+      true,
+      "signed-out",
+    ],
+    ["a tab the browser never signed out", noSession, {}, "", false, "signing-in"],
+    ["a session that came back anyway", editor, {}, "", true, "app"],
+    ["a session the API keeps refusing", editor, { refused: 9, refusals: 2 }, "", false, "cookie-dropped"],
+    ["one refusal, which is worth another request", editor, { refused: 9, refusals: 1 }, "", false, "app"],
+    ["a refusal run under a session with no role", noRole, { refused: 9, refusals: 2 }, "", false, "no-access"],
+    [
+      "no session and a run of refusals",
+      noSession,
+      { refused: 9, refusals: 2, stopped: 9 },
+      "",
+      false,
+      "cookie-dropped",
+    ],
+  ] as [string, Session, ReturnType<typeof readSignRecord>, string, boolean, string][]) {
+    it(name, () =>
+      expect(bootState({ data: me, error: null }, record, search, browserSignedOut)).toMatchObject({ view }),
+    );
+  }
+});
+
+describe("staleMarker", () => {
+  const signedIn = session({ authenticated: true, role: "editor", strategy: "oidc", user: "ada", groups: ["sre"] });
+  const nobody = session({ authenticated: false, strategy: "oidc" });
+
+  for (const [name, me, search, want] of [
+    ["a session with the marker left in the address", signedIn, "?signed-out", true],
+    ["no session to make it stale", nobody, "?signed-out", false],
+    ["a session and no marker", signedIn, "", false],
+    ["nothing has answered yet", undefined, "?signed-out", false],
+    ["a query that only looks like one", signedIn, "?x=signed-out", false],
+  ] as [string, Session | undefined, string, boolean][]) {
+    it(`${name}: ${want}`, () => expect(staleMarker(me, search)).toBe(want));
+  }
+});
+
+describe("withoutSignedOut", () => {
+  for (const [search, want] of [
+    ["?signed-out", "/"],
+    ["?signed-out=1", "/"],
+    ["?a=1&signed-out", "/?a=1"],
+    ["?signed-out&a=1&b=2", "/?a=1&b=2"],
+    ["?x=signed-out", "/?x=signed-out"],
+    ["", "/"],
+  ] as [string, string][]) {
+    it(`${search || "no query"} → ${want}`, () =>
+      expect(withoutSignedOut({ pathname: "/", search, hash: "#/workloads" })).toBe(`${want}#/workloads`));
+  }
+  it("changes nothing else about the address", () => {
+    expect(withoutSignedOut({ pathname: "/settings", search: "?signed-out", hash: "" })).toBe("/settings");
   });
 });
 

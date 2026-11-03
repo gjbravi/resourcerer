@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Me, Unauthenticated } from "./api";
 import { useSession } from "./hooks";
-import { loopWindow, readSignRecord } from "./session";
+import { loopWindow, readSignOutIntent, readSignRecord } from "./session";
 
 const signedIn: Me = {
   authenticated: true,
@@ -38,6 +38,8 @@ function location(pathname: string, search = "") {
 
 beforeEach(() => {
   sessionStorage.clear();
+  // One browser per test: the sign-out intent is the one thing these tests leave behind for the next tab.
+  localStorage.clear();
   answer(nobody);
   location("/");
 });
@@ -94,5 +96,68 @@ describe("useSession", () => {
     await waitFor(() => expect(result.current.data?.authenticated).toBe(false));
     expect(assign).not.toHaveBeenCalled();
     expect(readSignRecord()).toEqual({ at: undefined, stopped: undefined });
+  });
+
+  // What the marker cannot reach on its own: a second tab whose address says nothing about a sign-out, polling in the
+  // same browser that was just told to stay out.
+  it("holds a tab whose address carries no marker, once the browser was signed out", async () => {
+    localStorage.setItem("resourcerer.signed-out", String(Date.now()));
+    const assign = location("/", "");
+    answer(nobody);
+    const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(false));
+    expect(assign).not.toHaveBeenCalled();
+    expect(readSignRecord().at).toBeUndefined();
+  });
+
+  // The tab the sign-out landed on is the one that tells the rest of the browser, so this is where that gets written.
+  it("tells the rest of the browser when this tab is where a sign-out left it", async () => {
+    location("/", "?signed-out");
+    answer(nobody);
+    const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(false));
+    expect(readSignOutIntent()).toBe(true);
+  });
+});
+
+// The marker is a claim about the tab's session, and a tab that has one is no longer where the sign-out left anyone:
+// left in the address, the next expiry reads as a sign-out nobody asked for. `/me` is what settles it.
+describe("the address `/me` settles", () => {
+  it("loses the marker as soon as a session answers", async () => {
+    const assign = location("/", "?signed-out");
+    const replace = vi.spyOn(window.history, "replaceState");
+    answer(signedIn);
+    const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(true));
+    expect(replace).toHaveBeenCalledWith("", "", "/");
+    expect(assign).not.toHaveBeenCalled();
+    replace.mockRestore();
+  });
+  it("keeps the rest of the address while it is at it", async () => {
+    location("/", "?a=1&signed-out");
+    const replace = vi.spyOn(window.history, "replaceState");
+    answer(signedIn);
+    const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(true));
+    expect(replace).toHaveBeenCalledWith("", "", "/?a=1");
+    replace.mockRestore();
+  });
+  it("leaves the address of a browser that is not signed in exactly as it is", async () => {
+    location("/", "?signed-out");
+    const replace = vi.spyOn(window.history, "replaceState");
+    answer(nobody);
+    const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(false));
+    expect(replace).not.toHaveBeenCalled();
+    replace.mockRestore();
+  });
+  it("has nothing to take out when the address never carried the marker", async () => {
+    location("/workloads/", "");
+    const replace = vi.spyOn(window.history, "replaceState");
+    answer(signedIn);
+    const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(true));
+    expect(replace).not.toHaveBeenCalled();
+    replace.mockRestore();
   });
 });

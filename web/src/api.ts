@@ -1,4 +1,4 @@
-import { ajaxHeader, ajaxValue, sendToSignIn } from "./session";
+import { ajaxHeader, ajaxValue, holdingAtSignIn, noteRefusal, sendToSignIn } from "./session";
 
 /** Types mirror internal/server/types.go. CPU is in cores and memory in bytes. */
 export type Resource = "cpu" | "memory";
@@ -329,7 +329,13 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     // A session that ended while the page was open: go and sign in again rather than leave an error on screen. The
     // first sign-in is not here — /me answers 200 — and the app starts it once it knows who is calling. The same
     // breaker as afterMe's applies, so a browser that brings back no cookie does not circle the provider forever.
-    if (res.status === 401 && data.reason === "unauthenticated") sendToSignIn();
+    // The refusal is counted as well: only a page that believes it has a session gets this far, so twice for one cookie
+    // is the server answering itself two ways, and the page stops to say that rather than keep asking. A browser that
+    // was signed out on purpose is the exception: being refused is exactly what it asked for.
+    if (res.status === 401 && data.reason === "unauthenticated") {
+      if (!holdingAtSignIn(window.location.search)) noteRefusal();
+      sendToSignIn();
+    }
     throw new ApiError(res.status, data.error ?? res.statusText, data.reason);
   }
   return data as T;

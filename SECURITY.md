@@ -34,14 +34,21 @@ Please do not open public issues for security problems. You will get an acknowle
 - **A session is a sealed cookie, not server state**: the identity, encrypted with AES-GCM under the session key, in a
   cookie that is `HttpOnly`, `SameSite=Lax` and `Path=/`, and carries the `__Host-` prefix where it is `Secure`. No
   replica holds sessions, and nothing can be revoked early: a leaked cookie or a departed employee stays usable until
-  `auth.oidc.sessionTTL` passes, which is what that value trades. Replacing the session key, or the strategy, signs
-  everyone out. Signing out is `GET /auth/logout`, which answers every other method with `405`: it carries no token and
-  clears the cookie whatever the request brought with it, so any page that gets the browser to navigate there — a link,
-  or a form that submits by GET — signs the user out. That is a nuisance and nothing more: the route reads nothing,
-  changes nothing else, and signing in again brings the session back. What it ends is resourcerer's session only. The
-  provider's own is still open, so the signed-out screen the browser lands on (`/?signed-out`) is one click from a new
-  session and no password, and signing out of resourcerer on a shared machine is not signing out of the provider:
-  whoever needs this machine to forget them signs out there too.
+  `auth.oidc.sessionTTL` passes, which is what that value trades. Replacing the session key signs everyone out only
+  when nothing is left to open the old cookies: while `auth.session.keyPreviousSecretRef` holds the retiring key an old
+  cookie still opens and comes back re-sealed with the new key, so a rotation done in that order — publish the previous
+  key, swap in the new one, drop the previous once sessions turned over within one TTL — signs nobody out. Dropping the
+  previous key is the moment those cookies end, so it is the step to schedule. Changing `auth.oidc.issuer` or
+  `auth.oidc.clientID` does sign everyone out whatever the keys, because a session names the provider and client that
+  issued it and one from elsewhere is not this app's identity. Signing out is `GET /auth/logout`, which answers every
+  other method with `405`: it carries no token and clears the cookie whatever the request brought with it, so any page
+  that gets the browser to navigate there — a link, or a form that submits by GET — signs the user out. That is a
+  nuisance and nothing more: the route reads nothing, changes nothing else, and signing in again brings the session
+  back. What it ends is resourcerer's session only. The provider's own is still open, so the signed-out screen the
+  browser lands on (`/?signed-out`) is one click from a new session and no password, and the app does not spend that
+  click for you: it stays on that screen until you press Sign in again, in every tab of that browser, rather than
+  signing itself back in beside your cursor. Signing out of resourcerer on a shared machine is still not signing out of
+  the provider: whoever needs this machine to forget them signs out there too.
 - **Changes have to come from the UI.** Under `oidc`, a mutation also needs the header the UI attaches and a body
   typed as JSON, and is refused with `403 ajax-required` without them. That is the CSRF guard: a page on the same site
   — a sibling subdomain — can make the browser send the session cookie with a form, and `SameSite=Lax` is what stops a
