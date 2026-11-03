@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Me, Unauthenticated } from "./api";
 import { useSession } from "./hooks";
-import { loopWindow, readSignOutIntent, readSignRecord } from "./session";
+import { loopWindow, readSignOutIntent, readSignRecord, signOutKey } from "./session";
 
 const signedIn: Me = {
   authenticated: true,
@@ -159,5 +159,67 @@ describe("the address `/me` settles", () => {
     await waitFor(() => expect(result.current.data?.authenticated).toBe(true));
     expect(replace).not.toHaveBeenCalled();
     replace.mockRestore();
+  });
+});
+
+// A sign-out belongs to the browser, not to the tab that clicked, so the tab that clicked is not the one that has to
+// be told. It announces the write through `localStorage` and every other tab hears it, which is the only way a tab left
+// on the app finds out its session is gone: nothing else re-asks `/me`, and a page that keeps naming a caller the server
+// no longer knows is a page offering write access nobody has.
+describe("a sign-out in another tab", () => {
+  /** What the other tab's write looks like from here: the key it touched, and what it left behind. */
+  function announced(key: string | null, value: string | null, area: Storage = localStorage) {
+    window.dispatchEvent(new StorageEvent("storage", { key, newValue: value, storageArea: area }));
+  }
+
+  /** A page that holds a session, and the number of times it has had to ask for one. */
+  async function withSession() {
+    location("/");
+    const asked = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        asked();
+        return { ok: true, status: 200, json: async () => signedIn };
+      }),
+    );
+    const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(true));
+    return { result, asked };
+  }
+
+  it("asks who is calling again, and the tab stops claiming a session it no longer has", async () => {
+    answer(signedIn);
+    location("/");
+    const { result } = renderHook(() => useSession(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(true));
+    // The other tab signs out; this one's cookie goes with it, and `/me` is now the answer that says so.
+    answer(nobody);
+    announced(signOutKey, "1793710576064");
+    await waitFor(() => expect(result.current.data?.authenticated).toBe(false));
+  });
+  // Taking the intent away is someone asking for a session back, and every tab of this browser can already get one by
+  // asking. Re-asking on that write sends them all to the provider at once, where the attempts race on one state cookie
+  // named for the install and all but one come back refused — possibly in the tab whose button was clicked.
+  it("stays put when another tab lifts the sign-out, which is the other tab's business", async () => {
+    const { result, asked } = await withSession();
+    const before = asked.mock.calls.length;
+    announced(signOutKey, null);
+    announced(null, null);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(asked).toHaveBeenCalledTimes(before);
+    expect(result.current.data?.authenticated).toBe(true);
+  });
+  // The trigger is the sign-out and never a failing call: a page whose session is intact must not be taken apart by
+  // something unrelated that happened in another tab — including this tab's own writes, which no browser echoes back.
+  it("leaves a page with a session alone when another tab wrote something else", async () => {
+    const { result, asked } = await withSession();
+    const before = asked.mock.calls.length;
+    announced("resourcerer.theme", "dark");
+    announced("some.other.app", "x");
+    announced(signOutKey, "1", sessionStorage);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(asked).toHaveBeenCalledTimes(before);
+    expect(result.current.data?.authenticated).toBe(true);
   });
 });

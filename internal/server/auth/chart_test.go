@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -107,9 +108,15 @@ func keysOf(m map[string]any) []string {
 // parser: what the chart writes has to be what the server reads.
 func TestChartRendersTheParsedDocument(t *testing.T) {
 	helm := lookupHelm(t)
-	out, err := exec.Command(helm, "template", "rz", chartDir, "-n", "resourcerer", "-f", valuesFile).Output()
+	command := exec.Command(helm, "template", "rz", chartDir, "-n", "resourcerer", "-f", valuesFile)
+	// helm explains a refused value on stderr, and `Output` deliberately keeps it out of `err`, so without collecting it
+	// this test says only "exit status 1" and whoever changed the chart has to reproduce the render by hand to find out
+	// which of the twenty-odd values the template rejected.
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	out, err := command.Output()
 	if err != nil {
-		t.Fatalf("helm template: %v", err)
+		t.Fatalf("helm template: %v\n%s", err, stderr.String())
 	}
 	doc, configMap, args := renderAuth(t, string(out))
 	if configMap != "rz-resourcerer-auth" {

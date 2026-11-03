@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { api, refKey, type Range, type Ref, type ReliabilityWindow, type Resource, type Session } from "./api";
-import { afterMe, staleMarker, withoutSignedOut } from "./session";
+import { afterMe, signOutKey, staleMarker, withoutSignedOut } from "./session";
 
 /**
  * Who is calling, from `GET /api/v1/me`: the only call the server answers without a session, so the app asks it
@@ -12,6 +12,7 @@ import { afterMe, staleMarker, withoutSignedOut } from "./session";
  * with a session is no longer where that sign-out left anyone.
  */
 export function useSession() {
+  const queryClient = useQueryClient();
   const session = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
@@ -21,6 +22,7 @@ export function useSession() {
     },
   });
   useStaleSignOutMarker(session.data);
+  useSignOutBroadcast(queryClient);
   return session;
 }
 
@@ -35,6 +37,31 @@ function useStaleSignOutMarker(session: Session | undefined) {
       window.history.replaceState("", "", withoutSignedOut(window.location));
     }
   }, [session]);
+}
+
+/**
+ * A sign-out is one tab's click and every tab's problem, because the cookie is shared while the address is not. The
+ * other tabs are held back from signing the browser back in, but nothing tells them they have been cut off, so a tab
+ * left on the app keeps rendering the identity and the write access of a session the browser no longer has — and it
+ * never finds out, since `me` is the one query nothing re-fetches. `localStorage` announces the write to every other
+ * tab, and this turns that announcement into one more question to `/me`, which the server answers without a session and
+ * never caches. The trigger is a deliberate sign-out, never a 401, so a request that fails on its own cannot pull down
+ * a page that still has a session behind it.
+ */
+function useSignOutBroadcast(queryClient: QueryClient) {
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      // The write that signs a browser out, from the store that holds the intent, and nothing else. Taking the intent
+      // away is the opposite news — someone asked for a session back — and re-asking on that would send every tab of
+      // this browser to the provider at once, where the attempts race on one state cookie and all but one come back
+      // refused. Clearing the whole store removes the intent too, so it reads the same way.
+      if (event.storageArea === localStorage && event.key === signOutKey && event.newValue !== null) {
+        void queryClient.invalidateQueries({ queryKey: ["me"] });
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [queryClient]);
 }
 
 /** The cluster's configuration; nothing to ask for until someone is signed in to ask as. */

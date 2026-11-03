@@ -61,7 +61,12 @@ const stoppedKey = "resourcerer.sign-in-stopped";
 const confirmedKey = "resourcerer.sign-confirmed";
 const refusedKey = "resourcerer.refused";
 const refusalsKey = "resourcerer.refusals";
-const signOutKey = "resourcerer.signed-out";
+/**
+ * Where the sign-out intent is kept. Named because a tab that did not sign anyone out has to notice: `localStorage`
+ * announces the write to every other tab of this browser, and that announcement is what stops them sitting on a session
+ * the browser no longer has.
+ */
+export const signOutKey = "resourcerer.signed-out";
 
 /**
  * `sessionStorage`, or an empty one where the browser will not hand it over. Losing the record costs the loop breaker

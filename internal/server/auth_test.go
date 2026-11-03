@@ -25,6 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
+	"github.com/gjbravi/resourcerer/internal/cluster"
+	"github.com/gjbravi/resourcerer/internal/prom"
 	"github.com/gjbravi/resourcerer/internal/scheme"
 	"github.com/gjbravi/resourcerer/internal/server/auth"
 )
@@ -35,12 +37,13 @@ type stub struct {
 	id     auth.Identity
 	ok     bool
 	cookie bool
+	status auth.Status
 }
 
 func (stub) Strategy() string                               { return "stub" }
 func (p stub) Identify(*http.Request) (auth.Identity, bool) { return p.id, p.ok }
 func (stub) Handle(http.ResponseWriter, *http.Request) bool { return false }
-func (stub) Status() auth.Status                            { return auth.Status{} }
+func (p stub) Status() auth.Status                          { return p.status }
 func (p stub) UsesSessionCookie() bool                      { return p.cookie }
 
 var (
@@ -50,6 +53,13 @@ var (
 	denied = stub{id: auth.Identity{User: "dana"}, ok: true}
 	// cookieEditor is a provider that authenticates with a cookie, so mutations must come from the UI.
 	cookieEditor = stub{id: auth.Identity{User: "eddie", Viewer: true, Editor: true}, ok: true, cookie: true}
+	// staleViewer answers with everything `me` can carry, including the two keys that only appear when something is
+	// wrong: a configuration the server could not reread, and a session with a known end.
+	staleViewer = stub{
+		id:     auth.Identity{User: "vera", Viewer: true, ExpiresAt: time.Unix(1893456000, 0).UTC()},
+		ok:     true,
+		status: auth.Status{ConfigStale: true, ConfigError: "parse oidc.yaml: unknown key"},
+	}
 )
 
 func path(pattern string) (method, p string) {
@@ -137,6 +147,51 @@ func TestWriteGate(t *testing.T) {
 	}
 }
 
+// TestInfoCarriesWhatThePageReads pins `info` the way TestMe pins `me`. The page mirrors it by hand in
+// `web/src/api.ts` and nothing compared the two: the cluster and version in the Sidebar, the Prometheus URL beside
+// them, the `readOnly` that locks every write control, and the `selection` the Overview heading quotes all come from
+// this one object. Naming the key set is a tripwire rather than a guard, and the only kind available here, but it is
+// the one that catches a rename leaving every test in this package green.
+func TestInfoCarriesWhatThePageReads(t *testing.T) {
+	// This is the first test to ask `/info` successfully: every earlier one stopped at the 401, which is how the whole
+	// object went unpinned. It answers with the Prometheus behind the cluster, so that has to be reachable enough to
+	// be described — refused is a fine answer, an absent client is not.
+	prometheus, err := prom.New("http://127.0.0.1:1", "5m")
+	if err != nil {
+		t.Fatalf("prom client: %v", err)
+	}
+	s := newServer(viewer)
+	s.Cluster = cluster.Config{Name: "kind-test", Selection: cluster.SelectionAll}
+	s.Prom, s.PromURL = prometheus, "http://prom.demo:9090"
+
+	w := call(t, s.Handler(), http.MethodGet, "/api/v1/info", "")
+	var got map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != http.StatusOK {
+		t.Fatalf("info = %d %s", w.Code, w.Body)
+	}
+	want := []string{"auth", "cluster", "cost", "defaults", "excludedNamespaces", "prometheus", "readOnly",
+		"reliability", "selection", "version"}
+	if keys := slices.Sorted(maps.Keys(got)); !slices.Equal(keys, want) {
+		t.Errorf("info keys = %v, want %v, which is what web/src/api.ts mirrors", keys, want)
+	}
+	// Names are not enough. These are rendered as they arrive, so an empty one is a blank in the shell rather than a
+	// bug anyone goes looking for.
+	for _, key := range []string{"cluster", "auth", "selection"} {
+		if s, _ := got[key].(string); s == "" {
+			t.Errorf("info %s = %v, want a string to render", key, got[key])
+		}
+	}
+	if _, ok := got["readOnly"].(bool); !ok {
+		t.Errorf("info readOnly = %v, want a boolean, because it is what locks every write control", got["readOnly"])
+	}
+	// The Sidebar quotes this nested value without a guard, so a rename here takes the page down rather than leaving a
+	// label out, and the address is quoted whether or not Prometheus answered.
+	status, _ := got["prometheus"].(map[string]any)
+	if url, _ := status["url"].(string); url != "http://prom.demo:9090" {
+		t.Errorf("info.prometheus.url = %v, want the address the page quotes", status["url"])
+	}
+}
+
 func TestReadsNeedAuthentication(t *testing.T) {
 	s := newServer(nobody)
 	for _, rt := range s.routes() {
@@ -185,6 +240,23 @@ func TestMe(t *testing.T) {
 	want := []string{"authenticated", "configStale", "groups", "impersonating", "role", "strategy", "user"}
 	if !slices.Equal(got, want) {
 		t.Errorf("me keys = %v, want %v, which is what web/src/api.ts mirrors", got, want)
+	}
+
+	// Two of those keys are only present when something is wrong, so the set above says nothing about them — and the
+	// one that matters is among them: `configError` is the sentence the Sidebar shows next to the stale-config notice,
+	// which is the explanation attached to the signal this test exists to protect. Naming it against a provider that
+	// actually reports one is the only way a rename reaches the same commit.
+	w = call(t, newServer(staleViewer).Handler(), http.MethodGet, "/api/v1/me", "")
+	var worn map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &worn)
+	wornWant := []string{"authenticated", "configError", "configStale", "expiresAt", "groups", "impersonating", "role",
+		"strategy", "user"}
+	if keys := slices.Sorted(maps.Keys(worn)); !slices.Equal(keys, wornWant) {
+		t.Errorf("me keys with a stale configuration = %v, want %v, which is what web/src/api.ts mirrors", keys, wornWant)
+	}
+	if worn["configError"] != "parse oidc.yaml: unknown key" || worn["expiresAt"] == "" {
+		t.Errorf("me stale notice = %v / %v, want the parse error and the hour the session ends",
+			worn["configError"], worn["expiresAt"])
 	}
 
 	w = call(t, newServer(nobody).Handler(), http.MethodGet, "/api/v1/me", "")

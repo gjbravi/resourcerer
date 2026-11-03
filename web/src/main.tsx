@@ -40,7 +40,10 @@ function App() {
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   const page = parts[0] === "w" ? "workloads" : (parts[0] ?? "overview");
   const rows = workloads.data ?? [];
-  const shell = shellLabels(info.data);
+  // Only the app view has labels to show. `info` stops being asked outside it, so whatever it holds there is the answer
+  // a previous session got, and a signed-out or refused screen wearing that session's cluster and Prometheus is the same
+  // kind of lie as a header still naming a caller who is gone.
+  const shell = shellLabels(asks ? info.data : undefined);
   const cluster = shell.cluster ?? "";
   const readOnly = info.data?.readOnly ?? false;
   const lock = writeLock(session.data, readOnly);
@@ -203,8 +206,9 @@ function CookieDropped() {
             <h2>The session cookie was not kept</h2>
             <p className="rz-dim rz-xs">
               Either the cookie coming back from the provider held no session resourcerer could read, or this page reads
-              it fine while the calls that follow it are refused — one cookie, two answers. Either way the page stopped
-              asking rather than loop through it. A session is sealed with the key at{" "}
+              it fine while the calls that follow it are refused — one cookie, two answers. Either way this page stopped
+              asking rather than loop through it; where no cookie reads at all, coming back to this tab makes one more
+              attempt, and stops here again if it fails. A session is sealed with the key at{" "}
               <code>auth.session.keySecretRef</code> and names the issuer and client it was minted for, so a cookie
               written before either changed, one sealed with a key a rollout has since retired, one from another
               install, or one a proxy stripped on the way here all read the same way. Check that the server's replicas
