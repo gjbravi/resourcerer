@@ -1,0 +1,19 @@
+allowedGroups:
+- engineering
+- "yes"
+- sre
+clientID: resourcerer
+groupsClaim: groups
+issuer: https://sso.example.com/realms/example
+redirectURL: https://resourcerer.example.com/auth/callback
+roles:
+  anyAuthenticatedIsViewer: false
+  editorGroups:
+  - engineering
+scopes:
+- openid
+- profile
+- email
+- groups
+sessionTTL: 8h
+usernameClaim: preferred_username

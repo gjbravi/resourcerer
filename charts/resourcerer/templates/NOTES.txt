@@ -23,22 +23,39 @@ Authentication is anonymous: anyone who can reach the UI can apply recommendatio
 WARNING: the Ingress exposes the UI without authentication. Put an authenticating proxy in front, or set readOnly=true.
 {{- end }}
 {{- else }}
+{{- $oidc := .Values.auth.oidc }}
+{{- $roles := $oidc.roles | default dict }}
+{{- $viewer := true }}
+{{- if kindIs "bool" $roles.anyAuthenticatedIsViewer }}{{ $viewer = $roles.anyAuthenticatedIsViewer }}{{ end }}
 
-Authentication is {{ .Values.auth.strategy }}: the UI signs in at {{ .Values.auth.oidc.issuer }}
-as client {{ .Values.auth.oidc.clientID }}, and the session is a sealed cookie, so no replica holds sessions.
-{{- if not .Values.auth.oidc.roles.editorGroups }}
+Authentication is {{ .Values.auth.strategy }}: the UI signs in at {{ $oidc.issuer }}
+as client {{ $oidc.clientID }}, and the session is a sealed cookie, so no replica holds sessions.
+{{- if .Values.readOnly }}
+Read-only mode is on, so nobody may apply or change settings from the UI, whatever role they sign in with.
+{{- end }}
+{{- if not $roles.editorGroups }}
 No auth.oidc.roles.editorGroups is set, so nobody may apply yet. Name the groups allowed to change workloads.
-{{- else if not .Values.auth.oidc.allowedGroups }}
+{{- end }}
+{{- if not $oidc.allowedGroups }}
+{{-   if $viewer }}
 auth.oidc.allowedGroups is empty, so every user the provider authenticates gets read access. Name the groups that
 may use resourcerer to narrow it.
+{{-   else }}
+auth.oidc.allowedGroups is empty, so every user the provider authenticates is admitted, but
+auth.oidc.roles.anyAuthenticatedIsViewer is false, so only auth.oidc.roles.editorGroups gets a page.
+{{-   end }}
 {{- end }}
-{{- if not .Values.server.ingress.tls }}
-WARNING: nothing here serves TLS (server.ingress.tls is empty), so the session cookie is only marked Secure when a
-proxy in front declares X-Forwarded-Proto: https. Behind a TLS-terminating proxy set auth.cookieSecure=true; over
-plain HTTP the session crosses the wire in clear text, so keep this install reachable only from inside the cluster.
+{{- if not (and .Values.server.ingress.enabled .Values.server.ingress.tls) }}
+{{-   $tls := "the Ingress is disabled" }}
+{{-   if .Values.server.ingress.enabled }}{{ $tls = "the Ingress has no TLS" }}{{ end }}
+WARNING: nothing here serves TLS ({{ $tls }}), so the session cookie is Secure only when a proxy in front
+declares X-Forwarded-Proto: https. Behind a TLS-terminating proxy set auth.cookieSecure=true; over plain HTTP
+the session crosses the wire in clear text, so keep this install reachable only from inside the cluster.
 {{- end }}
-Parameters live in ConfigMap {{ .Release.Namespace }}/{{ include "resourcerer.fullname" . }}-auth under oidc.yaml:
-editing it takes effect within 30s without a restart, and changing issuer or clientID signs every session out.
+Parameters live in ConfigMap {{ .Release.Namespace }}/{{ include "resourcerer.fullname" . }}-auth under oidc.yaml,
+which the server rereads every 30s, so a change takes effect without a restart; changing issuer or clientID signs
+every session out. Change them in the chart's values, through GitOps: Helm or ArgoCD owns that ConfigMap and reverts
+a kubectl edit on the next sync or self-heal.
 WARNING: write access to that ConfigMap is admin access to resourcerer, because its issuer can be repointed at an
 Identity Provider an attacker controls, which then issues a login resourcerer accepts as an editor. Limit who may
 write ConfigMaps in this namespace.

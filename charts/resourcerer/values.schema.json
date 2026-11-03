@@ -122,7 +122,7 @@
             "oidc": {
               "required": ["issuer", "clientID", "clientSecretSecretRef"],
               "properties": {
-                "issuer": { "pattern": "^https?://" },
+                "issuer": { "pattern": "^https?://[^/\\s?#]+([/?#][^\\s]*)?$" },
                 "clientID": { "minLength": 1 },
                 "scopes": { "anyOf": [{ "maxItems": 0 }, { "contains": { "const": "openid" } }] },
                 "clientSecretSecretRef": { "$ref": "#/definitions/secretRef" }
@@ -187,9 +187,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "issuer": { "type": "string", "pattern": "^$|^https?://" },
+        "issuer": { "type": "string", "pattern": "^$|^https?://[^/\\s?#]+([/?#][^\\s]*)?$" },
         "clientID": { "type": "string" },
-        "redirectURL": { "type": "string", "pattern": "^$|^https?://" },
+        "redirectURL": { "type": "string", "pattern": "^$|^https?://[^/\\s?#]+([/?#][^\\s]*)?$" },
         "scopes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "usernameClaim": { "type": "string" },
         "groupsClaim": { "type": "string" },
@@ -203,7 +203,7 @@
             "anyAuthenticatedIsViewer": { "type": "boolean" }
           }
         },
-        "sessionTTL": { "type": "string", "pattern": "^$|^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$" }
+        "sessionTTL": { "type": "string", "pattern": "^$|^[0-9]+[mh]$" }
       }
     }
   }

@@ -6,6 +6,23 @@ missing or unreadable ConfigMap falls back to the built-in defaults, and for aut
 value would be a configuration error rather than an unset one.
 */ -}}
 {{- $oidc := .Values.auth.oidc }}
+{{- /* The server refuses a TTL outside 5m to 168h and exits, so the chart refuses it here: helm upgrade changes this
+      ConfigMap without restarting the pod, which would keep the last good configuration and only crash-loop at the
+      next restart. The schema bounds the shape; the numbers are checked where they are read. */ -}}
+{{- $ttl := $oidc.sessionTTL | default "" }}
+{{- if $ttl }}
+{{-   if hasSuffix "m" $ttl }}
+{{-     $minutes := $ttl | trimSuffix "m" | int }}
+{{-     if or (lt $minutes 5) (gt $minutes 10080) }}
+{{-       fail (printf "auth.oidc.sessionTTL %s is out of range: the server accepts 5m to 168h (10080m)" $ttl) }}
+{{-     end }}
+{{-   else }}
+{{-     $hours := $ttl | trimSuffix "h" | int }}
+{{-     if or (lt $hours 1) (gt $hours 168) }}
+{{-       fail (printf "auth.oidc.sessionTTL %s is out of range: the server accepts 1h to 168h" $ttl) }}
+{{-     end }}
+{{-   end }}
+{{- end }}
 {{- $config := dict }}
 {{- with $oidc.issuer }}{{ $_ := set $config "issuer" . }}{{ end }}
 {{- with $oidc.clientID }}{{ $_ := set $config "clientID" . }}{{ end }}
@@ -16,9 +33,11 @@ value would be a configuration error rather than an unset one.
 {{- with $oidc.allowedGroups }}{{ $_ := set $config "allowedGroups" . }}{{ end }}
 {{- with $oidc.sessionTTL }}{{ $_ := set $config "sessionTTL" . }}{{ end }}
 {{- $roles := dict }}
-{{- with $oidc.roles.editorGroups }}{{ $_ := set $roles "editorGroups" . }}{{ end }}
-{{- if kindIs "bool" $oidc.roles.anyAuthenticatedIsViewer }}
-{{- $_ := set $roles "anyAuthenticatedIsViewer" $oidc.roles.anyAuthenticatedIsViewer }}
+{{- with $oidc.roles }}
+{{-   with .editorGroups }}{{ $_ := set $roles "editorGroups" . }}{{ end }}
+{{-   if kindIs "bool" .anyAuthenticatedIsViewer }}
+{{-     $_ := set $roles "anyAuthenticatedIsViewer" .anyAuthenticatedIsViewer }}
+{{-   end }}
 {{- end }}
 {{- if $roles }}{{ $_ := set $config "roles" $roles }}{{ end }}
 apiVersion: v1

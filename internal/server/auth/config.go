@@ -70,15 +70,15 @@ func ParseConfig(data string) (Config, error) {
 }
 
 func (c *Config) complete() error {
-	if u, err := url.Parse(c.Issuer); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return errors.New("issuer must be an http(s) URL")
+	if err := httpURL("issuer", c.Issuer); err != nil {
+		return err
 	}
 	if c.ClientID == "" {
 		return errors.New("clientID is required")
 	}
 	if c.RedirectURL != "" {
-		if u, err := url.Parse(c.RedirectURL); err != nil || !u.IsAbs() {
-			return errors.New("redirectURL must be an absolute URL")
+		if err := httpURL("redirectURL", c.RedirectURL); err != nil {
+			return err
 		}
 	}
 	if len(c.Scopes) == 0 {
@@ -100,6 +100,16 @@ func (c *Config) complete() error {
 			return fmt.Errorf("sessionTTL must be a duration between %s and %s", minSessionTTL, maxSessionTTL)
 		}
 		c.ttl = d
+	}
+	return nil
+}
+
+// httpURL accepts what the chart's values schema accepts: an http(s) URL whose authority is a real host, so a value
+// that renders never turns into a server that refuses to start.
+func httpURL(field, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("%s must be an http(s) URL with a host", field)
 	}
 	return nil
 }

@@ -151,11 +151,16 @@ auth:
     # `/.well-known/openid-configuration` reachable from the server pod. Sessions are dropped when it changes, so a
     # new one means everyone signs in again.
     issuer: ""
-    # -- Client the server presents at the provider. It must allow the callback to `<resourcerer>/auth/callback`, be
-    # public or confidential with the client secret below, and use the authorization code flow.
+    # -- Client the server presents at the provider. It must be a confidential client with the secret referenced
+    # below: the server refuses to start without one, so a public client is not supported. It must allow the callback
+    # to `<resourcerer>/auth/callback` and use the authorization code flow.
     clientID: ""
     # -- Absolute URL of the callback, for a proxy that rewrites the Host header the server sees.
-    # Unset derives it from the request, which is right as long as the server sees the public host.
+    # Unset derives it from the request: the host the server sees, with the scheme from TLS, from
+    # X-Forwarded-Proto, or from auth.cookieSecure=true. Each way of reaching the install is a different callback, so
+    # register them all at the provider: a port-forward signs in at http://localhost:8080/auth/callback and an
+    # Ingress at its own URL. With auth.cookieSecure=true the derived scheme is https, which a provider refuses for a
+    # port-forward (https://localhost:8080), so leave it at auto where the install is also reached that way.
     redirectURL: ""
     # -- Scopes to request; must include `openid`. Unset asks for `openid profile email`.
     # Ask for a groups scope only when the provider gates the group claim behind one: scopes are visible to the
@@ -180,9 +185,10 @@ auth:
       # -- Whether every user `allowedGroups` admits may at least read. Set to false to give access to
       # `editorGroups` alone: other signed-in users are refused rather than shown a page they cannot act on.
       anyAuthenticatedIsViewer: true
-    # -- How long a session stays valid without visiting the provider again (Go duration, from 5m to 168h; the server
-    # refuses to start outside that range). There is no revocation before it expires: a departed employee keeps
-    # access for up to one TTL, so the TTL is the trade between comfort and how long a leaked cookie is useful.
+    # -- How long a session stays valid without visiting the provider again: a whole number of minutes (from `5m` to
+    # `10080m`) or of hours (from `1h` to `168h`); the chart fails the render outside that range, as would the server
+    # at startup. There is no revocation before it expires: a departed employee keeps access for up to one TTL, so the
+    # TTL is the trade between comfort and how long a leaked cookie is useful.
     sessionTTL: 12h
   session:
     # -- Secret holding the key that seals the session cookie: standard base64 of exactly 32 bytes

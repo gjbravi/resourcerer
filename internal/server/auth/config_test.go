@@ -46,19 +46,38 @@ func TestParseConfig(t *testing.T) {
 	}
 
 	for name, data := range map[string]string{
-		"unknown key":        validConfig + "allowedGroup: [everyone]\n",
-		"unknown nested key": "issuer: https://idp.example.com\nclientID: rz\nroles:\n  editors: [a]\n",
-		"no issuer":          "clientID: rz\n",
-		"issuer not a URL":   "issuer: idp.example.com\nclientID: rz\n",
-		"no client":          "issuer: https://idp.example.com\n",
-		"no openid scope":    "issuer: https://idp.example.com\nclientID: rz\nscopes: [profile]\n",
-		"bad ttl":            "issuer: https://idp.example.com\nclientID: rz\nsessionTTL: forever\n",
-		"ttl too short":      "issuer: https://idp.example.com\nclientID: rz\nsessionTTL: 1m\n",
-		"relative redirect":  "issuer: https://idp.example.com\nclientID: rz\nredirectURL: /auth/callback\n",
-		"not yaml":           "issuer: [",
+		"unknown key":         validConfig + "allowedGroup: [everyone]\n",
+		"unknown nested key":  "issuer: https://idp.example.com\nclientID: rz\nroles:\n  editors: [a]\n",
+		"no issuer":           "clientID: rz\n",
+		"issuer not a URL":    "issuer: idp.example.com\nclientID: rz\n",
+		"issuer without host": "issuer: https://\nclientID: rz\n",
+		"issuer not http(s)":  "issuer: ssh://idp.example.com\nclientID: rz\n",
+		"no client":           "issuer: https://idp.example.com\n",
+		"no openid scope":     "issuer: https://idp.example.com\nclientID: rz\nscopes: [profile]\n",
+		"bad ttl":             "issuer: https://idp.example.com\nclientID: rz\nsessionTTL: forever\n",
+		"ttl too short":       "issuer: https://idp.example.com\nclientID: rz\nsessionTTL: 1m\n",
+		"ttl too long":        "issuer: https://idp.example.com\nclientID: rz\nsessionTTL: 200h\n",
+		"relative redirect":   "issuer: https://idp.example.com\nclientID: rz\nredirectURL: /auth/callback\n",
+		"redirect no host":    "issuer: https://idp.example.com\nclientID: rz\nredirectURL: https://\n",
+		"redirect no scheme":  "issuer: https://idp.example.com\nclientID: rz\nredirectURL: //cb.example.com/auth/callback\n",
+		"redirect not http":   "issuer: https://idp.example.com\nclientID: rz\nredirectURL: ftp://cb.example.com/auth/callback\n",
+		"redirect whitespace": "issuer: https://idp.example.com\nclientID: rz\nredirectURL: https://cb.example.com /x\n",
+		"not yaml":            "issuer: [",
 	} {
 		if _, err := ParseConfig(data); err == nil {
 			t.Errorf("%s: accepted", name)
+		}
+	}
+
+	for name, data := range map[string]string{
+		"issuer with a port":   "issuer: https://idp.example.com:8443\nclientID: rz\n",
+		"issuer trailing path": "issuer: https://idp.example.com/realms/example\nclientID: rz\n",
+		"plain http":           "issuer: http://localhost:8080/realms/x\nclientID: rz\n",
+		"redirect with port":   "issuer: https://idp.example.com\nclientID: rz\nredirectURL: http://localhost:8080/auth/callback\n",
+		"ttl boundaries":       "issuer: https://idp.example.com\nclientID: rz\nsessionTTL: 5m\nroles: {}\n",
+	} {
+		if _, err := ParseConfig(data); err != nil {
+			t.Errorf("%s: %v", name, err)
 		}
 	}
 }
