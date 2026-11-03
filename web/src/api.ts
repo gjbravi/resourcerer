@@ -329,9 +329,10 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     // A session that ended while the page was open: go and sign in again rather than leave an error on screen. The
     // first sign-in is not here — /me answers 200 — and the app starts it once it knows who is calling. The same
     // breaker as afterMe's applies, so a browser that brings back no cookie does not circle the provider forever.
-    // The refusal is counted as well: only a page that believes it has a session gets this far, so twice for one cookie
-    // is the server answering itself two ways, and the page stops to say that rather than keep asking. A browser that
-    // was signed out on purpose is the exception: being refused is exactly what it asked for.
+    // The refusal is counted too, but only once `/me` has confirmed the session this tab is on: a page has several
+    // requests in flight at any moment and each gets retried, so the burst a session leaves when it ends looks exactly
+    // like the two answers about one cookie the counter is for. `noteRefusal` tells them apart. A browser signed out on
+    // purpose is the exception either way: being refused is exactly what it asked for.
     if (res.status === 401 && data.reason === "unauthenticated") {
       if (!holdingAtSignIn(window.location.search)) noteRefusal();
       sendToSignIn();

@@ -1,6 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api } from "./api";
-import { ajaxHeader, ajaxValue, loopWindow, readSignRecord } from "./session";
+import { ApiError, api, type Me } from "./api";
+import { afterMe, ajaxHeader, ajaxValue, bootState, loopWindow, readSignRecord } from "./session";
+
+/** A caller with a session, which is the answer a later refusal has to disagree with to mean anything. */
+const signedInMe: Me = {
+  authenticated: true,
+  user: "eddie",
+  groups: ["platform"],
+  role: "editor",
+  strategy: "oidc",
+  impersonating: false,
+  configStale: false,
+};
 
 /** What the browser was asked to send, as `call` built it. */
 interface Sent {
@@ -51,6 +62,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("the AJAX header", () => {
@@ -155,15 +167,44 @@ describe("a refused request", () => {
     expect(readSignRecord().stopped).toEqual(expect.any(Number));
   });
 
-  // The counter behind that explanation: only a page that believes it has a session gets this far, so a second refusal
-  // of the same cookie is the server answering itself two ways, and the page says so rather than keep asking.
-  it("counts the refusals of a session the page believed in", async () => {
-    location("/");
+  // The shape of a disagreement between replicas over one cookie: `/me` reads the cookie and the calls after it refuse
+  // it. The first refusal is worth another request, so the page makes one — and the run starts over with that trip,
+  // because it was about the cookie being left behind. Coming back to the same answer from `/me` and the same refusal
+  // after it is one cookie answered two ways, which is where the page stops.
+  it("counts the refusals of a session the page was told about", async () => {
+    // Clock under hand because the rule is about order: a refusal counts against a session `/me` confirmed at an
+    // earlier moment, which is what a round trip to the provider is.
+    vi.useFakeTimers({ now: 1_700_000_000_000 });
+    const assign = location("/");
+    afterMe(signedInMe);
     reply(401, { error: "sign in", reason: "unauthenticated" });
     await api.info().catch(() => undefined);
-    expect(readSignRecord()).toMatchObject({ refusals: 1 });
-    await api.info().catch(() => undefined);
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(readSignRecord().refusals).toBeUndefined();
+    // Back from the provider with the same cookie, `/me` reading it again.
+    vi.advanceTimersByTime(2_000);
+    afterMe(signedInMe);
+    await Promise.all([api.info().catch(() => undefined), api.list().catch(() => undefined)]);
     expect(readSignRecord()).toMatchObject({ refused: expect.any(Number), refusals: 2 });
+    expect(bootState({ data: signedInMe, error: null }, readSignRecord())).toMatchObject({ view: "cookie-dropped" });
+  });
+
+  // What a page left open all day does when its session ends: `/me` finds nobody, the browser goes to the provider, and
+  // everything that was in flight comes back refused behind it. The provider still has its own session open, so the
+  // page is back with a good one, and not one of those refusals had anything to say about it.
+  it("counts none of the refusals trailing the sign-in of an expired session", async () => {
+    const assign = location("/");
+    reply(401, { error: "sign in", reason: "unauthenticated" });
+    afterMe({ authenticated: false, strategy: "oidc" });
+    expect(assign).toHaveBeenCalledTimes(1);
+    await Promise.all([
+      api.info().catch(() => undefined),
+      api.list().catch(() => undefined),
+      api.info().catch(() => undefined),
+    ]);
+    expect(readSignRecord().refusals).toBeUndefined();
+    afterMe(signedInMe);
+    expect(bootState({ data: signedInMe, error: null }, readSignRecord())).toMatchObject({ view: "app" });
   });
   it("counts nothing when the refusal was not about the session", async () => {
     location("/");

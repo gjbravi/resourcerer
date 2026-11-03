@@ -192,10 +192,13 @@ auth:
     sessionTTL: 12h
   session:
     # -- Secret holding the key that seals the session cookie: standard base64 of exactly 32 bytes
-    # (`openssl rand -base64 32`). There is no session store, so swapping it signs everyone out once nothing is left to
-    # open the old cookies. Rotate without that gap: copy the current key into `keyPreviousSecretRef`, set the new key,
-    # then remove the previous one after sessions turned over within one TTL. Removing it is what ends those cookies,
-    # so it is the step to schedule rather than slip into the same change.
+    # (`openssl rand -base64 32`). There is no session store, and reading a session never writes one back, so swapping it
+    # signs out everyone whose cookie no mounted key can open. Rotate without that gap in three upgrades: publish the new
+    # key as `keyPreviousSecretRef`, where every replica opens it and none seals with it; swap the two, so new cookies
+    # carry the new key while the old ones still open; then drop the previous one, which is what ends those cookies, one
+    # TTL after the swap — counting the longest `sessionTTL` in force while they were minted, since a cookie keeps the
+    # expiry it was given. Doing it in fewer leaves the replicas still on the old configuration refusing what a new
+    # replica mints, for as long as a rollout takes.
     keySecretRef: { name: "", key: "" }
     # -- Secret holding the key being retired, still accepted for cookies the new key cannot open.
     # Set only while a rotation is in flight; unset renders nothing.

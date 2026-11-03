@@ -5,6 +5,7 @@ import {
   bootState,
   clearSignOutIntent,
   clearSignRecord,
+  countsAsDisagreement,
   countRefusal,
   holdingAtSignIn,
   loopWindow,
@@ -103,6 +104,18 @@ describe("sendToSignIn", () => {
     sendToSignIn(page("/").page, s, 1_000);
     expect(readSignRecord(s)).toEqual({ at: 1_000, stopped: undefined });
   });
+  // A run of refusals is a statement about the cookie this page is leaving behind, so it goes with it: the next one is
+  // a different cookie, and a count that followed the browser through the provider would hand the session coming back
+  // an explanation about the last one.
+  it("retires the refusals it signs in over", () => {
+    const s = store();
+    noteRefusal(s, 900);
+    expect(readSignRecord(s)).toMatchObject({ refused: 900, refusals: 1 });
+    const { assign, page: p } = page("/");
+    sendToSignIn(p, s, 1_000);
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(readSignRecord(s)).toEqual({ at: 1_000, stopped: undefined, refused: undefined, refusals: undefined });
+  });
   it("refuses the second attempt inside the window and marks why", () => {
     const s = store();
     sendToSignIn(page("/").page, s, 1_000);
@@ -116,7 +129,10 @@ describe("sendToSignIn", () => {
   // earn one. The card with the retry in it is where this ends.
   it("stops for good once the refusals add up, window or no window", () => {
     const s = store();
+    const signedIn = session({ authenticated: true, role: "editor", strategy: "oidc", user: "ada", groups: ["sre"] });
     sendToSignIn(page("/").page, s, 1_000, store());
+    // The provider's answer has to arrive before a refusal means anything: this run follows a session `/me` accepted.
+    afterMe(signedIn, page("/").page, s, 1_100, store());
     noteRefusal(s, 1_200);
     noteRefusal(s, 1_400);
     const late = page("/");
@@ -280,6 +296,14 @@ describe("noteRefusal", () => {
     expect(readSignRecord(s)).toMatchObject({ refused: 1_500, refusals: 2 });
     expect(refusedTwice(readSignRecord(s))).toBe(true);
   });
+  it("counts nothing while the sign-in this tab started is still unanswered", () => {
+    const s = store();
+    sendToSignIn(page("/").page, s, 1_000);
+    noteRefusal(s, 1_100);
+    noteRefusal(s, 1_200);
+    expect(readSignRecord(s)).toEqual({ at: 1_000, stopped: undefined });
+    expect(refusedTwice(readSignRecord(s))).toBe(false);
+  });
   it("is over when the card's own retry clears the record, which is the action that ends a run", () => {
     const s = store();
     noteRefusal(s, 1_000);
@@ -298,6 +322,80 @@ describe("noteRefusal", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("countsAsDisagreement", () => {
+  for (const [name, record, want] of [
+    ["no trip of this tab's own to wait for", {}, true],
+    ["a session `/me` has confirmed", { at: 1_000, confirmed: 2_000 }, true],
+    ["the trip this tab started, still unanswered", { at: 2_000 }, false],
+    ["the trip this tab started, with an answer to the last one", { at: 2_000, confirmed: 1_000 }, false],
+    ["no trip, and an answer left over from the last session", { confirmed: 1_000 }, true],
+  ] as [string, ReturnType<typeof readSignRecord>, boolean][]) {
+    it(`${name}: ${want}`, () => expect(countsAsDisagreement(record)).toBe(want));
+  }
+});
+
+// A session that ends while the page sits open is the common case, and it looks remarkably like a server answering
+// itself two ways: whatever is in flight comes back refused within milliseconds of itself, and `/me` — the one call
+// that answers 200 to a caller with no session — is the only answer that says what actually happened. Counting the rest
+// is how a page that signed straight back in landed on the card accusing the install's session key.
+describe("the expiry of a page left open", () => {
+  const signedIn = session({ authenticated: true, role: "editor", strategy: "oidc", user: "ada", groups: ["sre"] });
+  const nobody = session({ authenticated: false, strategy: "oidc" });
+
+  it("signs in instead of counting the refusals that trail the sign-in", () => {
+    const s = store();
+    const browser = store();
+    const first = page("/");
+    afterMe(nobody, first.page, s, 1_000, browser);
+    expect(first.assign).toHaveBeenCalledTimes(1);
+    // One query's poll and its retry.
+    noteRefusal(s, 1_010);
+    noteRefusal(s, 1_011);
+    expect(readSignRecord(s).refusals).toBeUndefined();
+    // The provider kept its own session, so the browser is back with one.
+    afterMe(signedIn, page("/").page, s, 2_000, browser);
+    expect(bootState({ data: signedIn, error: null }, readSignRecord(s), "", readSignOutIntent(browser))).toEqual({
+      view: "app",
+      me: signedIn,
+    });
+  });
+  it("signs in over the refusals that land before `/me` has answered", () => {
+    const s = store();
+    const browser = store();
+    // The window regains focus and `/me`, the workload list and a chart go out together. Two refusals land first: the
+    // first of them sends the browser off, and a trip that has started retires the run it was counted from.
+    noteRefusal(s, 1_000);
+    const refocused = page("/");
+    sendToSignIn(refocused.page, s, 1_001, browser);
+    expect(refocused.assign).toHaveBeenCalledTimes(1);
+    noteRefusal(s, 1_002);
+    expect(readSignRecord(s).refusals).toBeUndefined();
+    // `/me` arrives last, as it does, and the provider signs the browser straight back in.
+    afterMe(nobody, page("/").page, s, 1_003, browser);
+    afterMe(signedIn, page("/").page, s, 2_000, browser);
+    expect(bootState({ data: signedIn, error: null }, readSignRecord(s), "", readSignOutIntent(browser))).toEqual({
+      view: "app",
+      me: signedIn,
+    });
+  });
+  // The disagreement itself, for contrast: the cookie `/me` reads is the one the calls after it refuse, and twice of
+  // that after a session the page was told about is two answers about one cookie. Another authorization cannot change
+  // its mind, so the card is the right answer here and the breaker holds.
+  it("still names the disagreement once `/me` has confirmed the session", () => {
+    const s = store();
+    const browser = store();
+    sendToSignIn(page("/").page, s, 1_000, browser);
+    afterMe(signedIn, page("/").page, s, 1_100, browser);
+    noteRefusal(s, 1_200);
+    expect(refusedTwice(readSignRecord(s))).toBe(false);
+    noteRefusal(s, 1_300);
+    expect(refusedTwice(readSignRecord(s))).toBe(true);
+    expect(bootState({ data: signedIn, error: null }, readSignRecord(s), "", false)).toMatchObject({
+      view: "cookie-dropped",
+    });
   });
 });
 
@@ -366,7 +464,7 @@ describe("afterMe", () => {
     const s = store();
     afterMe(nobody, page("/").page, s, 1_000);
     afterMe(signedIn, page("/").page, s, 1_000 + loopWindow);
-    expect(readSignRecord(s)).toEqual({ at: undefined, stopped: undefined });
+    expect(readSignRecord(s)).toEqual({ at: undefined, stopped: undefined, confirmed: 1_000 + loopWindow });
     const again = page("/");
     afterMe(nobody, again.page, s, 1_000 + loopWindow + 1);
     expect(again.assign).toHaveBeenCalledTimes(1);

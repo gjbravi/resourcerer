@@ -34,11 +34,19 @@ Please do not open public issues for security problems. You will get an acknowle
 - **A session is a sealed cookie, not server state**: the identity, encrypted with AES-GCM under the session key, in a
   cookie that is `HttpOnly`, `SameSite=Lax` and `Path=/`, and carries the `__Host-` prefix where it is `Secure`. No
   replica holds sessions, and nothing can be revoked early: a leaked cookie or a departed employee stays usable until
-  `auth.oidc.sessionTTL` passes, which is what that value trades. Replacing the session key signs everyone out only
-  when nothing is left to open the old cookies: while `auth.session.keyPreviousSecretRef` holds the retiring key an old
-  cookie still opens and comes back re-sealed with the new key, so a rotation done in that order — publish the previous
-  key, swap in the new one, drop the previous once sessions turned over within one TTL — signs nobody out. Dropping the
-  previous key is the moment those cookies end, so it is the step to schedule. Changing `auth.oidc.issuer` or
+  `auth.oidc.sessionTTL` passes, which is what that value trades. Replacing the session key signs everyone out only once
+  nothing is left that can open the old cookies, and that is a matter of what is mounted while which cookies are alive,
+  because reading a session never writes one back: a cookie is sealed by the sign-in that minted it and stays sealed
+  with that key until it expires on its own. Three upgrades, in this order. Publish the new key as
+  `auth.session.keyPreviousSecretRef`, where every replica can open it and none seals with it yet. Swap it into
+  `auth.session.keySecretRef` and move the retiring key into `keyPreviousSecretRef`, so new cookies carry the new key
+  while the old ones still open. Then drop the previous key — the moment those cookies end, and the step to schedule.
+  Wait one TTL before that last step, counting the longest `auth.oidc.sessionTTL` in force while those cookies were being
+  minted: expiry is fixed when a session is created, so lowering the TTL afterwards does not shorten a cookie already
+  out there. Fewer upgrades cost a window rather than a logout — publishing the retiring key and swapping in the new one
+  in the same change leaves the replicas still running the old configuration unable to open what a new replica has just
+  minted, which reads as the card about a session cookie the server will not accept. With one replica that window is one
+  restart; with `server.replicas` above one, it is whatever the rollout takes. Changing `auth.oidc.issuer` or
   `auth.oidc.clientID` does sign everyone out whatever the keys, because a session names the provider and client that
   issued it and one from elsewhere is not this app's identity. Signing out is `GET /auth/logout`, which answers every
   other method with `405`: it carries no token and clears the cookie whatever the request brought with it, so any page

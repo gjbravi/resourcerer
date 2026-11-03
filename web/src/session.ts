@@ -44,6 +44,9 @@ export interface SignRecord {
   /** When a call this tab believed it was entitled to make was refused, and how many refusals in a row. */
   refused?: number;
   refusals?: number;
+  /** When `/me` last said this tab has a session, which is what makes a later refusal a second answer about a cookie
+   *  the server has just accepted. See `countsAsDisagreement`. */
+  confirmed?: number;
 }
 
 /** The part of `sessionStorage` the record needs. */
@@ -55,6 +58,7 @@ export interface Store {
 
 const attemptKey = "resourcerer.sign-in";
 const stoppedKey = "resourcerer.sign-in-stopped";
+const confirmedKey = "resourcerer.sign-confirmed";
 const refusedKey = "resourcerer.refused";
 const refusalsKey = "resourcerer.refusals";
 const signOutKey = "resourcerer.signed-out";
@@ -91,6 +95,7 @@ export function readSignRecord(store: Store = signStore): SignRecord {
   return {
     at: when(store.getItem(attemptKey)),
     stopped: when(store.getItem(stoppedKey)),
+    confirmed: when(store.getItem(confirmedKey)),
     refused: when(store.getItem(refusedKey)),
     refusals: when(store.getItem(refusalsKey)),
   };
@@ -113,6 +118,7 @@ export function clearSignAttempt(store: Store = signStore) {
 /** Everything this tab remembers about signing in and being refused, which is what a deliberate retry starts over. */
 export function clearSignRecord(store: Store = signStore) {
   clearSignAttempt(store);
+  store.removeItem(confirmedKey);
   store.removeItem(refusedKey);
   store.removeItem(refusalsKey);
 }
@@ -132,18 +138,28 @@ export const refusalLimit = 2;
 export const refusedTwice = (record: SignRecord) => (record.refusals ?? 0) >= refusalLimit;
 
 /**
- * The next refusal of a call this tab believed it was entitled to make. Only a signed-in page asks the API anything,
- * so this is the same cookie read two ways — `/me` accepted it and the call did not. Refusals count while they keep
- * arriving; one after the window has passed starts a fresh count instead of lengthening a run nobody remembers.
+ * The next refusal of a call this tab believed it was entitled to make. Refusals count while they keep arriving; one
+ * after the window has passed starts a fresh count instead of lengthening a run nobody remembers.
  */
 export function countRefusal(now: number, record: SignRecord): number {
   return record.refused !== undefined && now - record.refused < loopWindow ? (record.refusals ?? 0) + 1 : 1;
 }
 
+/**
+ * Whether a 401 is evidence of a disagreement at all, or the tail of a sign-in this tab has not seen confirmed. The
+ * counter is about one cookie answered two ways, which needs an answer from `/me` to disagree with: until the trip this
+ * tab started comes back with a session, a refusal only says the provider has not finished answering. Everything in
+ * flight when a session ends lands in that tail — the polls and their retries arrive within milliseconds of each other,
+ * which is how an ordinary expiry came to accuse the server of dropping a cookie it had never been shown.
+ */
+export const countsAsDisagreement = (record: SignRecord) =>
+  record.at === undefined || (record.confirmed ?? 0) > record.at;
+
 export function noteRefusal(store: Store = signStore, now = Date.now()) {
-  const refusals = countRefusal(now, readSignRecord(store));
+  const record = readSignRecord(store);
+  if (!countsAsDisagreement(record)) return;
   store.setItem(refusedKey, String(now));
-  store.setItem(refusalsKey, String(refusals));
+  store.setItem(refusalsKey, String(countRefusal(now, record)));
 }
 
 /**
@@ -223,6 +239,11 @@ export function sendToSignIn(
   }
   store.setItem(attemptKey, String(now));
   store.removeItem(stoppedKey);
+  // A run of refusals is a statement about the cookie that came back from the provider, so it ends where a new round
+  // trip starts. What follows this address is the browser asking again, and the answer to that is worth reading on its
+  // own rather than as the third refusal in a row nobody remembers.
+  store.removeItem(refusedKey);
+  store.removeItem(refusalsKey);
   page.assign(to);
 }
 
@@ -244,6 +265,9 @@ export function afterMe(
     sendToSignIn(page, store, now, intent);
     return;
   }
+  // The session this page can now spend is the answer a later refusal disagrees with, so this is what makes one count:
+  // until the trip this tab started comes back, a 401 only says the provider has not finished answering.
+  store.setItem(confirmedKey, String(now));
   // An answer inside the window is not evidence that the last attempt worked: a session cookie the server refuses
   // reads as signed in for one call and as a 401 on the next, and clearing the record here would start the round trip
   // over with a clean slate every time. Retire it once the window has passed, which is a session that stayed. A run of

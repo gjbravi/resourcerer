@@ -1,6 +1,7 @@
-import { Boxes, LayoutDashboard, Settings as SettingsIcon, Server } from "lucide-react";
+import { Boxes, LayoutDashboard, LogOut, Server, Settings as SettingsIcon, Unlock, UserRound } from "lucide-react";
+import type { Session } from "./api";
 import { HatLogo } from "./art";
-import type { ShellLabels } from "./session";
+import { setSignOutIntent, type ShellLabels } from "./session";
 
 const nav = [
   ["#/overview", "overview", "Overview", LayoutDashboard],
@@ -83,5 +84,42 @@ export function Crumbs({ page, parts, shell }: { page: string; parts: string[]; 
         <b>{page[0].toUpperCase() + page.slice(1)}</b>
       )}
     </div>
+  );
+}
+
+/**
+ * Who is calling, where the install says who may do what. The strategy decides which chip this is, so "anyone who
+ * reaches this page can use it" appears only under `anonymous` and never while an `oidc` install is still finding out
+ * who is calling. A caller under `anonymous` is named the way this header always named them: there is no one behind
+ * that session, and signing out of it would achieve nothing.
+ *
+ * Signing out is recorded as the click happens, not when the page it lands on finds out that it happened. In between,
+ * the cookie is gone and the answer every other tab reads by is not written yet, while those tabs keep polling: each
+ * takes the 401 this click caused and answers it the only way a page blind to the click can — by handing the browser
+ * to a provider that still has its own session open, which brings back the session the click asked to end. A click's
+ * handler and a `localStorage` write are both synchronous, so nothing slips between them. Landing on the marker writes
+ * it too, which covers a sign-out started anywhere else: an address typed in, or a link followed from outside the app.
+ */
+export function Who({ session, readOnly }: { session: Session | undefined; readOnly: boolean }) {
+  if (session?.strategy === "anonymous") {
+    return (
+      <span className="rz-anon" title="Authentication strategy: anonymous. Anyone who reaches this page can use it.">
+        <Unlock size={12} /> anonymous{readOnly ? " · read-only" : ""}
+      </span>
+    );
+  }
+  if (!session || !session.authenticated) return null;
+  const me = session;
+  const groups = me.groups.length ? ` · ${me.groups.join(", ")}` : "";
+  return (
+    <>
+      <span className="rz-anon" title={`Signed in as ${me.user} (${me.role})${groups}`}>
+        <UserRound size={12} /> {me.user} · {me.role}
+        {readOnly ? " · read-only" : ""}
+      </span>
+      <a className="rz-icon" href="/auth/logout" title="Sign out" onClick={() => setSignOutIntent()}>
+        <LogOut size={16} />
+      </a>
+    </>
   );
 }

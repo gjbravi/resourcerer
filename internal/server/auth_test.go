@@ -8,10 +8,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -173,7 +175,19 @@ func TestMe(t *testing.T) {
 		}
 	}
 
-	w := call(t, newServer(nobody).Handler(), http.MethodGet, "/api/v1/me", "")
+	// The UI mirrors an authenticated `me` by hand, in `web/src/api.ts`, and nothing else compares the two: a tag
+	// renamed here disappears from the page with every test still green. Naming the key set makes whoever changes it
+	// change the mirror in the same commit, which is a tripwire rather than a guard, and the only kind available here.
+	w := call(t, newServer(viewer).Handler(), http.MethodGet, "/api/v1/me", "")
+	var signed map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &signed)
+	got := slices.Sorted(maps.Keys(signed))
+	want := []string{"authenticated", "configStale", "groups", "impersonating", "role", "strategy", "user"}
+	if !slices.Equal(got, want) {
+		t.Errorf("me keys = %v, want %v, which is what web/src/api.ts mirrors", got, want)
+	}
+
+	w = call(t, newServer(nobody).Handler(), http.MethodGet, "/api/v1/me", "")
 	var body map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &body)
 	if w.Code != http.StatusOK || len(body) != 2 || body["authenticated"] != false || body["strategy"] != "stub" ||

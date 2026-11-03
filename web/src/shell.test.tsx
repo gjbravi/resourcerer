@@ -1,7 +1,9 @@
+import { fireEvent, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import type { ShellLabels } from "./session";
-import { Crumbs, Sidebar } from "./shell";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { Session } from "./api";
+import { readSignOutIntent, type ShellLabels } from "./session";
+import { Crumbs, Sidebar, Who } from "./shell";
 
 /**
  * The shell holds the labels the boot views render without: `GET /api/v1/info` is answered only to a signed-in caller,
@@ -84,5 +86,67 @@ describe("Crumbs", () => {
     expect(renderToStaticMarkup(<Crumbs page="settings" parts={["settings"]} shell={everyLabel} />)).toContain(
       "<b>Settings</b>",
     );
+  });
+});
+
+/**
+ * Who the header says is calling, and the one control that ends it. Rendering this proves what it shows; the promise it
+ * carries is about a moment after the click, when the cookie is gone and every other tab of this browser is still
+ * polling. So the click is the test.
+ */
+describe("Who", () => {
+  const editor: Session = {
+    authenticated: true,
+    user: "ada",
+    groups: ["sre"],
+    role: "editor",
+    strategy: "oidc",
+    impersonating: false,
+    configStale: false,
+  };
+  const anonymous: Session = {
+    authenticated: true,
+    user: "anonymous",
+    groups: [],
+    role: "editor",
+    strategy: "anonymous",
+    impersonating: false,
+    configStale: false,
+  };
+  const nobody: Session = { authenticated: false, strategy: "oidc" };
+
+  beforeEach(() => localStorage.clear());
+
+  it("names the caller, their role, and what the install lets them do", () => {
+    const html = renderToStaticMarkup(<Who session={editor} readOnly />);
+    expect(html).toContain("ada · editor · read-only");
+    expect(html).toContain("Signed in as ada (editor) · sre");
+    expect(html).toContain('href="/auth/logout"');
+  });
+  // The tab that was signed out from is not the one that reads the answer: between the click and the page the sign-out
+  // lands on, the other tabs take the 401 this caused and would spend it signing the whole browser back in. Nothing
+  // separates that window but the order of two statements in one handler, so this is what says the order is the point.
+  it("writes down the sign-out on the way out of the click", () => {
+    const { getByTitle } = render(<Who session={editor} readOnly={false} />);
+    // jsdom cannot follow the link and would complain about it; holding the default action back changes nothing about
+    // the handler under test, which is the part that runs before the browser goes anywhere.
+    const hold = (e: Event) => e.preventDefault();
+    document.addEventListener("click", hold, true);
+    try {
+      fireEvent.click(getByTitle("Sign out"));
+      expect(readSignOutIntent()).toBe(true);
+    } finally {
+      document.removeEventListener("click", hold, true);
+    }
+  });
+  it("names an anonymous install as one, with no session to end", () => {
+    const html = renderToStaticMarkup(<Who session={anonymous} readOnly />);
+    expect(html).toContain("anonymous · read-only");
+    expect(html).not.toContain("/auth/logout");
+  });
+  it("says nothing about the caller before `/me` has answered", () => {
+    for (const session of [undefined, nobody]) {
+      expect(renderToStaticMarkup(<Who session={session} readOnly={false} />)).toBe("");
+    }
   });
 });

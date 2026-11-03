@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { LogOut, Moon, Sun, Unlock, UserRound } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { Me, Session } from "./api";
+import type { Me } from "./api";
 import { ErrorBox, Toasts } from "./components";
 import { useHash, useInfo, useSession, useWorkloads } from "./hooks";
 import { Details } from "./pages/Details";
@@ -19,7 +19,7 @@ import {
   shellLabels,
   writeLock,
 } from "./session";
-import { Crumbs, Sidebar } from "./shell";
+import { Crumbs, Sidebar, Who } from "./shell";
 import "./styles.css";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, retry: 1 } } });
@@ -108,36 +108,6 @@ function App() {
 }
 
 /**
- * Who is calling, where the install says who may do what. The strategy decides which chip this is, so "anyone who
- * reaches this page can use it" appears only under `anonymous` and never while an `oidc` install is still finding out
- * who is calling. A caller under `anonymous` is named the way this header always named them: there is no one behind
- * that session, and signing out of it would achieve nothing.
- */
-function Who({ session, readOnly }: { session: Session | undefined; readOnly: boolean }) {
-  if (session?.strategy === "anonymous") {
-    return (
-      <span className="rz-anon" title="Authentication strategy: anonymous. Anyone who reaches this page can use it.">
-        <Unlock size={12} /> anonymous{readOnly ? " · read-only" : ""}
-      </span>
-    );
-  }
-  if (!session || !session.authenticated) return null;
-  const me = session;
-  const groups = me.groups.length ? ` · ${me.groups.join(", ")}` : "";
-  return (
-    <>
-      <span className="rz-anon" title={`Signed in as ${me.user} (${me.role})${groups}`}>
-        <UserRound size={12} /> {me.user} · {me.role}
-        {readOnly ? " · read-only" : ""}
-      </span>
-      <a className="rz-icon" href="/auth/logout" title="Sign out">
-        <LogOut size={16} />
-      </a>
-    </>
-  );
-}
-
-/**
  * Signed in, but with no role here. An empty page would read as a broken install, so this says what is missing. Which
  * of the two rules refused the caller is the install's own business, so both are named and the user's own groups are
  * the only list put on screen.
@@ -200,7 +170,18 @@ function SignedOut() {
           </div>
         </div>
         <div className="rz-cardft">
-          <a className="rz-btn" href="/auth/login" onClick={() => clearSignOutIntent()}>
+          <a
+            className="rz-btn"
+            href="/auth/login"
+            onClick={() => {
+              // Both halves of being signed out start over here: the answer every other tab reads, and this tab's own
+              // record of having been refused. That record lives in sessionStorage, so it survives the trip to the
+              // provider — a run of refusals counted before this sign-out would otherwise be waiting on the other side,
+              // ready to hand the session this click asks for the card about a server that disagrees.
+              clearSignOutIntent();
+              clearSignRecord();
+            }}
+          >
             Sign in again
           </a>
         </div>
