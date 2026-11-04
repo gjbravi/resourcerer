@@ -106,10 +106,8 @@ spot=$(rec_field pricing deployment-spot-app '{.status.impact.current.monthlyCos
 jq -en --argjson od "$od" --argjson spot "$spot" '$od > 2 * $spot' >/dev/null \
   && pass "the same requests cost more on on-demand (\$$od) than on spot (\$$spot)" \
   || fail "the same requests cost more on on-demand (\$$od) than on spot (\$$spot)"
+allocated_at=$(date +%s)
 
-curl -fs "$API/workloads/pricing/Deployment/on-demand-app/placement" \
-  | jq -e '.available and .capacity["on-demand"].requests > 0.9 and (.types[0].name == "m7g.xlarge") and (.timeline | length) > 0' >/dev/null \
-  && pass "placement shows where on-demand-app ran" || fail "placement shows where on-demand-app ran"
 wait_for "the recommendation records evidence from its history" 120 bash -c \
   "kubectl --context $CTX -n demo get rec deployment-api -o json | jq -e '.status.evidence.historySeconds > 0 and (.status.evidence.used.cpu | tonumber) > 0'"
 
@@ -146,7 +144,7 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$API/workloads/demo/Deploy
 [[ "$code" == 400 ]] && pass "invalid setting values are refused" || fail "invalid setting values are refused (got $code)"
 
 # payments has auto-deploy enabled on the namespace; shorten checkout's learning period so it becomes Ready quickly.
-k -n payments annotate deploy checkout resourcerer.io/learning-period=PT2M --overwrite >/dev/null
+k -n payments annotate deploy checkout resourcerer.io/learning-period=PT1M --overwrite >/dev/null
 wait_for "auto-deploy applies a Ready recommendation" 300 bash -c \
   "[[ \$(kubectl --context $CTX -n payments get rec deployment-checkout -o jsonpath='{.status.history[0].by}') == auto-deploy ]]"
 [[ -z "$(rec_field payments deployment-ledger '{.status.history}')" ]] \
@@ -347,5 +345,13 @@ wait_for "the applier exports the apply counters" 60 metric '^resourcerer_apply_
 wait_for "the applier counts the holds by the rule that held them" 60 metric '^resourcerer_apply_deferred_total\{reason="window"\} [1-9]'
 wait_for "the applier counts the reverts" 60 metric '^resourcerer_apply_reverted_total\{reason="manual"\} [1-9]'
 wait_for "a policy exports the slots it has left" 60 metric '^resourcerer_applypolicy_slots_available\{policy="ClusterApplyPolicy/e2e-slots"\}'
+
+# The server ends the placement window at the last full minute and caches the answer for minutes, so the first
+# request must come after the minute in which the controller's allocation above saw where on-demand-app ran.
+# Asked last, that minute has usually passed already.
+while (($(date +%s) / 60 <= allocated_at / 60)); do sleep 2; done
+curl -fs "$API/workloads/pricing/Deployment/on-demand-app/placement" \
+  | jq -e '.available and .capacity["on-demand"].requests > 0.9 and (.types[0].name == "m7g.xlarge") and (.timeline | length) > 0' >/dev/null \
+  && pass "placement shows where on-demand-app ran" || fail "placement shows where on-demand-app ran"
 
 echo "all e2e checks passed"
