@@ -15,7 +15,24 @@ The chart's `values.schema.json` rejects unknown keys. The source of truth, with
 | `excludedNamespaces` | `[kube-system, kube-public, kube-node-lease]` | Namespaces never managed. The release namespace is always added. |
 | `defaults` | `{}` | Cluster defaults for [settings](settings.md), keyed by annotation name without `resourcerer.io/`. |
 | `readOnly` | `false` | Refuse every change from the UI and API; drops the server's `patch` permissions. |
-| `auth.strategy` | `anonymous` | Only `anonymous` for now. See [Exposing the UI](../guides/exposing-the-ui.md). |
+
+## Authentication
+
+See [Exposing the UI](../guides/exposing-the-ui.md) for the two ways to put an identity in front of the server.
+
+| Value | Default | Description |
+|---|---|---|
+| `auth.strategy` | `anonymous` | `anonymous`: anyone who reaches the server may use it, with the server's own permissions. `oidc`: users sign in at an OpenID Connect provider, and their groups decide the role. |
+| `auth.cookieSecure` | `auto` | `Secure` on the session cookie: `auto` (when the request is HTTPS), `true` (behind a TLS-terminating proxy), `false` (plain HTTP only). |
+| `auth.oidc.issuer`, `auth.oidc.clientID` | unset | The provider (an `http(s)` URL) and the confidential client resourcerer presents there. Required with `oidc`. |
+| `auth.oidc.clientSecretSecretRef`, `auth.session.keySecretRef` | unset | Secrets with the client secret and the session key (standard base64 of 32 bytes: `openssl rand -base64 32`). Required with `oidc`; the chart renders references, never the material. |
+| `auth.session.keyPreviousSecretRef` | unset | The key being retired, still accepted while a rotation is in flight. |
+| `auth.oidc.allowedGroups` | `[]` | Which groups may use resourcerer. Empty gives read access to every user the provider authenticates. |
+| `auth.oidc.roles.editorGroups` | `[]` | Which groups may apply, revert and change settings. Empty means nobody can. |
+| `auth.oidc.roles.anyAuthenticatedIsViewer` | `true` | Whether an admitted user who is not an editor may read. |
+| `auth.oidc.scopes`, `auth.oidc.usernameClaim`, `auth.oidc.groupsClaim` | `openid profile email`, `preferred_username`, `groups` | What to ask the provider for, and which claims name the user and the groups. |
+| `auth.oidc.redirectURL` | derived | Absolute callback URL, for a proxy that rewrites the Host the server sees. Otherwise derived from the request, so every way of reaching the server needs its own callback registered at the provider. |
+| `auth.oidc.sessionTTL` | `12h` | How long a session is valid without visiting the provider again: whole minutes (`5m` to `10080m`) or hours (`1h` to `168h`). Nothing revokes it sooner. |
 
 ## Prometheus
 
@@ -66,7 +83,7 @@ The chart's `values.schema.json` rejects unknown keys. The source of truth, with
 | `server.ui` | `true` | Serve the embedded UI; the API is served either way. |
 | `server.resources` | requests `10m`/`48Mi`, limit `192Mi` | |
 | `server.service.type`, `server.service.port` | `ClusterIP`, `80` | |
-| `server.ingress.enabled` | `false` | An Ingress for the server. It has no authentication: see [Exposing the UI](../guides/exposing-the-ui.md). |
+| `server.ingress.enabled` | `false` | An Ingress for the server. Under `oidc` the server authenticates users itself; under `anonymous` put an authenticating proxy in front: see [Exposing the UI](../guides/exposing-the-ui.md). |
 | `server.ingress.className`, `annotations`, `hosts`, `tls` | | Standard Ingress fields. |
 | `<component>.extraArgs` | `[]` | Extra command-line arguments. |
 | `<component>.podLabels`, `<component>.podAnnotations` | `{}` | On top of the global `podLabels` and `podAnnotations`. |
