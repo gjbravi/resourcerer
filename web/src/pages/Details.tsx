@@ -738,7 +738,7 @@ function ModelCheck({ d }: { d: Detail }) {
       <span className="ic">{e ? toneIcon(e.tone) : <Sparkles size={20} />}</span>
       <div>
         <div className="kicker">
-          Decision model · {m.model}
+          Decision model
           <button
             className={`rz-btn small ${m.evaluation ? "ghost" : "primary"}`}
             onClick={() => evaluate.mutate(!!m.evaluation)}
@@ -782,15 +782,11 @@ function ModelCheck({ d }: { d: Detail }) {
             </p>
           </>
         )}
-        <p className="foot">
-          {e && (
-            <>
-              Evaluated {ago(e.evaluatedAt)}
-              {e.version && e.version !== m.model ? ` · ${e.version}` : ""} ·{" "}
-            </>
-          )}
-          Never applies anything: the decision is yours.
-        </p>
+        {e && (
+          <p className="foot">
+            Evaluated {ago(e.evaluatedAt)} · {e.version || m.model}
+          </p>
+        )}
       </div>
     </section>
   );
