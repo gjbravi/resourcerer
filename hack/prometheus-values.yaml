@@ -11,10 +11,9 @@ kube-state-metrics:
     requests: { cpu: 10m, memory: 48Mi }
 server:
   retention: 15d
-  # Short so a fresh cluster has the history a recommendation needs within a minute; the e2e waits for it.
   global:
-    scrape_interval: 5s
-    evaluation_interval: 5s
+    scrape_interval: 10s
+    evaluation_interval: 10s
   persistentVolume:
     enabled: true
     size: 4Gi

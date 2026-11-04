@@ -2,8 +2,9 @@
 clusterName: kind-resourcerer
 prometheus:
   url: http://prometheus-server.monitoring.svc
-  # 4× and 1× the 5s scrape interval of hack/prometheus-values.yaml.
-  rateWindow: 20s
+  rateWindow: 40s
+  # Finer than cAdvisor's 10–17s samples, so a fresh cluster reaches the 10 samples a recommendation needs in
+  # under a minute; the e2e waits for that.
   minStep: 5s
 defaults:
   learning-period: PT15M
