@@ -256,6 +256,9 @@ Signals that requests or limits are too tight, or that the workload is unhealthy
   (`internal/signals`, [Reliability signals](guides/reliability-signals.md)). A signal with no data does not apply to the workload; one that
   fails is skipped and never blocks the recommendation.
 
+Containers in `containers.skip` are left out of every per-container signal, in the status and in the live checks: the
+apply never changes them, so they must not weigh on the verdict. Pod- and workload-level signals still count.
+
 The controller stores the learning-period view in `status.reliability`, which drives the workload list and the
 verdict. The server checks the same signals live (`GET .../reliability?window=15m|1h|6h|1d|learning`), so a fix shows
 up as resolved within minutes instead of when old samples leave the learning period.

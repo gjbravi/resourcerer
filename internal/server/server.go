@@ -203,7 +203,7 @@ func (s *Server) reliabilityInfo(ctx context.Context, cfg signals.Config) Reliab
 		info := SignalInfo{ID: sig.ID, Name: sig.Name, Description: sig.Description, Unit: sig.Unit, Above: sig.Above,
 			Below: sig.Below, Query: sig.Query, Runbook: sig.Runbook}
 		v := s.cache.get("signal-probe|"+sig.ID+"|"+sig.Query, 5*time.Minute, func() (any, error) {
-			_, err := sig.Evaluate(ctx, s.Prom, signals.VarsFor(probe, 5*time.Minute), signals.Levels{})
+			_, err := sig.Evaluate(ctx, s.Prom, signals.VarsFor(probe, 5*time.Minute), signals.Levels{}, nil)
 			if err != nil {
 				return err.Error(), nil
 			}

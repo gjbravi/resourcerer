@@ -81,7 +81,8 @@ CPU minimum where a container needs CPU to start in time for its probes.
 |---|---|---|
 | `resourcerer.io/containers.skip` | `istio-proxy,linkerd-proxy` | comma-separated container names, or `none` |
 
-Skipped containers keep their values. Setting the annotation replaces the list, so include the defaults if you still
+Skipped containers keep their values, and are left out of the reliability signals: applying never changes them, so
+a throttled sidecar does not weigh on the verdict. Setting the annotation replaces the list, so include the defaults if you still
 want them skipped:
 
 ```bash

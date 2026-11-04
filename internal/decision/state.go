@@ -123,6 +123,9 @@ func Build(in Input) (Request, string) {
 		},
 	}
 	for _, c := range cs {
+		if c.Skipped {
+			continue
+		}
 		u := in.Usage[c.Name]
 		req.State.Usage[c.Name+" cpu"] = describe(ShapeOf(u.CPU), cores)
 		req.State.Usage[c.Name+" memory"] = describe(ShapeOf(u.Memory), mebibytes)

@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -295,7 +297,9 @@ type Result struct {
 }
 
 // Evaluate runs the signal over the window ending now. No data means the signal does not apply: nil, no error.
-func (s Signal) Evaluate(ctx context.Context, p *prom.Client, v Vars, l Levels) (*Result, error) {
+// Evaluate runs the signal and grades its worst container, leaving out the containers in skip: those resourcerer
+// does not optimize (containers.skip) say nothing about applying. A value without a container is never skipped.
+func (s Signal) Evaluate(ctx context.Context, p *prom.Client, v Vars, l Levels, skip []string) (*Result, error) {
 	q, err := s.Render(v)
 	if err != nil {
 		return nil, err
@@ -306,16 +310,25 @@ func (s Signal) Evaluate(ctx context.Context, p *prom.Client, v Vars, l Levels) 
 	if err != nil {
 		return nil, err
 	}
-	var r *Result
-	for c, val := range vals {
-		if r == nil || s.worse(val, r.Value) {
-			r = &Result{Value: val, Container: c}
-		}
-	}
+	r := s.worst(vals, skip)
 	if r != nil {
 		r.Status = s.Grade(r.Value, l)
 	}
 	return r, nil
+}
+
+// worst picks the worst value among the containers not in skip, nil when none is left.
+func (s Signal) worst(vals map[string]float64, skip []string) *Result {
+	var r *Result
+	for _, c := range slices.Sorted(maps.Keys(vals)) {
+		if c != "" && slices.Contains(skip, c) {
+			continue
+		}
+		if val := vals[c]; r == nil || s.worse(val, r.Value) {
+			r = &Result{Value: val, Container: c}
+		}
+	}
+	return r
 }
 
 // Format shows a value in the signal's unit.

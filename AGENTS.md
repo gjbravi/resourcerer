@@ -136,7 +136,8 @@ cluster") and fictional examples (`payments/checkout`, `demo/api`). Grep the dif
   never names the workload, its namespace or people, and tags the signals the recommendation fixes. See
   `docs/guides/decision-models.md`.
 - **Reliability signals** are built-in or declared as PromQL templates (`docs/guides/reliability-signals.md`). A
-  signal with no data does not apply to a workload.
+  signal with no data does not apply to a workload. Containers in `containers.skip` are left out of every signal that
+  names a container, in the status and the live checks: applying never changes them.
 - **Live data** for the workload page (reliability windows, placement) is computed by the server on request and
   cached; the controller's `status` stays small and drives lists and auto-deploy.
 - **The CRDs ship in their own chart** (`charts/resourcerer-crds`), a release installed before `resourcerer` and

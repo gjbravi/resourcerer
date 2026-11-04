@@ -26,6 +26,11 @@ There are two kinds: built-in signals, which resourcerer computes itself, and si
 
 OOM kills are always on: the memory recommendation depends on them.
 
+Containers in [`containers.skip`](../configuration/goals-and-limits.md#containers-to-skip) (by default `istio-proxy`
+and `linkerd-proxy`) are left out of every signal that names a container: throttling, memory headroom, OOM kills,
+restarts, crash loops and declared signals broken down by `container`. Applying never changes them, so what they show
+says nothing about whether to apply. Signals about the pods or the workload (BestEffort pods, the HPA) still count.
+
 ```yaml
 reliability:
   builtin:
@@ -58,7 +63,8 @@ reliability:
 
 The query returns **the signal's value over `{{ .Window }}`**:
 
-- one series, or one series per `container` label to break the signal down by container (the worst one is shown);
+- one series, or one series per `container` label to break the signal down by container (the worst one is shown,
+  leaving out the containers in `containers.skip`);
 - no data means the signal does not apply to the workload, which then does not show it. Declare Istio, JVM or queue
   signals freely: they only show where their metrics exist.
 

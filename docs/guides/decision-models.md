@@ -127,14 +127,15 @@ nothing is configurable yet.
 | `workload` | The kind, the replicas, `status.impact`, `status.hpa`, `status.pricing` | Kind, replicas now and on average, the HPA and its new target, the spot and on-demand mix |
 | `window` | `status.evidence` | Whether the learning period is covered, or the history is preliminary |
 | `intent` | `status.settings` | The CPU and memory goals, and the level that set them |
-| `usage` | Prometheus, per container: the busiest pod over the learning period | p50, p95, p99 and max; max over p95; variation; a daily pattern (from 2 days of history) and a trend (from 3 days) |
+| `usage` | Prometheus, per optimized container: the busiest pod over the learning period | p50, p95, p99 and max; max over p95; variation; a daily pattern (from 2 days of history) and a trend (from 3 days) |
 | `recommendation` | `status.containers` | Every request and limit that changes, from and to |
 | `replay` | `status.evidence`, `status.impact` | How often usage went above the recommendation, its peaks, and the cost before and after |
 | `fixes` | `status`, the usage | The problems applying fixes: memory raised after OOM kills, a CPU limit raised where it throttled, requests raised above p95 usage |
 | `reliability` | `status.oomKills`, `status.reliability` | Every signal, the ones applying fixes tagged `(fixed by applying)` |
 | `history` | `status.history`, `status.lastApplyResult` | The last three applies and reverts, how long ago, and whether by a person or by auto-deploy |
 
-An actual request, for a Deployment with an `istio-proxy` sidecar:
+An actual request, for a Deployment with an `istio-proxy` sidecar. The sidecar is in `containers.skip`: its usage and
+signals are left out, and the recommendation lists it as unchanged.
 
 ```json title="POST /v1/systemone"
 {
@@ -144,14 +145,12 @@ An actual request, for a Deployment with an `istio-proxy` sidecar:
     "intent": "CPU goal Balanced, memory goal Balanced, set at cluster level",
     "usage": {
       "api cpu": "busiest pod p50 0.101, p95 0.104, p99 0.104, max 0.105; max/p95 1x; variation 4%; no daily pattern; no trend",
-      "api memory": "busiest pod p50 63Mi, p95 63Mi, p99 63Mi, max 63Mi; max/p95 1x; variation 0%; no daily pattern; no trend",
-      "istio-proxy cpu": "busiest pod p50 0.031, p95 0.034, p99 0.035, max 0.036; max/p95 1x; variation 6%; no daily pattern; no trend",
-      "istio-proxy memory": "busiest pod p50 23Mi, p95 23Mi, p99 23Mi, max 23Mi; max/p95 1x; variation 0%; no daily pattern; no trend"
+      "api memory": "busiest pod p50 63Mi, p95 63Mi, p99 63Mi, max 63Mi; max/p95 1x; variation 0%; no daily pattern; no trend"
     },
     "recommendation": "api: cpu request 0.5 -> 0.115 (-77%), memory request 1Gi -> 73Mi (-93%); istio-proxy not changed",
     "replay": "over the history, the busiest pod used more than the recommended requests 0% of the time for CPU and 0% for memory, and peaked at 91% of the CPU and 86% of the memory request; $19.07 -> $6.13 a month, saves $12.94/month",
     "fixes": "nothing: no reliability problem the recommendation addresses",
-    "reliability": "no OOM kills; api memory peaked at 3% of its limit; istio-proxy throttled by its CPU limit 30% of the time; istio-proxy memory peaked at 9% of its limit; HTTP 5xx 0.2% (ok)",
+    "reliability": "no OOM kills; api memory peaked at 3% of its limit; HTTP 5xx 0.2% (ok)",
     "history": "never applied"
   },
   "questions": {

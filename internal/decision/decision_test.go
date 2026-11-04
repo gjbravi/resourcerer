@@ -148,6 +148,20 @@ func TestBuild(t *testing.T) {
 	}
 }
 
+func TestBuildLeavesOutSkippedContainersUsage(t *testing.T) {
+	st := status()
+	st.Containers = append(st.Containers, v1alpha1.ContainerRecommendation{Name: "istio-proxy", Skipped: true})
+	u := usage()
+	u["istio-proxy"] = u["app"]
+	req, _ := Build(Input{Kind: "Deployment", Status: st, Usage: u, Now: t0})
+	if _, ok := req.State.Usage["istio-proxy cpu"]; ok || len(req.State.Usage) != 2 {
+		t.Errorf("usage %v, want the app container only", req.State.Usage)
+	}
+	if !strings.Contains(req.State.Recommendation, "istio-proxy not changed") {
+		t.Errorf("recommendation %q, want the sidecar listed as unchanged", req.State.Recommendation)
+	}
+}
+
 func TestWindow(t *testing.T) {
 	ev := &v1alpha1.Evidence{HistorySeconds: 1200, LearningSeconds: 7 * 86400}
 	if got := window(ev); got != "only 20m of the 7d learning period collected: preliminary" {

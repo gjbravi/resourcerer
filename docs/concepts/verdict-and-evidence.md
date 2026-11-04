@@ -50,9 +50,10 @@ signal you declare as PromQL, such as error rates or latency.
 
 A signal is **fixed by the recommendation** when the recommendation itself addresses it: OOM kills (memory goes above
 the limit that killed the container) and CPU throttling from 25% in a container whose CPU limit the recommendation
-raises. These count *for* applying; any other open signal asks for a review. A container the recommendation leaves
-out (an `istio-proxy` sidecar in `containers.skip`, or a `RequestsOnly` limits policy) keeps its limit, so its
-throttling is not fixed by applying. See [Reliability signals](../guides/reliability-signals.md).
+raises. These count *for* applying; any other open signal asks for a review. A container whose limit the
+recommendation keeps (a `RequestsOnly` limits policy, for instance) stays throttled, so its throttling is not fixed by
+applying. Containers in `containers.skip`, such as an `istio-proxy` sidecar, are left out of the signals altogether:
+applying never changes them. See [Reliability signals](../guides/reliability-signals.md).
 
 ## Where the verdict comes from
 

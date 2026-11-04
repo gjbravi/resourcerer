@@ -91,6 +91,12 @@ wait_for "recommendations leave Pending once history exists" 360 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.phase}') =~ ^(Learning|Ready)$ ]]"
 wait_for "istio-proxy is not optimized" 60 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.containers[?(@.name==\"istio-proxy\")].skipped}') == true ]]"
+# The demo's istio-proxy is throttled by its CPU limit; a container resourcerer does not optimize stays out of
+# reliability, so it cannot weigh on applying. Its live checks leave it out too.
+wait_for "a skipped container is left out of the recommendation's reliability" 120 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-api -o json | jq -e '.status.generatedAt and ([.status.reliability.containers[]?.name] | index(\"istio-proxy\") | not)'"
+wait_for "a skipped container is left out of the live reliability checks" 60 bash -c \
+  "curl -fs '$API/workloads/demo/Deployment/api/reliability?window=15m' | jq -e '[.checks[] | select(.container == \"istio-proxy\")] | length == 0'"
 wait_for "HPA target is recommended for web" 360 bash -c \
   "[[ -n \$(kubectl --context $CTX -n demo get rec deployment-web -o jsonpath='{.status.hpa.recommended}') ]]"
 

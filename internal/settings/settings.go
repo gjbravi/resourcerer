@@ -233,8 +233,10 @@ func (e Effective) Duration(key string) time.Duration {
 	return d
 }
 
-func (e Effective) SkipList() []string {
-	v := e.Get(SkipContainers)
+func (e Effective) SkipList() []string { return ParseSkipList(e.Get(SkipContainers)) }
+
+// ParseSkipList reads a containers.skip value: names separated by commas, or "none".
+func ParseSkipList(v string) []string {
 	if v == "" || v == "none" {
 		return nil
 	}
