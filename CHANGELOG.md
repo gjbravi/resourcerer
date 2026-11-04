@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0-rc.1](https://github.com/gjbravi/resourcerer/compare/v0.9.0...v1.0.0-rc.1) (2026-11-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **chart:** ship the crds in a chart of their own ([#55](https://github.com/gjbravi/resourcerer/issues/55))
+
+### Features
+
+* **chart:** ship the crds in a chart of their own ([#55](https://github.com/gjbravi/resourcerer/issues/55)) ([da08da4](https://github.com/gjbravi/resourcerer/commit/da08da41a5e008c2775e95ef7eb13cc8bb3d70b4))
+
 ## [0.9.0](https://github.com/gjbravi/resourcerer/compare/v0.8.0...v0.9.0) (2026-11-04)
 
 
