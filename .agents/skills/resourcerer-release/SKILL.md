@@ -21,10 +21,14 @@ description: Open, check and merge pull requests in resourcerer, and cut or reco
 `.github/workflows/ci.yaml`:
 
 - `gate` skips `go`/`web`/`chart`/`e2e` when only docs or metadata changed, and on a push to `main` whose tree already
-  passed CI (an artifact `ci-passed-<tree hash>` exists).
+  passed CI (an artifact `ci-passed-<tree hash>` exists). It skips only `e2e` when nothing but the UI changed
+  (`web/` besides `web/embed.go`): e2e checks the API and the cluster, not the UI. Such a PR uploads no
+  `ci-passed` artifact, so its push to `main` runs `go`, `web` and `chart` again; the release PR's dispatched run
+  always runs e2e.
 - `passed` uploads that artifact, and on `workflow_dispatch` runs also sets the commit statuses `go`, `web`, `chart`
   and `e2e`, so dispatched runs can satisfy the branch rules.
-- e2e builds the image in the background while kind starts.
+- e2e builds the image in the background while kind starts, and `make kind-up` installs metrics-server and
+  Prometheus in the background while Argo Rollouts and the demo go in.
 - `docs` runs on every change, docs-only ones included: `make lint-docs` with `MERMAID=1` checks that paths, make
   targets and skills mentioned in the docs exist and that the Mermaid diagrams render.
 
