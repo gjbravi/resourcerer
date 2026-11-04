@@ -38,6 +38,27 @@ description: Open, check and merge pull requests in resourcerer, and cut or reco
 4. After the merge, `verify` passes, then `image` and `chart` publish the image and both charts to GHCR with
    signatures. The release attaches `resourcerer-crds-X.Y.Z.yaml` and the install steps for the two releases.
 
+### Release candidates
+
+For an RC line, `release-please-config.json` uses the `prerelease` strategy: `versioning: prerelease`,
+`prerelease-type: rc` and `prerelease: true` produce `X.Y.Z-rc.N` and mark the GitHub release as a prerelease. A
+`Release-As` footer in a commit on `main` sets the next version regardless of the commits:
+
+```text
+chore: start the 1.0 release candidates
+
+Release-As: 1.0.0-rc.1
+```
+
+Squash merges have an empty commit body by default, so pass the footer when merging the PR that starts the line:
+
+```bash
+gh pr merge <number> --squash --body "Release-As: 1.0.0-rc.1"
+```
+
+To cut the stable release, remove those three keys from the config and land a commit with `Release-As: 1.0.0`.
+Never re-tag or delete an RC; fix forward with the next `rc.N`.
+
 ### Recovering a failed `verify`
 
 ```bash
