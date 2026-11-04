@@ -26,7 +26,10 @@ kubectl --context kind-resourcerer -n resourcerer port-forward svc/resourcerer 8
 
 - `kind-deploy` rolls the pods, which breaks a running port-forward: restart it.
 - The kind values use short periods so things move quickly: `learning-period: PT15M`, `schedule: "@every 1m"`,
-  `rateWindow: 40s`, `minStep: 10s`. A recommendation leaves `Pending` within a few minutes of a workload starting.
+  `rateWindow: 40s`, `minStep: 5s`. A recommendation leaves `Pending` once it has 10 samples at the query step,
+  so within about two minutes of a workload starting, counting the 1-minute schedule.
+- cAdvisor stamps its samples every 10–17s whatever the scrape interval, so a shorter `scrape_interval` adds no CPU
+  or memory data, and a `rateWindow` under ~35s leaves gaps in CPU usage.
 - `@every 1m` is the shortest valid schedule; shorter values are rejected.
 
 ## Fake Karpenter

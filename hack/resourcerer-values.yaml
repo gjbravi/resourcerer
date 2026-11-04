@@ -3,7 +3,9 @@ clusterName: kind-resourcerer
 prometheus:
   url: http://prometheus-server.monitoring.svc
   rateWindow: 40s
-  minStep: 10s
+  # Finer than cAdvisor's 10–17s samples, so a fresh cluster reaches the 10 samples a recommendation needs in
+  # under a minute; the e2e waits for that.
+  minStep: 5s
 defaults:
   learning-period: PT15M
   schedule: "@every 1m"
