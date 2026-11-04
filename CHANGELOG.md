@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/gjbravi/resourcerer/compare/v0.8.0...v0.9.0) (2026-11-04)
+
+
+### Features
+
+* **auth:** authenticate the API and UI with OIDC ([#41](https://github.com/gjbravi/resourcerer/issues/41)) ([3a42176](https://github.com/gjbravi/resourcerer/commit/3a421767f1b9d22725ec328bda35b8672af6f468))
+
 ## [0.8.0](https://github.com/gjbravi/resourcerer/compare/v0.7.0...v0.8.0) (2026-11-03)
 
 
