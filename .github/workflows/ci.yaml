@@ -20,7 +20,9 @@ jobs:
   # - a change that only touches docs, the docs site, agent skills or repository metadata does not change the
   #   binary, image or chart (the Docs workflow builds the site);
   # - a push to main whose tree already passed CI in the pull request that was squash-merged is not tested
-  #   again: the ruleset requires pull requests to be up to date, so the tree is the same.
+  #   again: the ruleset requires pull requests to be up to date, so the tree is the same;
+  # - a change that only touches the UI (web/, besides docs) skips e2e, which checks the API and the cluster, never
+  #   the UI. The release pull request's dispatched run has no base, so every release still runs e2e.
   # Skipped jobs count as passed for the required checks.
   gate:
     runs-on: ubuntu-latest
@@ -30,6 +32,7 @@ jobs:
     outputs:
       tree: ${{ steps.check.outputs.tree }}
       skip: ${{ steps.check.outputs.skip }}
+      skip-e2e: ${{ steps.check.outputs.skip-e2e }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -50,10 +53,16 @@ jobs:
           if [ -n "$base" ] && git cat-file -e "$base" 2>/dev/null; then
             git diff --name-only "$base" HEAD > changed.txt
             echo "changed files:"; cat changed.txt
-            if [ -s changed.txt ] && ! grep -qvE '(\.md$|\.mdx$|^docs/|^website/|^mkdocs\.yml$|^\.github/workflows/docs\.yaml$|^\.agents/|^\.claude/|^LICENSE$|^\.github/CODEOWNERS$|^\.github/ISSUE_TEMPLATE/|^\.github/pull_request_template\.md$)' changed.txt; then
+            docs='(\.md$|\.mdx$|^docs/|^website/|^mkdocs\.yml$|^\.github/workflows/docs\.yaml$|^\.agents/|^\.claude/|^LICENSE$|^\.github/CODEOWNERS$|^\.github/ISSUE_TEMPLATE/|^\.github/pull_request_template\.md$)'
+            if [ -s changed.txt ] && ! grep -qvE "$docs" changed.txt; then
               echo "only docs and metadata changed"
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
+            fi
+            # web/embed.go is Go: it decides what the binary serves.
+            if [ -s changed.txt ] && ! grep -vE "$docs" changed.txt | grep -qvE '^web/' && ! grep -qx web/embed.go changed.txt; then
+              echo "only the UI changed: e2e does not check it"
+              echo "skip-e2e=true" >> "$GITHUB_OUTPUT"
             fi
           fi
           if [ "$GITHUB_EVENT_NAME" = push ]; then
@@ -178,7 +187,7 @@ jobs:
 
   e2e:
     needs: gate
-    if: needs.gate.outputs.skip != 'true'
+    if: needs.gate.outputs.skip != 'true' && needs.gate.outputs.skip-e2e != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
