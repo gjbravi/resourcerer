@@ -883,6 +883,14 @@ spec:
                     - Apply
                     - Revert
                     type: string
+                  containers:
+                    description: |-
+                      Containers limits an Apply to these containers; empty applies every container the recommendation changes.
+                      The others keep their resources, and a revert restores only what this apply changed.
+                    items:
+                      type: string
+                    maxItems: 64
+                    type: array
                   hash:
                     description: Hash of the recommendation the user reviewed; Apply
                       is refused if it changed since.

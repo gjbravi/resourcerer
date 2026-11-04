@@ -1,6 +1,6 @@
 ---
 title: Apply and revert
-description: What happens when you click Apply, how to revert, why an apply can be refused, and how to follow it.
+description: What happens when you click Apply, how to apply some containers only, how to revert, why an apply can be refused, and how to follow it.
 ---
 
 ## Before applying
@@ -48,6 +48,26 @@ sequenceDiagram
 
 The UI shows the result within seconds, with an **Undo** right after a successful apply.
 
+## Apply some containers only
+
+When the recommendation changes more than one container of the pod, the apply dialog lists them with a checkbox each,
+all selected: **Apply all** applies the whole recommendation, **Apply selected** only the containers left checked.
+Containers the recommendation does not change cannot be selected.
+
+Use it to take a change one container at a time, for instance the sidecar whose CPU limit is throttling it today, and
+the main container after the next peak:
+
+- The other containers keep their resources, and the recommendation stays pending for them: apply them later, from
+  the same dialog.
+- A **revert** restores only what the last apply changed.
+- **Auto-deploy** does not apply the rest of a recommendation you applied in part: it skips any hash already in the
+  history, as after a revert. The next regeneration with different values is a new hash.
+- When the recommendation also changes an **HPA's** CPU target, the containers are applied together: the new target
+  keeps the HPA scaling at the same CPU per pod only with every container's CPU applied.
+- The verdict and the savings on the page count every container, not the selection.
+
+From the API, add the containers to the body: `{"hash": "<status.hash>", "containers": ["worker"]}`.
+
 ## Revert
 
 **Revert** puts back the `from` values of the last apply, through the same path: a server-side apply and a rollout. It
@@ -66,6 +86,7 @@ hash, after the next regeneration, can be applied again.
 | `Rejected` | `cannot apply a Warning recommendation` (or another phase) | Only `Ready` and `Learning` recommendations can be applied. |
 | `Rejected` | the policy and rule that hold it, such as `outside the apply windows (...)` | An apply policy holds manual applies now. See [Apply policies](apply-policies.md). |
 | `Rejected` | `nothing to revert` | There is no apply in the history to undo. |
+| `Rejected` | `the workload has no container "…"`, `container "…" is not optimized`, `… apply all containers` | An apply limited to containers named one that does not exist, one in `containers.skip`, or left one out while an HPA target changes. |
 | `Failed` | the API server's error | The patch failed, for instance on an admission webhook or a quota. An `ApplyFailed` warning event carries it. |
 
 ## Follow an apply from the command line

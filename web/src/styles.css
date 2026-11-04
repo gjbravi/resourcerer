@@ -2931,3 +2931,8 @@ body:has(.rz.dark) {
   font-size: 0.72rem;
   color: var(--dim);
 }
+
+/* A container left out of a partial apply, in the apply dialog */
+.rz-table tr.rz-off td:not(:first-child) {
+  opacity: 0.45;
+}

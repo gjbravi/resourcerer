@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
+	"github.com/gjbravi/resourcerer/internal/applier"
 	"github.com/gjbravi/resourcerer/internal/cluster"
 	"github.com/gjbravi/resourcerer/internal/engine"
 	"github.com/gjbravi/resourcerer/internal/prom"
@@ -732,10 +733,11 @@ func (s *Server) patchSpec(w http.ResponseWriter, r *http.Request, mutate func(*
 
 func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Hash string `json:"hash"`
+		Hash       string   `json:"hash"`
+		Containers []string `json:"containers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Hash == "" {
-		writeError(w, http.StatusBadRequest, "body must be {\"hash\": \"<recommendation hash>\"}")
+		writeError(w, http.StatusBadRequest, "body must be {\"hash\": \"<recommendation hash>\", \"containers\": [optional names]}")
 		return
 	}
 	s.patchSpec(w, r, func(rec *v1alpha1.Recommendation) error {
@@ -747,7 +749,11 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 		if d := rec.Status.ApplyPolicy; d != nil && heldByPolicy(d.Manual) {
 			return fmt.Errorf("held by %s: %s", d.Manual.Policy, d.Manual.Reason)
 		}
-		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionApply, Hash: body.Hash, RequestedBy: requester(r), RequestedAt: metav1.NewTime(time.Now())}
+		if err := applier.Selection(rec.Status, body.Containers); err != nil {
+			return err
+		}
+		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionApply, Hash: body.Hash,
+			Containers: body.Containers, RequestedBy: requester(r), RequestedAt: metav1.NewTime(time.Now())}
 		return nil
 	})
 }

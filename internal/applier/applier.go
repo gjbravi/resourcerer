@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -206,6 +207,9 @@ func (r *Reconciler) handle(ctx context.Context, rec *v1alpha1.Recommendation, a
 		deferApply(d.BlockedBy)
 		return rejected(heldReason(d))
 	}
+	if err := Selection(rec.Status, ar.Containers); err != nil {
+		return rejected(err.Error())
+	}
 	return r.apply(ctx, rec, ar.RequestedBy, &ar)
 }
 
@@ -215,9 +219,13 @@ func (r *Reconciler) apply(ctx context.Context, rec *v1alpha1.Recommendation, by
 	if err != nil {
 		return failed(err.Error())
 	}
+	var only []string
+	if ar != nil {
+		only = ar.Containers
+	}
 	var changes []v1alpha1.ContainerChange
 	for _, c := range rec.Status.Containers {
-		if c.Skipped {
+		if c.Skipped || (len(only) > 0 && !slices.Contains(only, c.Name)) {
 			continue
 		}
 		changes = append(changes, v1alpha1.ContainerChange{Name: c.Name, From: live[c.Name], To: c.Recommended})

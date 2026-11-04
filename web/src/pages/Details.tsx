@@ -56,6 +56,7 @@ import {
 } from "../hooks";
 import { resolved, signals, type Signal } from "../reliability";
 import { verdict } from "../verdict";
+import { applyChoices, applySelection } from "../apply";
 import { fmtProb, modelView } from "../decision";
 import type { Lock } from "../session";
 import { CostSection } from "./Placement";
@@ -86,7 +87,10 @@ const fmtMemAxis = (v: number) => (v >= Gi ? `${(v / Gi).toFixed(1)}GiB` : `${Ma
 export function Details({ wref, tab, lock }: { wref: Ref; tab: string; lock: Lock }) {
   const { data: d, error, isLoading } = useWorkload(wref);
   const [confirm, setConfirm] = useState(false);
-  const apply = useAction(wref, (hash: string) => api.apply(wref, hash));
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const apply = useAction(wref, ({ hash, containers }: { hash: string; containers?: string[] }) =>
+    api.apply(wref, hash, containers),
+  );
   const revert = useAction(wref, () => api.revert(wref));
   const regenerate = useAction(wref, () => api.regenerate(wref));
 
@@ -108,6 +112,31 @@ export function Details({ wref, tab, lock }: { wref: Ref; tab: string; lock: Loc
   const lastApply = d.history.find((h) => h.action === "Apply");
   const net = d.current.monthlyCost - d.recommended.monthlyCost;
   const sig = signals(d);
+  const choices = applyChoices(d);
+  const openConfirm = () => {
+    setSelected(new Set(choices.containers.filter((c) => c.changed).map((c) => c.name)));
+    setConfirm(true);
+  };
+  const doApply = (containers?: string[]) =>
+    apply.mutate(
+      { hash: d.hash!, containers },
+      {
+        onSuccess: () => {
+          setConfirm(false);
+          toast({
+            kind: "ok",
+            title: `Apply requested for ${d.name}`,
+            body: containers
+              ? `The applier patches ${containers.join(", ")} and a rolling update starts; the other containers keep their resources.`
+              : "The applier patches the workload and a rolling update starts.",
+            action: { label: "Undo", run: doRevert },
+          });
+        },
+        onError: (e) =>
+          toast({ kind: "error", title: "Apply failed", body: e instanceof Error ? e.message : String(e) }),
+      },
+    );
+  const partialSelection = applySelection(choices, selected);
   const doRevert = () =>
     revert.mutate(undefined, {
       onSuccess: () =>
@@ -208,7 +237,7 @@ export function Details({ wref, tab, lock }: { wref: Ref; tab: string; lock: Loc
             <button
               className="rz-btn primary"
               disabled={!canApply}
-              onClick={() => setConfirm(true)}
+              onClick={openConfirm}
               title={
                 !lock.write
                   ? lock.reason
@@ -339,26 +368,22 @@ export function Details({ wref, tab, lock }: { wref: Ref; tab: string; lock: Loc
               <button className="rz-btn ghost" onClick={() => setConfirm(false)}>
                 Cancel
               </button>
-              <button
-                className="rz-btn primary"
-                disabled={apply.isPending}
-                onClick={() =>
-                  apply.mutate(d.hash!, {
-                    onSuccess: () => {
-                      setConfirm(false);
-                      toast({
-                        kind: "ok",
-                        title: `Apply requested for ${d.name}`,
-                        body: "The applier patches the workload and a rolling update starts.",
-                        action: { label: "Undo", run: doRevert },
-                      });
-                    },
-                    onError: (e) =>
-                      toast({ kind: "error", title: "Apply failed", body: e instanceof Error ? e.message : String(e) }),
-                  })
-                }
-              >
-                Apply
+              {choices.partial && (
+                <button
+                  className="rz-btn ghost"
+                  disabled={apply.isPending || !partialSelection?.length}
+                  onClick={() => doApply(partialSelection)}
+                  title={
+                    !partialSelection
+                      ? "Every container is selected: use Apply all"
+                      : `Applies ${partialSelection.join(", ")} only`
+                  }
+                >
+                  Apply selected{partialSelection?.length ? ` (${partialSelection.length})` : ""}
+                </button>
+              )}
+              <button className="rz-btn primary" disabled={apply.isPending} onClick={() => doApply()}>
+                {choices.partial ? "Apply all" : "Apply"}
               </button>
             </>
           }
@@ -367,6 +392,7 @@ export function Details({ wref, tab, lock }: { wref: Ref; tab: string; lock: Loc
           <table className="rz-table compact">
             <thead>
               <tr>
+                {choices.partial && <th aria-label="Apply" />}
                 <th>Container</th>
                 <th>CPU req</th>
                 <th>CPU lim</th>
@@ -377,30 +403,60 @@ export function Details({ wref, tab, lock }: { wref: Ref; tab: string; lock: Loc
             <tbody>
               {containers
                 .filter((c) => !c.skipped)
-                .map((c) => (
-                  <tr key={c.name}>
-                    <td>
-                      <b>{c.name}</b>
-                    </td>
-                    {(["cpu", "memory"] as const).flatMap((r) => [
-                      <td key={r}>
-                        <Change r={r} a={c.currentRequests[r]} b={c.recommendedRequests[r]} />
-                      </td>,
-                      <td key={`${r}l`}>
-                        <Change r={r} a={c.currentLimits[r]} b={c.recommendedLimits[r]} />
-                      </td>,
-                    ])}
-                  </tr>
-                ))}
+                .map((c) => {
+                  const changes = choices.containers.find((x) => x.name === c.name)?.changed;
+                  return (
+                    <tr key={c.name} className={choices.partial && !selected.has(c.name) ? "rz-off" : undefined}>
+                      {choices.partial && (
+                        <td>
+                          <input
+                            type="checkbox"
+                            aria-label={`Apply ${c.name}`}
+                            checked={selected.has(c.name)}
+                            disabled={!changes}
+                            title={changes ? undefined : "Nothing changes for this container"}
+                            onChange={(e) => {
+                              const next = new Set(selected);
+                              if (e.target.checked) next.add(c.name);
+                              else next.delete(c.name);
+                              setSelected(next);
+                            }}
+                          />
+                        </td>
+                      )}
+                      <td>
+                        <b>{c.name}</b>
+                      </td>
+                      {(["cpu", "memory"] as const).flatMap((r) => [
+                        <td key={r}>
+                          <Change r={r} a={c.currentRequests[r]} b={c.recommendedRequests[r]} />
+                        </td>,
+                        <td key={`${r}l`}>
+                          <Change r={r} a={c.currentLimits[r]} b={c.recommendedLimits[r]} />
+                        </td>,
+                      ])}
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
+          {choices.partial && (
+            <p className="rz-xs rz-dim">
+              Unselected containers keep their resources and can be applied later. A revert restores only what this
+              apply changed. The verdict and the savings above count every container.
+            </p>
+          )}
+          {choices.reason && <p className="rz-xs rz-dim">{choices.reason}</p>}
           {containers.some(
-            (c) => c.currentRequests.memory && c.recommendedRequests.memory! < c.currentRequests.memory * 0.5,
+            (c) =>
+              (!choices.partial || selected.has(c.name)) &&
+              c.currentRequests.memory &&
+              c.recommendedRequests.memory! < c.currentRequests.memory * 0.5,
           ) && (
             <p className="rz-alert t-warn small">
               <TriangleAlert size={14} />
-              Memory drops by more than half for at least one container. Check that the learning period covers peak
-              traffic.
+              Memory drops by more than half for at least one{choices.partial ? " selected" : ""} container. Check that
+              the learning period covers peak traffic.
             </p>
           )}
           {d.hpaRecommendation && (

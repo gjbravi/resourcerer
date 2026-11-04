@@ -50,7 +50,7 @@ editor (`"reason": "editor-required"`).
 
 | Method and path | Body | Effect |
 |---|---|---|
-| `POST /api/v1/workloads/{ns}/{kind}/{name}/apply` | `{"hash": "<status.hash>"}` | Requests an apply of the recommendation with that hash. `409` with the reason when an apply policy holds manual applies now. |
+| `POST /api/v1/workloads/{ns}/{kind}/{name}/apply` | `{"hash": "<status.hash>"}`, optionally `"containers": ["<name>", …]` | Requests an apply of the recommendation with that hash, limited to those containers when listed. `409` with the reason when an apply policy holds manual applies now, or when a listed container does not exist, is not optimized, or an HPA target needs them all. |
 | `POST /api/v1/workloads/{ns}/{kind}/{name}/revert` | none | Requests a revert of the last apply. |
 | `POST /api/v1/workloads/{ns}/{kind}/{name}/regenerate` | none | Regenerates the recommendation now. |
 | `PUT /api/v1/workloads/{ns}/{kind}/{name}/settings` | `{"key": "<setting>", "value": "<value>"}`, or `"value": null` to remove | Sets or removes the `resourcerer.io/<key>` annotation on the workload. `400` for an unknown key or invalid value. |

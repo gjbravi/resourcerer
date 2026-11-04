@@ -143,6 +143,27 @@ wait_for "apply is recorded in history" 30 bash -c \
 curl -fs -X POST "$API/workloads/demo/Deployment/api/revert" >/dev/null
 wait_for "Revert restores the previous requests ($before)" 60 bash -c "[[ \$(kubectl --context $CTX -n demo get deploy api -o jsonpath='{.spec.template.spec.containers[?(@.name==\"api\")].resources.requests.cpu}') == '$before' ]]"
 
+# demo/orders runs several containers in one pod: an apply limited to one of them leaves the others alone, and its
+# revert restores only that one.
+wait_for "a pod with several containers has a recommendation to apply" 360 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.pending and (.status.phase == \"Learning\" or .status.phase == \"Ready\")'"
+orders_cpu() { echo "kubectl --context $CTX -n demo get deploy orders -o jsonpath='{.spec.template.spec.containers[?(@.name==\"$1\")].resources.requests.cpu}'"; }
+app_before=$(eval "$(orders_cpu app)") worker_before=$(eval "$(orders_cpu worker)")
+hash=$(rec_field demo deployment-orders '{.status.hash}')
+worker_want=$(rec_field demo deployment-orders '{.status.containers[?(@.name=="worker")].recommended.requests.cpu}')
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/orders/apply" \
+  -d "{\"hash\":\"$hash\",\"containers\":[\"istio-proxy\"]}")
+[[ "$code" == 409 ]] && pass "an apply limited to a container resourcerer does not optimize is refused" \
+  || fail "an apply limited to a container resourcerer does not optimize is refused (got $code)"
+curl -fs -X POST "$API/workloads/demo/Deployment/orders/apply" -d "{\"hash\":\"$hash\",\"containers\":[\"worker\"]}" >/dev/null
+wait_for "an apply limited to one container patches only it (worker $worker_before → $worker_want, app stays $app_before)" 60 bash -c \
+  "[[ \$($(orders_cpu worker)) == '$worker_want' && \$($(orders_cpu app)) == '$app_before' ]]"
+wait_for "its history lists that container only" 30 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.history[0].action == \"Apply\" and ([.status.history[0].containers[].name] == [\"worker\"])'"
+curl -fs -X POST "$API/workloads/demo/Deployment/orders/revert" >/dev/null
+wait_for "its revert restores that container only" 60 bash -c \
+  "[[ \$($(orders_cpu worker)) == '$worker_before' && \$($(orders_cpu app)) == '$app_before' ]]"
+
 curl -fs -X PUT "$API/workloads/demo/Deployment/worker/settings" -d '{"key":"memory.optimization-goal","value":"Savings"}' >/dev/null
 wait_for "a workload setting is stored as an annotation and resolved" 60 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-worker -o jsonpath='{.status.settings.memory\.optimization-goal.source}') == workload ]]"

@@ -44,7 +44,12 @@ type ApplyRequest struct {
 	Action Action `json:"action"`
 	// Hash of the recommendation the user reviewed; Apply is refused if it changed since.
 	// +optional
-	Hash        string      `json:"hash,omitempty"`
+	Hash string `json:"hash,omitempty"`
+	// Containers limits an Apply to these containers; empty applies every container the recommendation changes.
+	// The others keep their resources, and a revert restores only what this apply changed.
+	// +optional
+	// +kubebuilder:validation:MaxItems=64
+	Containers  []string    `json:"containers,omitempty"`
 	RequestedBy string      `json:"requestedBy"`
 	RequestedAt metav1.Time `json:"requestedAt"`
 }

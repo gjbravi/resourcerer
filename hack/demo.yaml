@@ -32,6 +32,50 @@ spec:
             requests: { cpu: 100m, memory: 128Mi }
             limits: { cpu: 500m, memory: 256Mi }
 ---
+# Several containers in one pod, each with its own story; apply them one at a time or together.
+#   app          over-provisioned: requests 1 CPU / 1Gi, uses ~0.1 CPU / ~80Mi
+#   worker       CPU limit 100m, wants ~0.4 CPU: throttled, so the recommendation raises the limit
+#   log-shipper  memory limit 64Mi, uses ~55Mi: close to an OOM kill
+#   istio-proxy  in containers.skip, throttled: left out of the recommendation and of reliability
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: orders }
+  template:
+    metadata:
+      labels: { app: orders }
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/colinianking/stress-ng:latest
+          args: ["--cpu", "1", "--cpu-load", "10", "--vm", "1", "--vm-bytes", "80M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
+          resources:
+            requests: { cpu: "1", memory: 1Gi }
+            limits: { cpu: "2", memory: 2Gi }
+        - name: worker
+          image: ghcr.io/colinianking/stress-ng:latest
+          args: ["--cpu", "1", "--cpu-load", "40", "--vm", "1", "--vm-bytes", "40M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 100m, memory: 256Mi }
+        - name: log-shipper
+          image: ghcr.io/colinianking/stress-ng:latest
+          args: ["--cpu", "1", "--cpu-load", "2", "--vm", "1", "--vm-bytes", "50M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 64Mi }
+        - name: istio-proxy
+          image: ghcr.io/colinianking/stress-ng:latest
+          args: ["--cpu", "1", "--cpu-load", "20", "--vm", "1", "--vm-bytes", "20M", "--vm-keep", "--vm-hang", "0", "--timeout", "0", "--quiet"]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 100m, memory: 128Mi }
+---
 # Under-provisioned: requests 50m / 64Mi, uses ~400m / ~100Mi.
 apiVersion: apps/v1
 kind: Deployment

@@ -90,9 +90,10 @@ must not be stored as valid, and cap windows and points so large clusters stay c
 
 ### UI
 
-See the `resourcerer-ui` skill. In short: logic in pure, tested modules (`verdict.ts`, `decision.ts`, `placement.ts`,
-`reliability.ts`, `format.ts`), components reuse the `rz-` classes and theme variables in `styles.css`, one color per
-chart series, shimmer skeletons for loading (no loading texts, no mascots), and no new dependencies without a reason.
+See the `resourcerer-ui` skill. In short: logic in pure, tested modules (`verdict.ts`, `decision.ts`, `apply.ts`,
+`placement.ts`, `reliability.ts`, `format.ts`), components reuse the `rz-` classes and theme variables in
+`styles.css`, one color per chart series, shimmer skeletons for loading (no loading texts, no mascots), and no new
+dependencies without a reason.
 
 ### Chart
 

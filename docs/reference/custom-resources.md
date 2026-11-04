@@ -29,7 +29,7 @@ Written by the controller (`targetRef`) and the server (requests from the UI).
 | Field | Description |
 |---|---|
 | `targetRef` | `apiVersion`, `kind`, `name` of the workload. |
-| `applyRequest` | A request for the applier: `id` (unique), `action` (`Apply` or `Revert`), `hash` of the reviewed recommendation, `requestedBy`, `requestedAt`. Handled once per `id`. |
+| `applyRequest` | A request for the applier: `id` (unique), `action` (`Apply` or `Revert`), `hash` of the reviewed recommendation, `containers` to limit an apply to (empty: every container it changes; see [Apply some containers only](../guides/apply-and-revert.md#apply-some-containers-only)), `requestedBy`, `requestedAt`. Handled once per `id`. |
 | `regenerateRequestedAt` | Regenerate now instead of at the next slot, when newer than `status.generatedAt`. |
 
 ### status

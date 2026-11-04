@@ -12,7 +12,7 @@ React 19, TypeScript, Vite, React Query (`web/src/hooks.ts`), Recharts 3 (`web/s
 
 - **Types:** `web/src/api.ts` mirrors `internal/server/types.go` and the CRD status. Change both together.
 - **Logic:** decisions about what to show live in pure modules with vitest tests next to them: `verdict.ts`,
-  `decision.ts`, `placement.ts`, `reliability.ts`, `format.ts`. Components render; they do not decide.
+  `decision.ts`, `apply.ts`, `placement.ts`, `reliability.ts`, `format.ts`. Components render; they do not decide.
 - **Data:** one hook per endpoint in `hooks.ts`. Polling only where the data changes on its own (workload 5s, list
   15s, charts 30s); expensive live queries get a `staleTime` and are fetched only when shown (`enabled`).
 - **Components:** shared pieces in `components.tsx` (`Delta`, `Modal`, `StatusBadge`, `ErrorBox`, …), drawings in

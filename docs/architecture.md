@@ -328,8 +328,8 @@ sequenceDiagram
     participant A as applier
     participant W as Deployment / StatefulSet / Rollout controller
 
-    U->>S: POST .../apply {hash}
-    S->>K: set spec.applyRequest {id, Apply, hash, requestedBy}
+    U->>S: POST .../apply {hash, containers?}
+    S->>K: set spec.applyRequest {id, Apply, hash, containers, requestedBy}
     K-->>A: Recommendation changed
     A->>A: request id not handled yet?
     alt hash differs from status.hash
@@ -338,7 +338,7 @@ sequenceDiagram
         A->>K: status.lastApplyResult = Rejected
     else
         A->>K: read live resources (API server, not cache)
-        A->>K: server-side apply pod template resources<br/>field manager "resourcerer", force
+        A->>K: server-side apply pod template resources<br/>of the listed containers, or all<br/>field manager "resourcerer", force
         opt HPA on CPU
             A->>K: patch HPA target utilization
         end
@@ -355,6 +355,10 @@ sequenceDiagram
   each decision, records it in `status.applyPolicy` for each kind of apply, and looks again at the first instant a
   rule changes. Every policy that selects a workload must allow it; a `409` from the server answers a held click at
   once, and a revert is never held. See [Apply policies](guides/apply-policies.md).
+- **Some containers only**: `applyRequest.containers` limits an apply to those containers. `applier.Selection`,
+  shared by the server (which answers a bad selection with `409`) and the applier, refuses unknown or skipped
+  containers, and a partial apply when an HPA target changes, since that target holds only with every container's
+  CPU applied. The history lists only what changed, so a revert restores only that.
 - **Revert** applies the `from` values of the last apply, through the same path.
 - **Server-side apply** with the `resourcerer` field manager owns only the resources fields it sets, so GitOps tools
   can ignore them by manager instead of fighting over them.
