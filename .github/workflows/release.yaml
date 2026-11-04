@@ -85,9 +85,11 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
+          # An RC must not move the floating 1.0 or latest tags: only a stable release does.
+          flavor: latest=${{ contains(needs.release-please.outputs.version, '-') && 'false' || 'auto' }}
           tags: |
             type=semver,pattern={{version}},value=${{ needs.release-please.outputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.version }},enable=${{ !contains(needs.release-please.outputs.version, '-') }}
           labels: |
             org.opencontainers.image.title=resourcerer
             org.opencontainers.image.description=Rightsize Kubernetes requests from Prometheus usage history
@@ -140,41 +142,70 @@ jobs:
           ref: ${{ needs.release-please.outputs.sha }}
       - uses: azure/setup-helm@v5
       - uses: sigstore/cosign-installer@v4.1.2
-      - name: Package, push and sign chart
+      - name: Package, push and sign the charts
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
           OWNER: ${{ github.repository_owner }}
         run: |
-          helm package charts/resourcerer --version "$VERSION" --app-version "$VERSION" -d dist
+          for chart in resourcerer resourcerer-crds; do
+            helm package "charts/$chart" --version "$VERSION" --app-version "$VERSION" -d dist
+          done
+          # The same definitions as a plain file, for installations where Helm may not touch cluster-scoped objects.
+          cp charts/resourcerer-crds/files/crds.yaml "dist/resourcerer-crds-$VERSION.yaml"
           echo "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
           echo "$TOKEN" | cosign login ghcr.io -u "$ACTOR" --password-stdin
-          out=$(helm push "dist/resourcerer-$VERSION.tgz" "oci://ghcr.io/$OWNER/charts" 2>&1)
-          echo "$out"
-          digest=$(echo "$out" | awk '/Digest:/ {print $2}')
-          cosign sign --yes "ghcr.io/$OWNER/charts/resourcerer@$digest"
-      - name: Attach chart and install notes to the release
+          for chart in resourcerer resourcerer-crds; do
+            out=$(helm push "dist/$chart-$VERSION.tgz" "oci://ghcr.io/$OWNER/charts" 2>&1)
+            echo "$out"
+            digest=$(echo "$out" | awk '/Digest:/ {print $2}')
+            cosign sign --yes "ghcr.io/$OWNER/charts/$chart@$digest"
+          done
+      - name: Attach charts and install notes to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release-please.outputs.tag }}
           VERSION: ${{ needs.release-please.outputs.version }}
           DIGEST: ${{ needs.image.outputs.digest }}
         run: |
-          gh release upload "$TAG" dist/*.tgz --repo "$GITHUB_REPOSITORY"
+          gh release upload "$TAG" dist/*.tgz "dist/resourcerer-crds-$VERSION.yaml" --repo "$GITHUB_REPOSITORY"
           {
             gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body
             cat <<NOTES
 
           ## Install
 
+          The CRDs ship in a chart of their own, installed as a separate release before resourcerer:
+
           \`\`\`bash
+          helm install resourcerer-crds oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/resourcerer-crds \\
+            --version ${VERSION} -n resourcerer --create-namespace
           helm install resourcerer oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/resourcerer \\
             --version ${VERSION} -n resourcerer --create-namespace \\
             --set prometheus.url=http://prometheus-server.monitoring.svc
           \`\`\`
 
-          Image: \`ghcr.io/${GITHUB_REPOSITORY}@${DIGEST}\`, signed with cosign (keyless).
+          Upgrading runs the same two commands in the same order. **Installing this version over 0.9.0 or earlier needs
+          a one-time adoption step**, because those releases delivered the CRDs from the chart's \`crds/\` directory,
+          which Helm does not track:
+
+          \`\`\`bash
+          # Helm 4
+          helm install resourcerer-crds oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/resourcerer-crds \\
+            --version ${VERSION} -n resourcerer --create-namespace --take-ownership
+
+          # Helm 3
+          for crd in recommendations.resourcerer.io applypolicies.resourcerer.io clusterapplypolicies.resourcerer.io; do
+            kubectl label crd "\$crd" app.kubernetes.io/managed-by=Helm --overwrite
+            kubectl annotate crd "\$crd" meta.helm.sh/release-name=resourcerer-crds meta.helm.sh/release-namespace=resourcerer --overwrite
+          done
+          \`\`\`
+
+          A team that owns its CRDs can apply the attached \`resourcerer-crds-${VERSION}.yaml\` with
+          \`kubectl apply --server-side -f\` instead of installing the first chart.
+
+          Image: \`ghcr.io/${GITHUB_REPOSITORY}@${DIGEST}\`, signed with cosign (keyless). Both charts are signed too.
           NOTES
           } > notes.md
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md

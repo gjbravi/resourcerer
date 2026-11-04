@@ -3,9 +3,9 @@ title: Quickstart
 description: Install resourcerer with Helm, open the UI and review your first recommendations.
 ---
 
-This quickstart installs resourcerer with one Helm command. Preliminary recommendations show up within minutes; complete
-ones once the learning period (7 days by default) is covered by history, which is usually right away if your
-Prometheus already keeps a week of data.
+This quickstart installs resourcerer with Helm: the custom resource definitions from a release of their own, then the
+application. Preliminary recommendations show up within minutes; complete ones once the learning period (7 days by
+default) is covered by history, which is usually right away if your Prometheus already keeps a week of data.
 
 Nothing is changed in your cluster until you click **Apply** or turn on auto-deploy.
 
@@ -21,8 +21,10 @@ Pick a version from the [releases page](https://github.com/gjbravi/resourcerer/r
 `prometheus.url` at your Prometheus API:
 
 ```bash
+helm install resourcerer-crds oci://ghcr.io/gjbravi/charts/resourcerer-crds --version <version> \
+  --namespace resourcerer --create-namespace
 helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> \
-  --namespace resourcerer --create-namespace \
+  --namespace resourcerer \
   --set prometheus.url=http://prometheus-server.monitoring.svc \
   --set clusterName=staging
 ```

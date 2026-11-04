@@ -12,7 +12,7 @@ description: Add or change a field in the Recommendation CRD status or spec, or 
 2. Store numbers that need precision as decimal strings (as `Totals` and `Pricing.Factor` do) and percentages as
    `int32`. Keep the status small: it is written on every regeneration and read by every list call. Large or
    time-series data belongs in a server endpoint computed on request.
-3. `make generate`, then commit `zz_generated.deepcopy.go` and `charts/resourcerer/crds/...` with the change;
+3. `make generate`, then commit `zz_generated.deepcopy.go` and `charts/resourcerer-crds/files/crds.yaml` with the change;
    `make verify-generate` compares with git.
 4. Fill the field in the controller (`internal/recommender`) or the applier (`internal/applier`) only; the server
    never writes status.

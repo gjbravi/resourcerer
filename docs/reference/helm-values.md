@@ -6,6 +6,10 @@ description: Every value of the resourcerer chart, with its default.
 The chart's `values.schema.json` rejects unknown keys. The source of truth, with comments, is
 [`charts/resourcerer/values.yaml`](https://github.com/gjbravi/resourcerer/blob/main/charts/resourcerer/values.yaml).
 
+The CRDs are installed by a chart of their own, `resourcerer-crds`, which has no values and must be installed before
+this one. See
+[the CRDs are a release of their own](../getting-started/installation.md#the-crds-are-a-release-of-their-own).
+
 ## General
 
 | Value | Default | Description |

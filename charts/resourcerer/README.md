@@ -6,7 +6,9 @@ history, applied on request or automatically, with a UI.
 Requires a Prometheus-compatible API with cAdvisor and kube-state-metrics data (`prometheus.url`).
 
 ```bash
-helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> -n resourcerer --create-namespace \
+helm install resourcerer-crds oci://ghcr.io/gjbravi/charts/resourcerer-crds --version <version> \
+  -n resourcerer --create-namespace
+helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> -n resourcerer \
   --set prometheus.url=http://prometheus-server.monitoring.svc
 ```
 
@@ -74,6 +76,49 @@ kubectl -n resourcerer create secret generic resourcerer-session --from-literal=
 kubectl -n resourcerer create secret generic resourcerer-oidc --from-literal=clientSecret="$CLIENT_SECRET"
 ```
 
-The CRDs are in `crds/` and installed by Helm on first install; upgrade them with
-`kubectl apply --server-side -f charts/resourcerer/crds`. An installation upgraded without them runs ungated:
-the applier says so in its log instead of refusing every apply.
+## Custom resource definitions
+
+The CRDs are not in this chart. They ship in the separate
+[`resourcerer-crds`](https://github.com/gjbravi/resourcerer/blob/main/charts/resourcerer-crds/README.md) chart,
+installed as a release of its own **before** this one, so that `helm upgrade` maintains them. The main chart can declare
+`ClusterApplyPolicy` objects from `applyPolicies.cluster`, and Helm resolves every object of a release before creating
+any of them, so the CRD cannot come from the same release.
+
+```bash
+helm install resourcerer-crds oci://ghcr.io/gjbravi/charts/resourcerer-crds --version <version> \
+  -n resourcerer --create-namespace
+helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> -n resourcerer \
+  -f resourcerer-values.yaml
+```
+
+An upgrade runs the same two commands in the same order, with the same version: both charts are released together.
+
+### Installing over 0.9.0 or earlier
+
+Those releases installed the CRDs from the chart's `crds/` directory, which Helm installs once, never upgrades and
+tracks no release for. The first `helm install resourcerer-crds` fails with *"exists and cannot be imported into the
+current release"* and changes nothing. Adopt them once:
+
+```bash
+# Helm 4
+helm install resourcerer-crds oci://ghcr.io/gjbravi/charts/resourcerer-crds --version X.Y.Z --take-ownership
+
+# Helm 3
+for crd in recommendations.resourcerer.io applypolicies.resourcerer.io clusterapplypolicies.resourcerer.io; do
+  kubectl label crd "$crd" app.kubernetes.io/managed-by=Helm --overwrite
+  kubectl annotate crd "$crd" meta.helm.sh/release-name=resourcerer-crds meta.helm.sh/release-namespace=<namespace> --overwrite
+done
+```
+
+`<namespace>` is where the `resourcerer-crds` release lives, here `resourcerer`. Then install the two charts as above;
+upgrading `resourcerer` to the release without `crds/` deletes nothing.
+
+### Uninstall
+
+Uninstall `resourcerer` first, then `resourcerer-crds`. Every CRD carries `helm.sh/resource-policy: keep`, so
+uninstalling `resourcerer-crds` leaves the CRDs and every `Recommendation`, `ApplyPolicy` and `ClusterApplyPolicy` in
+place. Deleting them takes a deliberate command, which also deletes every object of those kinds:
+
+```bash
+kubectl delete crd recommendations.resourcerer.io applypolicies.resourcerer.io clusterapplypolicies.resourcerer.io
+```

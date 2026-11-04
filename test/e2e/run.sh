@@ -75,6 +75,17 @@ k -n payments annotate deploy checkout resourcerer.io/learning-period- >/dev/nul
 rec_field() { k -n "$1" get rec "$2" -o jsonpath="$3"; }
 api_cpu() { k -n demo get deploy api -o jsonpath='{.spec.template.spec.containers[?(@.name=="api")].resources.requests.cpu}'; }
 
+# The CRDs are a release of their own: helm upgrade maintains them, and the keep annotation means
+# `helm uninstall resourcerer-crds` leaves every Recommendation and policy in place.
+crds_owned() {
+  k get crd recommendations.resourcerer.io applypolicies.resourcerer.io clusterapplypolicies.resourcerer.io -o json |
+    jq -e '[.items[] | select(
+      .metadata.labels["app.kubernetes.io/managed-by"] == "Helm" and
+      .metadata.annotations["meta.helm.sh/release-name"] == "resourcerer-crds" and
+      .metadata.annotations["helm.sh/resource-policy"] == "keep")] | length == 3'
+}
+wait_for "the CRDs belong to the resourcerer-crds release and are kept on uninstall" 30 crds_owned
+
 wait_for "creates a Recommendation per workload" 60 k -n demo get rec deployment-api deployment-worker statefulset-cache daemonset-log-agent deployment-web deployment-indexer
 wait_for "recommendations leave Pending once history exists" 360 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.phase}') =~ ^(Learning|Ready)$ ]]"

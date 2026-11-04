@@ -20,10 +20,14 @@ fmt: ## Format Go and UI code
 
 CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.23.0
 ACTIONLINT ?= go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+CRD_GEN_DIR := charts/resourcerer-crds/.controller-gen
 
 .PHONY: generate
-generate: ## Generate deepcopy code and the CRD into the chart
-	$(CONTROLLER_GEN) object paths=./api/... crd paths=./api/... output:crd:artifacts:config=charts/resourcerer/crds
+generate: ## Generate deepcopy code and the CRDs into the resourcerer-crds chart
+	rm -rf $(CRD_GEN_DIR)
+	$(CONTROLLER_GEN) object paths=./api/... crd paths=./api/... output:crd:artifacts:config=$(CRD_GEN_DIR)
+	./hack/merge-crds.sh $(CRD_GEN_DIR) charts/resourcerer-crds/files/crds.yaml
+	rm -rf $(CRD_GEN_DIR)
 
 .PHONY: lint
 lint: lint-workflows lint-docs ## Run linters
@@ -31,6 +35,9 @@ lint: lint-workflows lint-docs ## Run linters
 	go tool golangci-lint run
 	cd web && npm run lint && npm run typecheck
 	helm lint charts/resourcerer
+	helm lint charts/resourcerer-crds
+	helm template resourcerer charts/resourcerer >/dev/null
+	helm template resourcerer-crds charts/resourcerer-crds >/dev/null
 
 .PHONY: lint-workflows
 lint-workflows: ## Lint GitHub Actions workflows
@@ -41,8 +48,8 @@ lint-docs: ## Check that docs and agent skills match the repository (MERMAID=1 a
 	./hack/lint-docs.sh
 
 .PHONY: verify-generate
-verify-generate: generate ## Fail when generated code or the CRD is out of date
-	git diff --exit-code -- api charts/resourcerer/crds
+verify-generate: generate ## Fail when generated code or the CRDs are out of date
+	git diff --exit-code -- api charts/resourcerer-crds/files
 
 .PHONY: test
 test: ## Run Go and UI unit tests
@@ -101,12 +108,13 @@ kind-up: ## Create a kind cluster with metrics-server, VPA and demo workloads
 	CLUSTER_NAME=$(CLUSTER_NAME) ./hack/kind-up.sh
 
 .PHONY: kind-deploy
-kind-deploy: image kind-install ## Build, load into kind and install the chart
+kind-deploy: image kind-install ## Build, load into kind and install the charts
 
 .PHONY: kind-install
-kind-install: ## Load an already built $(IMG) into kind and install the chart
+kind-install: ## Load an already built $(IMG) into kind and install the charts
 	CLUSTER_NAME=$(CLUSTER_NAME) ./hack/kind-load.sh $(IMG)
-	kubectl --context $(KUBE_CONTEXT) apply --server-side --force-conflicts -f charts/resourcerer/crds
+	helm upgrade --install resourcerer-crds charts/resourcerer-crds \
+	  --kube-context $(KUBE_CONTEXT) --namespace resourcerer --create-namespace
 	helm upgrade --install resourcerer charts/resourcerer \
 	  --kube-context $(KUBE_CONTEXT) --namespace resourcerer --create-namespace -f hack/resourcerer-values.yaml \
 	  --set image.repository=$(firstword $(subst :, ,$(IMG))) --set image.tag=$(lastword $(subst :, ,$(IMG))) \

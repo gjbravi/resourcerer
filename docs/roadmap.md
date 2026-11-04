@@ -15,6 +15,5 @@ matter to you: a concrete use case is the most useful input.
 | Reliability | [#28 ReliabilitySignal](https://github.com/gjbravi/resourcerer/issues/28) | Reliability signals as custom resources, so teams declare their own. |
 | Decisions | [#26 Decision models](https://github.com/gjbravi/resourcerer/issues/26) | Pluggable models behind the apply verdict. |
 | Scaling | [#39 Horizontal scaling](https://github.com/gjbravi/resourcerer/issues/39) | Full HPA support and KEDA ScaledObjects. |
-| Upgrades | [#44 CRD delivery](https://github.com/gjbravi/resourcerer/issues/44) | How a CRD change reaches an installation that already exists. |
 
 Released changes are in the [changelog](https://github.com/gjbravi/resourcerer/blob/main/CHANGELOG.md).

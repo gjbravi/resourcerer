@@ -1,0 +1,3 @@
+# The chart has nothing to configure: it ships the generated definitions of the resourcerer.io custom resources,
+# rendered as ordinary resources so that `helm upgrade` maintains them. values.schema.json rejects every key.
+{}
