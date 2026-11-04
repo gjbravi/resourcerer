@@ -32,13 +32,36 @@ helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ -
 helm repo add argo https://argoproj.github.io/argo-helm --force-update >/dev/null
 helm repo update prometheus-community metrics-server argo >/dev/null
 
-log "metrics-server (for the demo HPA)"
-helm upgrade --install metrics-server metrics-server/metrics-server \
+# metrics-server and Prometheus install in the background while the rest goes on: one after the other they took
+# most of this script. Nothing below needs them until the end; the demo only needs the Rollout CRD.
+logs=$(mktemp -d)
+trap 'rm -rf "$logs"' EXIT
+names=()
+pids=()
+start() { # <name> <command...>
+  log "$1 (in the background)"
+  local name="$1"
+  shift
+  "$@" >"$logs/$name.log" 2>&1 &
+  names+=("$name")
+  pids+=($!)
+}
+finish() { # waits for everything start launched and prints the output of what failed
+  local i failed=0
+  for i in "${!pids[@]}"; do
+    if ! wait "${pids[$i]}"; then
+      echo "${names[$i]} failed:" >&2
+      cat "$logs/${names[$i]}.log" >&2
+      failed=1
+    fi
+  done
+  return "$failed"
+}
+
+start metrics-server helm upgrade --install metrics-server metrics-server/metrics-server \
   --kube-context "$CTX" --namespace kube-system --version "$METRICS_SERVER_CHART_VERSION" \
   --set 'args={--kubelet-insecure-tls}' --wait
-
-log "prometheus"
-helm upgrade --install prometheus prometheus-community/prometheus \
+start prometheus helm upgrade --install prometheus prometheus-community/prometheus \
   --kube-context "$CTX" --namespace monitoring --create-namespace --version "$PROMETHEUS_CHART_VERSION" \
   -f "$ROOT/hack/prometheus-values.yaml" --wait --timeout 5m
 
@@ -62,5 +85,8 @@ if ! kubectl --context "$CTX" -n demo wait deploy --all --for=condition=Availabl
   kubectl --context "$CTX" get events -A --field-selector reason=FailedScheduling | tail -20
   exit 1
 fi
+
+log "waiting for metrics-server and prometheus"
+finish
 
 log "ready: run 'make kind-deploy' to install resourcerer"
