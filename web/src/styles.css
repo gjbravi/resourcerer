@@ -2854,6 +2854,11 @@ body:has(.rz.dark) {
   text-transform: uppercase;
   color: var(--dim);
 }
+/* A busy button stays readable while its icon spins; disabled alone would fade it. */
+.rz-model .kicker .rz-btn[aria-busy="true"] {
+  opacity: 1;
+  cursor: progress;
+}
 .rz-model .kicker .rz-btn {
   flex: none;
   white-space: nowrap;

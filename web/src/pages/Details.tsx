@@ -743,8 +743,10 @@ function ModelCheck({ d }: { d: Detail }) {
             className={`rz-btn small ${m.evaluation ? "ghost" : "primary"}`}
             onClick={() => evaluate.mutate(!!m.evaluation)}
             disabled={asking}
+            aria-busy={asking}
           >
-            <RefreshCw size={12} /> {m.evaluation ? "Re-evaluate" : "Evaluate"}
+            <RefreshCw size={12} className={asking ? "rz-spin" : undefined} />{" "}
+            {m.evaluation ? "Re-evaluate" : "Evaluate"}
           </button>
         </div>
         {asking ? (
