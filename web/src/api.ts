@@ -265,6 +265,32 @@ export interface ApplyPolicyStatus {
   evaluatedAt?: string;
 }
 
+export interface DecisionOption {
+  name: "apply" | "review" | "wait" | string;
+  probability: number;
+}
+
+/** One answer of the decision model on whether a recommendation is safe to apply. */
+export interface Evaluation {
+  /** The model and version the server reported answering with. */
+  version?: string;
+  evaluatedAt: string;
+  /** The recommendation evaluated. */
+  hash: string;
+  choice: string;
+  /** Apply, review and wait, in that order. */
+  options: DecisionOption[];
+}
+
+/** The decision model's opinion, asked for by the user; it never applies anything. */
+export interface DecisionReport {
+  configured: boolean;
+  model?: string;
+  /** Why there is no evaluation, when there is none. */
+  reason?: string;
+  evaluation?: Evaluation;
+}
+
 export interface Detail extends Summary {
   /** Pods per capacity type of their Karpenter node. */
   capacity?: Record<string, number>;
@@ -358,6 +384,9 @@ export const api = {
   impact: (w: Ref, resource: Resource, range: Range) =>
     call<Series>("GET", `${path(w)}/impact?resource=${resource}&range=${range}`),
   placement: (w: Ref) => call<Placement>("GET", `${path(w)}/placement`),
+  /** Without evaluate, the last evaluation of the current recommendation; fresh asks the model again. */
+  decision: (w: Ref, evaluate = false, fresh = false) =>
+    call<DecisionReport>("GET", `${path(w)}/decision${evaluate ? `?evaluate=1${fresh ? "&fresh=1" : ""}` : ""}`),
   reliability: (w: Ref, window: ReliabilityWindow) =>
     call<ReliabilityReport>("GET", `${path(w)}/reliability?window=${window}`),
   clusterSeries: (resource: Resource, range: Range) =>

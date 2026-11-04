@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
+	"github.com/gjbravi/resourcerer/internal/decision"
 	"github.com/gjbravi/resourcerer/internal/prom"
 	"github.com/gjbravi/resourcerer/internal/signals"
 )
@@ -285,4 +286,24 @@ type PlacementBucket struct {
 	T        float64            `json:"t"`
 	Requests map[string]float64 `json:"requests"`
 	Cost     map[string]float64 `json:"cost"`
+}
+
+// DecisionReport is the decision model's opinion on a recommendation, asked for by the user. Without Configured
+// there is no model to ask; Reason says why there is no evaluation, when there is none.
+type DecisionReport struct {
+	Configured bool        `json:"configured"`
+	Model      string      `json:"model,omitempty"`
+	Reason     string      `json:"reason,omitempty"`
+	Evaluation *Evaluation `json:"evaluation,omitempty"`
+}
+
+// Evaluation is one answer of the model: apply, review or wait, with the probability of each.
+type Evaluation struct {
+	// Version is the model and version the server reported answering with.
+	Version     string `json:"version,omitempty"`
+	EvaluatedAt string `json:"evaluatedAt"`
+	// Hash is the recommendation evaluated.
+	Hash    string            `json:"hash"`
+	Choice  string            `json:"choice"`
+	Options []decision.Option `json:"options"`
 }

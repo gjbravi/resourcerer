@@ -72,6 +72,7 @@ func (s *Server) routes() []route {
 		{"GET /api/v1/workloads/{ns}/{kind}/{name}/impact", s.impact},
 		{"GET /api/v1/workloads/{ns}/{kind}/{name}/reliability", s.reliability},
 		{"GET /api/v1/workloads/{ns}/{kind}/{name}/placement", s.placement},
+		{"GET /api/v1/workloads/{ns}/{kind}/{name}/decision", s.decision},
 		{"POST /api/v1/workloads/{ns}/{kind}/{name}/apply", s.apply},
 		{"POST /api/v1/workloads/{ns}/{kind}/{name}/revert", s.revert},
 		{"POST /api/v1/workloads/{ns}/{kind}/{name}/regenerate", s.regenerate},
@@ -887,6 +888,26 @@ func (c *cache) get(key string, ttl time.Duration, fetch func() (any, error)) an
 	c.mu.Unlock()
 	close(e.done)
 	return e.value
+}
+
+// peek returns a fetched, unexpired value without fetching.
+func (c *cache) peek(key string) (any, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.entries[key]
+	if !ok || e.expires.IsZero() || time.Now().After(e.expires) {
+		return nil, false
+	}
+	return e.value, true
+}
+
+// drop forgets a fetched value, so the next get fetches again.
+func (c *cache) drop(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, ok := c.entries[key]; ok && !e.expires.IsZero() {
+		delete(c.entries, key)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

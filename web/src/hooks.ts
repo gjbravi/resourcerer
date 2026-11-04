@@ -88,6 +88,19 @@ export const useImpact = (w: Ref, resource: Resource, range: Range) =>
 /** The placement covers the whole learning period and the server caches it for 5 minutes. */
 export const usePlacement = (w: Ref, enabled = true) =>
   useQuery({ queryKey: ["placement", refKey(w)], queryFn: () => api.placement(w), staleTime: 300_000, enabled });
+/** The decision model's last evaluation of the recommendation with this hash, read without asking the model. */
+export const useDecision = (w: Ref, hash?: string) =>
+  useQuery({ queryKey: ["decision", refKey(w), hash], queryFn: () => api.decision(w), staleTime: Infinity });
+
+/** Asks the decision model, at the user's request; fresh asks again instead of returning the kept answer. */
+export function useEvaluate(w: Ref, hash?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (fresh: boolean) => api.decision(w, true, fresh),
+    onSuccess: (d) => qc.setQueryData(["decision", refKey(w), hash], d),
+  });
+}
+
 /** Live mode refreshes every 30s, about the scrape interval, so a fix shows up as soon as Prometheus has it. */
 export const useReliability = (w: Ref, window: ReliabilityWindow, live: boolean) =>
   useQuery({

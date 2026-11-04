@@ -43,9 +43,20 @@ import { ago, fmt, fmtCores, fmtDate, fmtMem, fmtMoney, Gi, isoSeconds, Mi, quan
 import { autoDeploy } from "../autodeploy";
 import { holdText, manualHold } from "../policy";
 import { fmtWindow } from "../placement";
-import { toast, useAction, useImpact, useReliability, useSeries, useWorkload, workloadHash } from "../hooks";
+import {
+  toast,
+  useAction,
+  useDecision,
+  useEvaluate,
+  useImpact,
+  useReliability,
+  useSeries,
+  useWorkload,
+  workloadHash,
+} from "../hooks";
 import { resolved, signals, type Signal } from "../reliability";
 import { verdict } from "../verdict";
+import { fmtProb, modelView } from "../decision";
 import type { Lock } from "../session";
 import { CostSection } from "./Placement";
 import { ReliabilityTab } from "./ReliabilityTab";
@@ -245,7 +256,7 @@ export function Details({ wref, tab, lock }: { wref: Ref; tab: string; lock: Loc
         <AutoDeployCard d={d} lock={lock} />
       </div>
 
-      <Verdict d={d} />
+      <Safety d={d} />
 
       {d.phase !== "Ready" && d.message && (
         <div className={`rz-alert t-${phaseTone(d.phase)}`}>
@@ -653,26 +664,40 @@ function ReliabilityAlert({ d, sig }: { d: Detail; sig: Signal[] }) {
   );
 }
 
+function toneIcon(tone: string) {
+  return tone === "ok" ? (
+    <CircleCheck size={20} />
+  ) : tone === "wait" ? (
+    <Hourglass size={20} />
+  ) : tone === "bad" ? (
+    <CircleX size={20} />
+  ) : (
+    <TriangleAlert size={20} />
+  );
+}
+
+/** The rule-based verdict and, beside it, the decision model's second opinion when a model is configured. */
+function Safety({ d }: { d: Detail }) {
+  return (
+    <div className="rz-safety">
+      <Verdict d={d} />
+      <ModelCheck d={d} />
+    </div>
+  );
+}
+
 function Verdict({ d }: { d: Detail }) {
   const recent = useReliability(d, "15m", true).data;
+  const configured = useDecision(d, d.hash).data?.configured;
   const v = verdict(
     d,
     signals(d).filter((x) => !resolved(x, recent)),
   );
   return (
     <section className={`rz-card rz-verdict t-${v.tone}`}>
-      <span className="ic">
-        {v.tone === "ok" ? (
-          <CircleCheck size={20} />
-        ) : v.tone === "wait" ? (
-          <Hourglass size={20} />
-        ) : v.tone === "bad" ? (
-          <CircleX size={20} />
-        ) : (
-          <TriangleAlert size={20} />
-        )}
-      </span>
+      <span className="ic">{toneIcon(v.tone)}</span>
       <div>
+        {configured && <div className="kicker">Rules</div>}
         <h2>
           {v.title}
           {v.effect && <span className="eff"> · {v.effect}</span>}
@@ -687,12 +712,84 @@ function Verdict({ d }: { d: Detail }) {
             ))}
         </ul>
       </div>
-      <span
-        className="rz-soon"
-        title="Statistical models that estimate the chance of peaks beyond the usage history are on the way."
-      >
-        <Sparkles size={12} /> Decision models coming soon
-      </span>
+      {!configured && (
+        <span
+          className="rz-soon"
+          title="Statistical models that estimate the chance of peaks beyond the usage history are on the way."
+        >
+          <Sparkles size={12} /> Decision models coming soon
+        </span>
+      )}
+    </section>
+  );
+}
+
+/** A second opinion the user asks for: the decision model on whether the recommendation is safe to apply. */
+function ModelCheck({ d }: { d: Detail }) {
+  const report = useDecision(d, d.hash).data;
+  const evaluate = useEvaluate(d, d.hash);
+  const m = modelView(report, d.pending);
+  if (!m) return null;
+  const asking = evaluate.isPending;
+  const e = asking ? undefined : m.evaluation;
+  const error = evaluate.isError ? String(evaluate.error) : m.error;
+  return (
+    <section className={`rz-card rz-verdict rz-model t-${e ? e.tone : "model"}`}>
+      <span className="ic">{e ? toneIcon(e.tone) : <Sparkles size={20} />}</span>
+      <div>
+        <div className="kicker">
+          Decision model · {m.model}
+          <button
+            className={`rz-btn small ${m.evaluation ? "ghost" : "primary"}`}
+            onClick={() => evaluate.mutate(!!m.evaluation)}
+            disabled={asking}
+          >
+            <RefreshCw size={12} /> {m.evaluation ? "Re-evaluate" : "Evaluate"}
+          </button>
+        </div>
+        {asking ? (
+          <div className="rz-skelgroup">
+            <div className="rz-skel" style={{ width: "45%", height: 20 }} />
+            <div className="rz-skel" style={{ width: "100%", height: 54 }} />
+          </div>
+        ) : e ? (
+          <>
+            <h2>
+              {e.choice.label}
+              <span className="eff"> · {fmtProb(e.choice.probability)}</span>
+            </h2>
+            <ul className="opts">
+              {e.options.map((o) => (
+                <li key={o.name} className={o.chosen ? "chosen" : undefined}>
+                  <span className="nm">{o.label}</span>
+                  <span className="bar">
+                    <i style={{ width: `${Math.round(o.probability * 100)}%` }} />
+                  </span>
+                  <span className="p">{fmtProb(o.probability)}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <>
+            <h2>Second opinion</h2>
+            <p className="ask">
+              {error
+                ? `Could not evaluate: ${error}`
+                : `Ask ${m.model} whether this recommendation is safe to apply, from the same evidence as the rules.`}
+            </p>
+          </>
+        )}
+        <p className="foot">
+          {e && (
+            <>
+              Evaluated {ago(e.evaluatedAt)}
+              {e.version && e.version !== m.model ? ` · ${e.version}` : ""} ·{" "}
+            </>
+          )}
+          Never applies anything: the decision is yours.
+        </p>
+      </div>
     </section>
   );
 }
