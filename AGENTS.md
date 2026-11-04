@@ -175,7 +175,7 @@ Words the code and the UI use with a specific meaning:
 | **Workload factor** | The same for one workload's nodes, under `cost.allocation: node`. |
 | **Coverage** | The share of a workload's requests that ran on nodes with a known price. |
 | **Placement** | Where a workload's requests ran over the learning period: capacity types and instance types, with what each cost. |
-| **Auto-deploy** | The applier applying `Ready`, pending recommendations without a click, once per hash. |
+| **Auto-deploy** | The applier applying `Ready`, pending recommendations without a click, once per hash; `auto-deploy.containers` limits it to some containers (`status.autoDeployScope`). |
 | **Apply policy** | A `ClusterApplyPolicy` or `ApplyPolicy` deciding when an apply may start: windows, freezes and a rate. Every policy that selects a workload must allow the apply. |
 | **Window / Freeze** | A recurring period in a time zone an apply may start in / a one-off period nothing is applied in, both kinds of apply included. |
 | **Hold** | The applier's name for an apply a policy refuses now: it is deferred, not cancelled, and the decision carries the rule and the instant it ends. |

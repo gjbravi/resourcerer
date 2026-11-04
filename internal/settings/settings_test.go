@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -51,5 +52,33 @@ func TestParseSchedule(t *testing.T) {
 	}
 	if _, err := ParseSchedule("@every 10s"); err == nil {
 		t.Error("periods under a minute should fail")
+	}
+}
+
+func TestAutoDeployContainers(t *testing.T) {
+	cases := []struct {
+		annotation string
+		want       []string
+		warned     bool
+	}{
+		{annotation: "", want: nil},
+		{annotation: "all", want: nil},
+		{annotation: "istio-proxy", want: []string{"istio-proxy"}},
+		{annotation: " app , log-shipper ", want: []string{"app", "log-shipper"}},
+		{annotation: "App", warned: true},
+		{annotation: ",", warned: true},
+	}
+	for _, c := range cases {
+		wl := map[string]string{}
+		if c.annotation != "" {
+			wl[Domain+"/"+AutoContainers] = c.annotation
+		}
+		e := Resolve(nil, nil, wl)
+		if got := e.AutoDeployContainers(); strings.Join(got, ",") != strings.Join(c.want, ",") {
+			t.Errorf("%q: containers = %v, want %v", c.annotation, got, c.want)
+		}
+		if (len(e.Warnings) > 0) != c.warned {
+			t.Errorf("%q: warnings = %v, want warned %v", c.annotation, e.Warnings, c.warned)
+		}
 	}
 }

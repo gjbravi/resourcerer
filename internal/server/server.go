@@ -428,6 +428,7 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 	d.Capacity = s.capacity(r.Context(), rec)
 	d.Pricing = rec.Status.Pricing
 	d.Evidence = rec.Status.Evidence
+	d.AutoDeployScope = rec.Status.AutoDeployScope
 	writeJSON(w, d)
 }
 

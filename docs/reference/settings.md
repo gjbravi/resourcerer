@@ -17,6 +17,7 @@ previous level wins. See [Configure resourcerer](../configuration/overview.md).
 | `schedule` | `@daily` | `@hourly`, `@daily`, `@weekly`, `@every <duration>` (at least `1m`) | [Schedule](../configuration/learning-period-and-schedule.md#schedule) |
 | `auto-deploy` | `Disabled` | `Enabled`, `Disabled` | [Auto-deploy](../guides/auto-deploy.md) |
 | `auto-deploy.threshold` | `10%` | A percentage from `0%` to `100%`; a change also needs at least 10m CPU or 16Mi memory | [Auto-deploy](../guides/auto-deploy.md) |
+| `auto-deploy.containers` | `all` | `all`, or container names separated by commas | [Some containers only](../guides/auto-deploy.md#some-containers-only) |
 | `apply-method` | `PatchImmediateRollout` | `PatchImmediateRollout` | [Auto-deploy](../guides/auto-deploy.md) |
 | `cpu.limits-policy` | `RequestsRaiseLimitsIfNeeded` | `RequestsRaiseLimitsIfNeeded`, `RequestsOnly`, `RequestsAndLimits`, `DoNotOptimize` | [Limits](../configuration/goals-and-limits.md#limits-policy) |
 | `memory.limits-policy` | `RequestsRaiseLimitsIfNeeded` | same | [Limits](../configuration/goals-and-limits.md#limits-policy) |

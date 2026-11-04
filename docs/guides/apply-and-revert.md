@@ -61,7 +61,9 @@ the main container after the next peak:
   the same dialog.
 - A **revert** restores only what the last apply changed.
 - **Auto-deploy** does not apply the rest of a recommendation you applied in part: it skips any hash already in the
-  history, as after a revert. The next regeneration with different values is a new hash.
+  history, as after a revert. The next regeneration with different values is a new hash. To have auto-deploy change
+  some containers and leave the others to people, see
+  [Some containers only](auto-deploy.md#some-containers-only).
 - When the recommendation also changes an **HPA's** CPU target, the containers are applied together: the new target
   keeps the HPA scaling at the same CPU per pod only with every container's CPU applied.
 - The verdict and the savings on the page count every container, not the selection.

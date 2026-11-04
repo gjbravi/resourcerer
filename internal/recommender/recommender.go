@@ -237,6 +237,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	rec.Status.NextScheduleAt = &metav1.Time{Time: next}
 	rec.Status.Hash = hash
 	rec.Status.Pending = out.Phase != "Pending" && engine.Pending(in.Containers, out, threshold)
+	rec.Status.AutoDeployScope = nil
+	if names := eff.AutoDeployContainers(); names != nil {
+		s := engine.Scope(names, in.Containers, out, threshold)
+		rec.Status.AutoDeployScope = &v1alpha1.AutoDeployScope{Containers: s.Containers, Pending: out.Phase != "Pending" && s.Pending, Reason: s.Reason}
+	}
 	rec.Status.Settings = toSettings(eff)
 	rec.Status.Warnings = eff.Warnings
 	rec.Status.TargetLabels = w.Labels()

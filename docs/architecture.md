@@ -350,6 +350,9 @@ sequenceDiagram
 
 - **Auto-deploy**: with `auto-deploy: Enabled`, the applier applies a `Ready`, pending recommendation as
   `auto-deploy`, once per hash; a hash already in the history (applied, or reverted by someone) is never re-applied.
+  With `auto-deploy.containers`, the controller records in `status.autoDeployScope` which containers auto-deploy may
+  change, whether those alone are pending (`engine.Scope`), and why it applies nothing when it cannot; the applier
+  applies that scope only.
 - **Apply policies** (`internal/policy`) decide *when* an apply may start: windows in a time zone, freezes, and how
   many applies run at once. The applier reads the `ApplyPolicy` and `ClusterApplyPolicy` objects uncached before
   each decision, records it in `status.applyPolicy` for each kind of apply, and looks again at the first instant a

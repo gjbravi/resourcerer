@@ -1023,6 +1023,25 @@ spec:
                     - state
                     type: object
                 type: object
+              autoDeployScope:
+                description: AutoDeployScope limits auto-deploy to some containers;
+                  absent when auto-deploy.containers is all.
+                properties:
+                  containers:
+                    description: Containers are the listed containers the recommendation
+                      optimizes; auto-deploy changes only these.
+                    items:
+                      type: string
+                    type: array
+                  pending:
+                    description: 'Pending is status.pending over those containers
+                      only: whether any of them moves past the threshold.'
+                    type: boolean
+                  reason:
+                    description: Reason is why auto-deploy applies nothing, when it
+                      cannot.
+                    type: string
+                type: object
               containers:
                 items:
                   properties:

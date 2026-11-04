@@ -6,7 +6,7 @@ description: The words the UI and these docs use with a specific meaning.
 | Term | Meaning |
 |---|---|
 | **Apply policy** | A `ClusterApplyPolicy` or `ApplyPolicy` deciding when an apply may start: windows, freezes and a rate. Every policy that selects a workload must allow the apply. See [Apply policies](../guides/apply-policies.md). |
-| **Auto-deploy** | The applier applying `Ready`, pending recommendations without a click, once per hash. See [Auto-deploy](../guides/auto-deploy.md). |
+| **Auto-deploy** | The applier applying `Ready`, pending recommendations without a click, once per hash, to every container or to those `auto-deploy.containers` lists. See [Auto-deploy](../guides/auto-deploy.md). |
 | **Basis** | The per-value explanation shown in the UI, such as `p95 + 10% over 7d`. |
 | **Busiest pod** | Usage is taken per container from the pod using the most at each step, not the average: the pod that would be throttled or OOM-killed first. |
 | **Cluster factor** | Calibrated rates over the configured rates: what capacity costs on this cluster relative to `cost.rates`. |

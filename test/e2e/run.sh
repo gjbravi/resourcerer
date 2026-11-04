@@ -373,6 +373,26 @@ wait_for "the applier counts the holds by the rule that held them" 60 metric '^r
 wait_for "the applier counts the reverts" 60 metric '^resourcerer_apply_reverted_total\{reason="manual"\} [1-9]'
 wait_for "a policy exports the slots it has left" 60 metric '^resourcerer_applypolicy_slots_available\{policy="ClusterApplyPolicy/e2e-slots"\}'
 
+# auto-deploy.containers limits auto-deploy to some containers. Naming only istio-proxy, which containers.skip leaves
+# out by default, applies nothing and says why; once it is optimized, auto-deploy changes it alone.
+k -n demo annotate deploy orders --overwrite resourcerer.io/auto-deploy=Enabled resourcerer.io/auto-deploy.containers=istio-proxy >/dev/null
+wait_for "auto-deploy limited to a container that is not optimized applies nothing, and says why" 120 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.autoDeployScope.reason | test(\"none of the containers\")'"
+orders_resources() { kubectl --context "$CTX" -n demo get deploy orders -o json | jq -c "[.spec.template.spec.containers[] | select(.name != \"istio-proxy\") | {name, resources}]"; }
+others_before=$(orders_resources)
+k -n demo annotate deploy orders --overwrite resourcerer.io/containers.skip=none >/dev/null
+wait_for "auto-deploy limited to istio-proxy changes it alone once the recommendation is Ready" 900 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.history[0].by == \"auto-deploy\" and ([.status.history[0].containers[].name] == [\"istio-proxy\"])'"
+# Server-side apply removes the fields a manager owned and leaves out: the earlier apply and revert of worker must
+# survive an apply that changes istio-proxy alone.
+[[ "$(orders_resources)" == "$others_before" ]] && pass "the other containers keep every request and limit" \
+  || fail "the other containers keep every request and limit: $others_before → $(orders_resources)"
+order=$(k -n demo get deploy orders -o jsonpath='{.spec.template.spec.containers[*].name}')
+[[ "$order" == "app worker log-shipper istio-proxy" ]] && pass "the containers keep their order" \
+  || fail "the containers keep their order: $order"
+k -n demo annotate deploy orders resourcerer.io/auto-deploy- resourcerer.io/auto-deploy.containers- resourcerer.io/containers.skip- >/dev/null
+curl -fs -X POST "$API/workloads/demo/Deployment/orders/revert" >/dev/null
+
 # The decision model is asked only when a user evaluates a recommendation, from the server, and only about one with
 # something to apply. A fake decider answers a fixed verdict and keeps what it was sent.
 fake_decider="$(dirname "$0")/../../hack/fake-decider.yaml"

@@ -193,16 +193,18 @@ type Detail struct {
 	// Evidence is how the recommendation holds up against the usage history.
 	Evidence *v1alpha1.Evidence `json:"evidence,omitempty"`
 	// Pricing is how the workload's costs were priced.
-	Pricing         *v1alpha1.Pricing `json:"pricing,omitempty"`
-	NextScheduleAt  string            `json:"nextScheduleAt,omitempty"`
-	Containers      []Container       `json:"containers"`
-	HPARec          *HPA              `json:"hpaRecommendation,omitempty"`
-	Settings        []SettingInfo     `json:"settings"`
-	Warnings        []string          `json:"warnings,omitempty"`
-	History         []History         `json:"history"`
-	Events          []Event           `json:"events"`
-	LastApplyResult *ApplyResult      `json:"lastApplyResult,omitempty"`
-	ApplyMethod     string            `json:"applyMethod"`
+	Pricing *v1alpha1.Pricing `json:"pricing,omitempty"`
+	// AutoDeployScope limits auto-deploy to some containers, when auto-deploy.containers lists them.
+	AutoDeployScope *v1alpha1.AutoDeployScope `json:"autoDeployScope,omitempty"`
+	NextScheduleAt  string                    `json:"nextScheduleAt,omitempty"`
+	Containers      []Container               `json:"containers"`
+	HPARec          *HPA                      `json:"hpaRecommendation,omitempty"`
+	Settings        []SettingInfo             `json:"settings"`
+	Warnings        []string                  `json:"warnings,omitempty"`
+	History         []History                 `json:"history"`
+	Events          []Event                   `json:"events"`
+	LastApplyResult *ApplyResult              `json:"lastApplyResult,omitempty"`
+	ApplyMethod     string                    `json:"applyMethod"`
 	// ApplyPolicy is when an apply may start, from the policies that select the workload.
 	ApplyPolicy *v1alpha1.ApplyPolicyStatus `json:"applyPolicy,omitempty"`
 	// TemplateKind and TemplateName name where resources are applied, when not the workload itself.

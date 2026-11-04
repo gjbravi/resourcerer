@@ -418,3 +418,48 @@ func TestManualApplyOfSomeContainers(t *testing.T) {
 		t.Fatalf("result = %+v, want an unknown container rejected", st.LastApplyResult)
 	}
 }
+
+func TestAutoDeployLimitedToSomeContainers(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		scope  v1alpha1.AutoDeployScope
+		worker string
+	}{
+		{name: "applies the listed container only", scope: v1alpha1.AutoDeployScope{Containers: []string{"worker"}, Pending: true}, worker: "100m"},
+		{name: "nothing pending in the listed containers", scope: v1alpha1.AutoDeployScope{Containers: []string{"worker"}}, worker: "200m"},
+		{name: "a reason holds it", scope: v1alpha1.AutoDeployScope{Containers: []string{"worker"}, Pending: true, Reason: "HPA orders's new target needs every container's CPU"}, worker: "200m"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+			ctx := context.Background()
+			key := types.NamespacedName{Namespace: "demo", Name: "api"}
+			cpu := func(v string) corev1.ResourceRequirements {
+				return corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(v)}}
+			}
+			var d appsv1.Deployment
+			if err := f.reconciler.Get(ctx, key, &d); err != nil {
+				t.Fatal(err)
+			}
+			d.Spec.Template.Spec.Containers = append(d.Spec.Template.Spec.Containers, corev1.Container{Name: "worker", Resources: cpu("200m")})
+			if err := f.reconciler.Update(ctx, &d); err != nil {
+				t.Fatal(err)
+			}
+			scope := tc.scope
+			f.update(t, false, func(rec *v1alpha1.Recommendation) {
+				rec.Status.Containers = append(rec.Status.Containers, v1alpha1.ContainerRecommendation{Name: "worker", Current: cpu("200m"), Recommended: cpu("100m")})
+				rec.Status.AutoDeployScope = &scope
+			})
+			f.reconcile(t)
+			if err := f.reconciler.Get(ctx, key, &d); err != nil {
+				t.Fatal(err)
+			}
+			got := map[string]string{}
+			for _, c := range d.Spec.Template.Spec.Containers {
+				got[c.Name] = c.Resources.Requests.Cpu().String()
+			}
+			if got["api"] != "1" || got["worker"] != tc.worker {
+				t.Fatalf("requests = %v, want api 1 and worker %s", got, tc.worker)
+			}
+		})
+	}
+}

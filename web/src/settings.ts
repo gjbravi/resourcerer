@@ -53,6 +53,15 @@ export const SETTINGS: Record<string, SettingMeta> = {
     help: (v) => `Only apply when a request changes by at least ${v} and by 10m CPU or 16Mi memory.`,
     suggestions: ["5%", "10%", "20%"],
   },
+  "auto-deploy.containers": {
+    group: "Apply",
+    label: "Auto-deploy containers",
+    help: (v) =>
+      v === "all"
+        ? "Auto-deploy changes every container the recommendation changes."
+        : `Auto-deploy changes ${v} only; the other containers are applied by hand.`,
+    suggestions: ["all", "istio-proxy"],
+  },
   "apply-method": {
     group: "Apply",
     label: "Apply method",

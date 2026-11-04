@@ -44,6 +44,7 @@ applier.
 | `generatedAt`, `nextScheduleAt` | When the recommendation was last generated, and its next slot. |
 | `hash` | Identity of the recommended values. |
 | `pending` | `true` when the recommendation differs enough from the current requests to apply. |
+| `autoDeployScope` | With `auto-deploy.containers` other than `all`: the listed `containers` the recommendation optimizes, whether they are `pending`, and the `reason` auto-deploy applies nothing, when it cannot. See [Some containers only](../guides/auto-deploy.md#some-containers-only). |
 | `settings` | Every effective setting: `value` and `source` (`cluster`, `namespace`, `workload`). |
 | `warnings` | Invalid settings that were ignored, and similar. |
 | `containers[]` | Per container: `name`, `current` and `recommended` resources, `basis` per resource, `skipped`. |

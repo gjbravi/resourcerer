@@ -413,3 +413,42 @@ func Summarize(in []ContainerInput, out Output, avgReplicas float64, rates Rates
 	s.MemoryScore = int32(math.Round(score(Memory)))
 	return s
 }
+
+// AutoScope is what auto-deploy may apply when it is limited to some containers.
+type AutoScope struct {
+	// Containers are the named containers the recommendation optimizes, in the workload's order.
+	Containers []string
+	// Pending is Pending over those containers only.
+	Pending bool
+	// Reason is why auto-deploy applies nothing, when it cannot.
+	Reason string
+}
+
+// Scope limits auto-deploy to the named containers. A container the recommendation does not optimize cannot be
+// applied, so it is dropped; with none left, or with a partial selection while an HPA target changes (the target
+// holds only with every container's CPU applied), auto-deploy applies nothing and Reason says why.
+func Scope(names []string, in []ContainerInput, out Output, threshold float64) AutoScope {
+	var s AutoScope
+	var ins []ContainerInput
+	var outs []ContainerOutput
+	optimized := 0
+	for i, o := range out.Containers {
+		if o.Skipped {
+			continue
+		}
+		optimized++
+		if slices.Contains(names, o.Name) {
+			s.Containers = append(s.Containers, o.Name)
+			ins, outs = append(ins, in[i]), append(outs, o)
+		}
+	}
+	switch {
+	case len(s.Containers) == 0:
+		s.Reason = "none of the containers in auto-deploy.containers is optimized"
+	case out.HPA != nil && len(s.Containers) < optimized:
+		s.Reason = fmt.Sprintf("HPA %s's new target needs every container's CPU, and auto-deploy.containers leaves some out", out.HPA.Name)
+	default:
+		s.Pending = Pending(ins, Output{Containers: outs}, threshold)
+	}
+	return s
+}

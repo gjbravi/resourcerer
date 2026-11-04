@@ -1,7 +1,11 @@
 package applier
 
 import (
+	"encoding/json"
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
 )
@@ -35,5 +39,24 @@ func TestSelection(t *testing.T) {
 				t.Errorf("Selection(%v) = %v, want %q", c.names, err, c.err)
 			}
 		})
+	}
+}
+
+func TestApplyContainersKeepsTheOthers(t *testing.T) {
+	cpu := func(v string) corev1.ResourceRequirements {
+		return corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(v)}}
+	}
+	live := []corev1.Container{{Name: "worker", Resources: cpu("50m")}, {Name: "app", Resources: cpu("1")}, {Name: "no-resources"}}
+	got := applyContainers(live, []v1alpha1.ContainerChange{
+		{Name: "worker", From: cpu("50m"), To: cpu("115m")},
+		{Name: "gone", To: cpu("1")},
+	})
+	b, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[{"name":"worker","resources":{"requests":{"cpu":"115m"}}},{"name":"app","resources":{"requests":{"cpu":"1"}}},{"name":"no-resources","resources":{}}]`
+	if string(b) != want {
+		t.Errorf("containers = %s\nwant %s", b, want)
 	}
 }

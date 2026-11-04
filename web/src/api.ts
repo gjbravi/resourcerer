@@ -298,6 +298,8 @@ export interface Detail extends Summary {
   capacity?: Record<string, number>;
   pricing?: Pricing;
   evidence?: Evidence;
+  /** Auto-deploy limited to some containers (auto-deploy.containers): those it changes, whether they are pending, and why it applies nothing. */
+  autoDeployScope?: { containers?: string[]; pending?: boolean; reason?: string };
   nextScheduleAt?: string;
   containers: Container[] | null;
   hpaRecommendation?: { name: string; current: number; recommended: number; clamped: boolean };

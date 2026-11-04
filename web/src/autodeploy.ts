@@ -25,21 +25,31 @@ export function autoDeploy(d: Detail): AutoDeploy {
   const setting = d.settings?.find((s) => s.key === "auto-deploy");
   const threshold = d.settings?.find((s) => s.key === "auto-deploy.threshold")?.value ?? "10%";
   const base = { on: d.autoDeploy, source: setting?.source ?? "cluster", threshold };
+  const scope = d.autoDeployScope;
+  const which = scope?.containers?.length ? ` to ${scope.containers.join(", ")}` : "";
   if (!d.autoDeploy)
     return {
       ...base,
       tone: "off",
       text: `Applies Ready recommendations that move requests more than ${threshold}, without a click.`,
     };
+  if (scope?.reason) return { ...base, tone: "wait", text: `Applies nothing: ${scope.reason}.` };
   const seen = d.hash ? d.history.find((h) => h.hash === d.hash) : undefined;
   if (seen?.action === "Revert") return { ...base, tone: "wait", text: "Skips this recommendation: it was reverted." };
   if (seen) return { ...base, tone: "done", text: seen.by === AUTO_USER ? "Applied it automatically." : "Applied." };
-  if (!d.pending) return { ...base, tone: "done", text: `Nothing to apply: requests are within ${threshold}.` };
+  if (!(scope ? scope.pending : d.pending))
+    return {
+      ...base,
+      tone: "done",
+      text: scope
+        ? `Nothing to apply in ${scope.containers?.join(", ")}: requests are within ${threshold}.`
+        : `Nothing to apply: requests are within ${threshold}.`,
+    };
   const held = autoHold(d);
   if (held.blocked)
     return { ...base, tone: "hold", text: `Held, not cancelled: ${holdText(held)}.`, heldBy: held.policy };
-  if (d.phase === "Ready") return { ...base, tone: "on", text: "Applies this recommendation in a moment." };
+  if (d.phase === "Ready") return { ...base, tone: "on", text: `Applies this recommendation${which} in a moment.` };
   if (d.phase === "Learning" || d.phase === "Pending")
-    return { ...base, tone: "wait", text: "Applies it once the recommendation is Ready." };
+    return { ...base, tone: "wait", text: `Applies it${which} once the recommendation is Ready.` };
   return { ...base, tone: "wait", text: `Paused while the recommendation is ${d.phase}.` };
 }

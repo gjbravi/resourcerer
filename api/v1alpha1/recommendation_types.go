@@ -204,6 +204,19 @@ type ContainerReliability struct {
 	MemoryPeakPercent int32 `json:"memoryPeakPercent,omitempty"`
 }
 
+// AutoDeployScope is what auto-deploy applies when auto-deploy.containers limits it to some containers.
+type AutoDeployScope struct {
+	// Containers are the listed containers the recommendation optimizes; auto-deploy changes only these.
+	// +optional
+	Containers []string `json:"containers,omitempty"`
+	// Pending is status.pending over those containers only: whether any of them moves past the threshold.
+	// +optional
+	Pending bool `json:"pending,omitempty"`
+	// Reason is why auto-deploy applies nothing, when it cannot.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+}
+
 type ContainerChange struct {
 	Name string                      `json:"name"`
 	From corev1.ResourceRequirements `json:"from"`
@@ -244,6 +257,9 @@ type RecommendationStatus struct {
 	// Pending is true when recommended requests differ from current ones by more than the auto-deploy threshold.
 	// +optional
 	Pending bool `json:"pending,omitempty"`
+	// AutoDeployScope limits auto-deploy to some containers; absent when auto-deploy.containers is all.
+	// +optional
+	AutoDeployScope *AutoDeployScope `json:"autoDeployScope,omitempty"`
 	// +optional
 	Settings map[string]Setting `json:"settings,omitempty"`
 	// +optional
