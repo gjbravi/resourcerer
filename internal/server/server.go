@@ -341,6 +341,9 @@ func summarize(rec *v1alpha1.Recommendation, replicas int32) Summary {
 				sum.Under = true
 			}
 		}
+		if lim, ok := workload.ToValues(c.Current.Limits)[engine.CPU]; ok && workload.ToValues(c.Recommended.Limits)[engine.CPU] > lim {
+			sum.CPULimitRaised = append(sum.CPULimitRaised, c.Name)
+		}
 	}
 	if st.HPA != nil {
 		sum.HPA = []string{"cpu"}

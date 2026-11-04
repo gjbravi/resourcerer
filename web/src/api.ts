@@ -131,6 +131,8 @@ export interface Summary {
   noRequests: boolean;
   under: boolean;
   hpa?: string[];
+  /** Containers whose CPU limit the recommendation raises: their throttling is fixed by applying. */
+  cpuLimitRaised?: string[];
   generatedAt?: string;
   lastAppliedAt?: string;
   hash?: string;

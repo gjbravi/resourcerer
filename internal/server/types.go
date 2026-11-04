@@ -114,27 +114,30 @@ type Score struct {
 }
 
 type Summary struct {
-	Namespace    string                `json:"namespace"`
-	Kind         string                `json:"kind"`
-	Name         string                `json:"name"`
-	Replicas     int32                 `json:"replicas"`
-	AvgReplicas  float64               `json:"avgReplicas"`
-	Phase        string                `json:"phase"`
-	Message      string                `json:"message,omitempty"`
-	Score        *Score                `json:"score,omitempty"`
-	Current      Totals                `json:"current"`
-	Recommended  Totals                `json:"recommended"`
-	Pending      bool                  `json:"pending"`
-	AutoDeploy   bool                  `json:"autoDeploy"`
-	OOMKills     int32                 `json:"oomKills"`
-	Reliability  *v1alpha1.Reliability `json:"reliability,omitempty"`
-	NoRequests   bool                  `json:"noRequests"`
-	Under        bool                  `json:"under"`
-	HPA          []string              `json:"hpa,omitempty"`
-	GeneratedAt  string                `json:"generatedAt,omitempty"`
-	LastApplied  string                `json:"lastAppliedAt,omitempty"`
-	Hash         string                `json:"hash,omitempty"`
-	NamespaceSet bool                  `json:"namespaceAnnotated"`
+	Namespace   string                `json:"namespace"`
+	Kind        string                `json:"kind"`
+	Name        string                `json:"name"`
+	Replicas    int32                 `json:"replicas"`
+	AvgReplicas float64               `json:"avgReplicas"`
+	Phase       string                `json:"phase"`
+	Message     string                `json:"message,omitempty"`
+	Score       *Score                `json:"score,omitempty"`
+	Current     Totals                `json:"current"`
+	Recommended Totals                `json:"recommended"`
+	Pending     bool                  `json:"pending"`
+	AutoDeploy  bool                  `json:"autoDeploy"`
+	OOMKills    int32                 `json:"oomKills"`
+	Reliability *v1alpha1.Reliability `json:"reliability,omitempty"`
+	NoRequests  bool                  `json:"noRequests"`
+	Under       bool                  `json:"under"`
+	HPA         []string              `json:"hpa,omitempty"`
+	// CPULimitRaised names the containers whose CPU limit the recommendation raises: their throttling is fixed by
+	// applying. A container left out (containers.skip, RequestsOnly) keeps its limit and stays throttled.
+	CPULimitRaised []string `json:"cpuLimitRaised,omitempty"`
+	GeneratedAt    string   `json:"generatedAt,omitempty"`
+	LastApplied    string   `json:"lastAppliedAt,omitempty"`
+	Hash           string   `json:"hash,omitempty"`
+	NamespaceSet   bool     `json:"namespaceAnnotated"`
 }
 
 type Container struct {
