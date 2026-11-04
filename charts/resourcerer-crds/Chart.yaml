@@ -1,12 +1,12 @@
 apiVersion: v2
 name: resourcerer-crds
 description: >-
-  The resourcerer.io custom resource definitions (Recommendation, ApplyPolicy and
-  ClusterApplyPolicy), maintained by helm upgrade. Install this release before
-  resourcerer.
+  The resourcerer.io custom resource definitions (Recommendation, ApplyPolicy
+  and ClusterApplyPolicy), maintained by helm upgrade. Install this release
+  before resourcerer.
 type: application
-version: 0.9.0
-appVersion: 0.9.0
+version: 1.0.0-rc.1
+appVersion: 1.0.0-rc.1
 kubeVersion: '>=1.33.0-0'
 home: https://github.com/gjbravi/resourcerer
 icon: https://raw.githubusercontent.com/gjbravi/resourcerer/main/docs/logo.svg
