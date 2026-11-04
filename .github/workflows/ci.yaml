@@ -125,7 +125,15 @@ jobs:
       - uses: actions/checkout@v7
       - uses: azure/setup-helm@v5
       - run: helm lint charts/resourcerer
+      - run: helm lint charts/resourcerer-crds
       - run: helm template resourcerer charts/resourcerer >/dev/null
+      - run: helm template resourcerer-crds charts/resourcerer-crds >/dev/null
+      - name: The CRDs render as three resources, kept on uninstall
+        run: |
+          helm template resourcerer-crds charts/resourcerer-crds > "$RUNNER_TEMP/crds.yaml"
+          test "$(grep -c '^kind: CustomResourceDefinition' "$RUNNER_TEMP/crds.yaml")" = 3
+          test "$(grep -c 'helm.sh/resource-policy: keep' "$RUNNER_TEMP/crds.yaml")" = 3
+          test "$(grep -c 'app.kubernetes.io/managed-by: Helm' "$RUNNER_TEMP/crds.yaml")" = 3
       - run: helm template resourcerer charts/resourcerer --set selection=label --set readOnly=true --set applier.enabled=false --set controller.replicas=2 --set server.ingress.enabled=true >/dev/null
       # None of the renders above takes auth.strategy=oidc, whose ConfigMap is the server's own configuration: the
       # server parses it strictly and exits when a value is one it refuses, and on an upgrade it keeps the last good

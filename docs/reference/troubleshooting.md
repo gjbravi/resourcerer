@@ -86,8 +86,8 @@ In order:
   `kubectl get clusterapplypolicies,applypolicies -A -o wide` and the `Valid` condition name it.
 - **A window never opens**: check `timeZone` and that `to` is after `from` unless you meant to cross midnight. Run the
   policy in `Audit` mode and watch `resourcerer_apply_deferred_total`.
-- **Applies run with no policy at all after an upgrade**: the policy CRDs were not applied. See
-  [Upgrade](../getting-started/upgrade-and-uninstall.md#upgrade).
+- **Applies run with no policy at all after an upgrade**: the `resourcerer-crds` release was not installed or upgraded,
+  so the policy CRDs are missing. See [Upgrade](../getting-started/upgrade-and-uninstall.md#upgrade).
 
 ## Costs look off
 

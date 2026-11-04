@@ -84,8 +84,10 @@ then applies it on a click, from Git or automatically, inside the windows you al
 <h2>Install it in a minute. Nothing changes until you click Apply.</h2>
 
 ```bash
+helm install resourcerer-crds oci://ghcr.io/gjbravi/charts/resourcerer-crds --version <version> \
+  -n resourcerer --create-namespace
 helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> \
-  -n resourcerer --create-namespace --set prometheus.url=http://prometheus-server.monitoring.svc
+  -n resourcerer --set prometheus.url=http://prometheus-server.monitoring.svc
 ```
 
 <div class="rz-actions">

@@ -420,11 +420,15 @@ flowchart TB
         cmd[ConfigMap defaults]
         sm[ServiceMonitor :8081]
     end
-    crd[CRD recommendations.resourcerer.io]
+    crds[resourcerer-crds release<br/>Recommendation, ApplyPolicy, ClusterApplyPolicy CRDs]
     ds --- svc
     dc --- cmd
     sm -.-> dc
 ```
+
+- **The CRDs** ship in `charts/resourcerer-crds`, a release of its own installed before `resourcerer` and upgraded
+  with it. They are rendered as ordinary resources, so `helm upgrade` maintains them, and every CRD carries
+  `helm.sh/resource-policy: keep`, so uninstalling the chart leaves every object of those kinds in place.
 
 - **RBAC** follows the split: the controller reads workloads and writes Recommendations; the applier patches
   workload templates and HPAs; the server reads, and writes Recommendation specs and settings annotations unless

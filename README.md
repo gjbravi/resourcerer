@@ -39,8 +39,9 @@ Requires Kubernetes 1.33+ and a Prometheus-compatible API (Prometheus, Thanos, M
 and kube-state-metrics data, retaining at least the learning period (7 days by default).
 
 ```bash
-helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> \
-  -n resourcerer --create-namespace \
+helm install resourcerer-crds oci://ghcr.io/gjbravi/charts/resourcerer-crds --version <version> \
+  -n resourcerer --create-namespace
+helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <version> -n resourcerer \
   --set prometheus.url=http://prometheus-server.monitoring.svc
 kubectl -n resourcerer port-forward svc/resourcerer 8080:80
 ```

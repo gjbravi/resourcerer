@@ -47,9 +47,10 @@ workloads. The release namespace is always excluded, so resourcerer never rights
 
 ## Permissions
 
-The chart creates one ServiceAccount and ClusterRole per component, and needs permission to install CRDs and
-cluster-wide RBAC. What each component may do is listed in [Permissions](../reference/permissions.md). In short, only
-the **applier** writes workloads, and only their pod template resources and HPA targets.
+The chart creates one ServiceAccount and ClusterRole per component, and installing it needs permission to install CRDs
+(the `resourcerer-crds` release) and cluster-wide RBAC. What each component may do is listed in
+[Permissions](../reference/permissions.md). In short, only the **applier** writes workloads, and only their pod template
+resources and HPA targets.
 
 ## Network
 

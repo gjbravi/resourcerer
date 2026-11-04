@@ -19,7 +19,7 @@ import (
 )
 
 // notInstalled reports whether the apply policy CRDs are missing, which an installation upgraded without
-// applying charts/resourcerer/crds hits: it runs ungated and says so, instead of refusing every apply.
+// installing the resourcerer-crds chart hits: it runs ungated and says so, instead of refusing every apply.
 func notInstalled(err error) bool {
 	return meta.IsNoMatchError(err) || runtime.IsNotRegisteredError(err)
 }

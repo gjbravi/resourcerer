@@ -35,7 +35,8 @@ description: Open, check and merge pull requests in resourcerer, and cut or reco
 2. The Release workflow dispatches CI on that branch (PRs created by the workflow token do not trigger workflows).
 3. **Wait until that CI run finishes and the PR shows its checks before merging the release PR.** The release job's
    `verify` step looks for `ci-passed-<tree>` of the merged commit; merging early makes it fail.
-4. After the merge, `verify` passes, then `image` and `chart` publish to GHCR with signatures.
+4. After the merge, `verify` passes, then `image` and `chart` publish the image and both charts to GHCR with
+   signatures. The release attaches `resourcerer-crds-X.Y.Z.yaml` and the install steps for the two releases.
 
 ### Recovering a failed `verify`
 

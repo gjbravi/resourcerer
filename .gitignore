@@ -1,5 +1,6 @@
 /bin/
 /dist/
+charts/resourcerer-crds/.controller-gen/
 *.test
 *.out
 coverage.*

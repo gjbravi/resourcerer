@@ -1,0 +1,26 @@
+apiVersion: v2
+name: resourcerer-crds
+description: >-
+  The resourcerer.io custom resource definitions (Recommendation, ApplyPolicy and
+  ClusterApplyPolicy), maintained by helm upgrade. Install this release before
+  resourcerer.
+type: application
+version: 0.9.0
+appVersion: 0.9.0
+kubeVersion: '>=1.33.0-0'
+home: https://github.com/gjbravi/resourcerer
+icon: https://raw.githubusercontent.com/gjbravi/resourcerer/main/docs/logo.svg
+sources:
+  - https://github.com/gjbravi/resourcerer
+keywords:
+  - prometheus
+  - requests
+  - rightsizing
+  - resources
+  - kubernetes
+  - crds
+maintainers:
+  - name: gjbravi
+    url: https://github.com/gjbravi
+annotations:
+  artifacthub.io/license: Apache-2.0

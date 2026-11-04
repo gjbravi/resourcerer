@@ -192,8 +192,8 @@ holds the applies it governs: a policy that cannot be read never opens the door.
 the applier tries again every minute.
 
 A policy that **cannot be read from the API server at all** (RBAC, an API outage) holds the same way. The one
-exception is the CRDs being missing: an installation upgraded without applying `charts/resourcerer/crds` runs
-ungated and says so in the log, rather than refusing every apply.
+exception is the CRDs being missing: an installation that skipped `resourcerer-crds` runs ungated and says so in the
+log, rather than refusing every apply. See [Upgrade and uninstall](../getting-started/upgrade-and-uninstall.md#upgrade).
 
 ## Metrics
 
@@ -223,6 +223,9 @@ applyPolicies:
         windows:
           - { days: [Mon, Tue, Wed, Thu, Fri], from: "09:00", to: "17:30", timeZone: Europe/Lisbon }
 ```
+
+The CRDs come from the `resourcerer-crds` release, installed before the main chart; see
+[Installation](../getting-started/installation.md#the-crds-are-a-release-of-their-own).
 
 A policy is a Kubernetes object, so a team can also write its own `ApplyPolicy` in its namespace, and both apply.
 

@@ -9,7 +9,9 @@
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "yaml", "path": "charts/resourcerer/Chart.yaml", "jsonpath": "$.version" },
-        { "type": "yaml", "path": "charts/resourcerer/Chart.yaml", "jsonpath": "$.appVersion" }
+        { "type": "yaml", "path": "charts/resourcerer/Chart.yaml", "jsonpath": "$.appVersion" },
+        { "type": "yaml", "path": "charts/resourcerer-crds/Chart.yaml", "jsonpath": "$.version" },
+        { "type": "yaml", "path": "charts/resourcerer-crds/Chart.yaml", "jsonpath": "$.appVersion" }
       ]
     }
   }

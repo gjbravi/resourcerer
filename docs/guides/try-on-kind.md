@@ -18,7 +18,7 @@ Docker, `kind`, `kubectl`, `helm`, Go and Node.js, and `make`.
 git clone https://github.com/gjbravi/resourcerer.git
 cd resourcerer
 make kind-up        # the cluster, Prometheus and demo workloads
-make kind-deploy    # build the image, load it into kind, install the chart
+make kind-deploy    # build the image, load it into kind, install the two charts
 kubectl --context kind-resourcerer -n resourcerer port-forward svc/resourcerer 8080:80
 ```
 

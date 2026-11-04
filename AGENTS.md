@@ -30,6 +30,7 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 | `internal/signals` | Reliability signals: built-in toggles and PromQL templates declared in the values |
 | `web/` | React 19 + TypeScript + Vite UI, React Query, Recharts 3; `web/src/api.ts` mirrors `internal/server/types.go` |
 | `charts/resourcerer` | Helm chart; `values.schema.json` rejects unknown keys |
+| `charts/resourcerer-crds` | The CRDs as a chart of their own, a separate release installed before `resourcerer`; `files/crds.yaml` is generated |
 | `hack/` | kind environment: cluster, Prometheus, demo workloads, a fake Karpenter exporter |
 | `test/e2e/run.sh` | End-to-end checks against kind |
 | `docs/` | The user docs, by section (`getting-started/`, `concepts/`, `configuration/`, `guides/`, `reference/`), and `architecture.md` (components, data flow, diagrams) |
@@ -41,7 +42,7 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 make lint            # golangci-lint, actionlint, eslint, prettier, tsc, helm lint, lint-docs
 make lint-docs       # docs and skills match the repository; MERMAID=1 also renders the diagrams
 make test            # Go and UI unit tests
-make generate        # deepcopy + CRD into the chart; run after changing api/
+make generate        # deepcopy + the CRDs into charts/resourcerer-crds/files/crds.yaml; run after changing api/
 make verify-generate # fails when generated files are stale (compares with git: commit first)
 make kind-up         # kind cluster with Prometheus, metrics-server, VPA, demo workloads, fake Karpenter
 make kind-deploy     # build the image, load it into kind, install the chart with hack/resourcerer-values.yaml
@@ -131,6 +132,10 @@ cluster") and fictional examples (`payments/checkout`, `demo/api`). Grep the dif
   signal with no data does not apply to a workload.
 - **Live data** for the workload page (reliability windows, placement) is computed by the server on request and
   cached; the controller's `status` stays small and drives lists and auto-deploy.
+- **The CRDs ship in their own chart** (`charts/resourcerer-crds`), a release installed before `resourcerer` and
+  upgraded with it, never a chart dependency: the main chart renders `ClusterApplyPolicy` objects from
+  `applyPolicies.cluster`, which cannot exist in the release that creates their CRD. They are templates, so
+  `helm upgrade` maintains them, and every CRD carries `helm.sh/resource-policy: keep`, so uninstalling keeps them.
 
 ## Roadmap
 
