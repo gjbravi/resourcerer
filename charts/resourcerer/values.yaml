@@ -128,9 +128,81 @@ applyPolicies:
   #       spread: 15m
 
 auth:
-  # -- Only `anonymous` for now: anyone who reaches the UI can use it, with the server's
-  # ServiceAccount. Keep the Service internal or put an authenticating proxy in front.
+  # -- How the server identifies the caller.
+  # `anonymous`: nobody. Anyone who reaches the Service can use resourcerer with the server's own permissions, which is
+  # what makes a port-forward install work without setup. Keep it where the network is the access control.
+  # `oidc`: sign in at an OpenID Connect provider. Groups from the token decide who may read and who may apply, and
+  # every apply records who asked. Needs `auth.oidc.issuer`, `auth.oidc.clientID` and the two Secret references below.
+  # The strategy is a flag on the server, not a ConfigMap key, so changing it restarts the pod and no edit of a
+  # ConfigMap can turn authentication off. Switching strategies signs everyone out.
   strategy: anonymous
+  # -- `Secure` attribute of the session cookie, which decides whether a browser sends it over plain HTTP.
+  # `auto`: set it when the request arrived over TLS or declares `X-Forwarded-Proto: https`. Right when TLS reaches the
+  # pod, and right for most Ingress controllers, which forward the protocol.
+  # `true`: always set it. Use it behind a proxy that terminates TLS without forwarding the protocol; the chart cannot
+  # tell that case apart, so it does not guess, and it would break a port-forward install, which is HTTP.
+  # `false`: never set it. Only for an install whose network is the boundary, since the session then crosses the wire
+  # in clear text.
+  # `true` and `"true"` are the same value here: Helm reads the bare form as a boolean and the chart renders the flag
+  # either way.
+  cookieSecure: auto
+  oidc:
+    # -- URL of the provider, as it publishes itself (`https://sso.example.com/realms/example`), with its
+    # `/.well-known/openid-configuration` reachable from the server pod. Sessions are dropped when it changes, so a
+    # new one means everyone signs in again.
+    issuer: ""
+    # -- Client the server presents at the provider. It must be a confidential client with the secret referenced
+    # below: the server refuses to start without one, so a public client is not supported. It must allow the callback
+    # to `<resourcerer>/auth/callback` and use the authorization code flow.
+    clientID: ""
+    # -- Absolute URL of the callback, for a proxy that rewrites the Host header the server sees.
+    # Unset derives it from the request: the host the server sees, with the scheme from TLS, from
+    # X-Forwarded-Proto, or from auth.cookieSecure=true. Each way of reaching the install is a different callback, so
+    # register them all at the provider: a port-forward signs in at http://localhost:8080/auth/callback and an
+    # Ingress at its own URL. With auth.cookieSecure=true the derived scheme is https, which a provider refuses for a
+    # port-forward (https://localhost:8080), so leave it at auto where the install is also reached that way.
+    redirectURL: ""
+    # -- Scopes to request; must include `openid`. Unset asks for `openid profile email`.
+    # Ask for a groups scope only when the provider gates the group claim behind one: scopes are visible to the
+    # provider and each one is more data handed over.
+    scopes: []
+    # -- Token claim holding the username, which is what lands in apply history. Unset uses `preferred_username`.
+    usernameClaim: ""
+    # -- Token claim holding the groups `allowedGroups` and `roles.editorGroups` match against. Unset uses `groups`.
+    groupsClaim: ""
+    # -- The perimeter: which groups may use resourcerer at all.
+    # Empty means every user the provider authenticates gets read access, which on a corporate directory is the whole
+    # company. Admitted users still need `roles.editorGroups` to change anything.
+    allowedGroups: []
+    # -- Secret holding the provider's client secret. Create it yourself (External Secrets, SOPS, `kubectl create
+    # secret`); the chart renders only the reference, so the material never sits in values or in a ConfigMap.
+    clientSecretSecretRef: { name: "", key: "" }
+    roles:
+      # -- Groups allowed to apply, revert and change settings.
+      # Empty means nobody can apply: the install shows recommendations to everyone and changes nothing until this
+      # names a group, which is the safe order to set OIDC up in.
+      editorGroups: []
+      # -- Whether every user `allowedGroups` admits may at least read. Set to false to give access to
+      # `editorGroups` alone: other signed-in users are refused rather than shown a page they cannot act on.
+      anyAuthenticatedIsViewer: true
+    # -- How long a session stays valid without visiting the provider again: a whole number of minutes (from `5m` to
+    # `10080m`) or of hours (from `1h` to `168h`); the chart fails the render outside that range, as would the server
+    # at startup. There is no revocation before it expires: a departed employee keeps access for up to one TTL, so the
+    # TTL is the trade between comfort and how long a leaked cookie is useful.
+    sessionTTL: 12h
+  session:
+    # -- Secret holding the key that seals the session cookie: standard base64 of exactly 32 bytes
+    # (`openssl rand -base64 32`). There is no session store, and reading a session never writes one back, so swapping it
+    # signs out everyone whose cookie no mounted key can open. Rotate without that gap in three upgrades: publish the new
+    # key as `keyPreviousSecretRef`, where every replica opens it and none seals with it; swap the two, so new cookies
+    # carry the new key while the old ones still open; then drop the previous one, which is what ends those cookies, one
+    # TTL after the swap — counting the longest `sessionTTL` in force while they were minted, since a cookie keeps the
+    # expiry it was given. Doing it in fewer leaves the replicas still on the old configuration refusing what a new
+    # replica mints, for as long as a rollout takes.
+    keySecretRef: { name: "", key: "" }
+    # -- Secret holding the key being retired, still accepted for cookies the new key cannot open.
+    # Set only while a rotation is in flight; unset renders nothing.
+    keyPreviousSecretRef: { name: "", key: "" }
 
 # -- Refuse every change from the UI and API.
 readOnly: false

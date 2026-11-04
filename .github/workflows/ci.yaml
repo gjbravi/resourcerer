@@ -88,6 +88,9 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # internal/server/auth renders the chart from its tests and parses what comes out, so the Go tests need helm too:
+      # without it, the check that the chart writes the configuration the server reads would quietly stop running.
+      - uses: azure/setup-helm@v5
       - run: go vet ./...
       - run: go tool golangci-lint run
       - run: go test -race -coverprofile=coverage.out ./...
@@ -124,6 +127,38 @@ jobs:
       - run: helm lint charts/resourcerer
       - run: helm template resourcerer charts/resourcerer >/dev/null
       - run: helm template resourcerer charts/resourcerer --set selection=label --set readOnly=true --set applier.enabled=false --set controller.replicas=2 --set server.ingress.enabled=true >/dev/null
+      # None of the renders above takes auth.strategy=oidc, whose ConfigMap is the server's own configuration: the
+      # server parses it strictly and exits when a value is one it refuses, and on an upgrade it keeps the last good
+      # one and only crash-loops at the next restart. These steps keep the chart and the parser in step. The fixture
+      # is the one internal/server/auth/chart_test.go feeds to the parser, which fails if the chart writes a key the
+      # server does not know.
+      - name: The OIDC values render
+        env:
+          OIDC_VALUES: internal/server/auth/testdata/chart-values.yaml
+        run: helm template rz charts/resourcerer -n resourcerer -f "$OIDC_VALUES" >/dev/null
+      - name: Only what OIDC requires renders too
+        run: |
+          helm template rz charts/resourcerer -n resourcerer \
+            --set auth.strategy=oidc \
+            --set auth.oidc.issuer=https://sso.example.com/realms/example \
+            --set auth.oidc.clientID=resourcerer \
+            --set auth.oidc.clientSecretSecretRef.name=resourcerer-oidc \
+            --set auth.oidc.clientSecretSecretRef.key=clientSecret \
+            --set auth.session.keySecretRef.name=resourcerer-session \
+            --set auth.session.keySecretRef.key=key >/dev/null
+      - name: The OIDC ConfigMap is the document the parser test reads
+        env:
+          OIDC_VALUES: internal/server/auth/testdata/chart-values.yaml
+          OIDC_GOLDEN: internal/server/auth/testdata/oidc.full.yaml
+        run: |
+          # Helm 3 ends a rendered manifest with one newline and Helm 4 with three, which is the manifest trailer and
+          # not part of the ConfigMap, so the comparison normalizes it: the check is about the document the server
+          # parses, where a difference is a key or a value, not a trailing blank line.
+          helm template rz charts/resourcerer -n resourcerer -f "$OIDC_VALUES" \
+            -s templates/auth-configmap.yaml |
+            sed -n '/^  oidc.yaml: |$/,$p' | tail -n +2 | sed 's/^    //' |
+            python3 -c 'import sys; sys.stdout.write(sys.stdin.read().rstrip("\n") + "\n")' |
+            diff -u "$OIDC_GOLDEN" -
 
   e2e:
     needs: gate

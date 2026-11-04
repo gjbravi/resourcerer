@@ -48,8 +48,11 @@ kubectl -n resourcerer port-forward svc/resourcerer 8080:80
 Versions are listed on the [releases page](https://github.com/gjbravi/resourcerer/releases). Images and charts are
 signed with cosign; see [SECURITY.md](SECURITY.md#verifying-releases).
 
-Authentication is `anonymous` for now: anyone who reaches the UI can use it. Keep the Service internal
-(port-forward) or put an authenticating proxy in front.
+Authentication is `anonymous` by default, like Kiali's anonymous strategy: anyone who reaches the UI can use it, so
+keep the Service internal (port-forward) or put an authenticating proxy in front. `auth.strategy: oidc` signs callers
+in at an OpenID Connect provider instead: groups from the token decide who may read and who may apply, every apply
+records who asked, and the parameters live in their own ConfigMap while the client secret and the session key stay in
+Secrets. The [chart README](charts/resourcerer/README.md) has the values.
 
 ## Documentation
 

@@ -1,0 +1,23 @@
+# Every OIDC key the chart can set, so the ConfigMap it renders carries every key the server's parser knows.
+# internal/server/auth/chart_test.go renders the chart with this file and compares the document against oidc.full.yaml,
+# which it then parses; CI runs both. Add a key to the chart, and the comparison fails until it lands here too.
+auth:
+  strategy: oidc
+  cookieSecure: auto
+  oidc:
+    issuer: https://sso.example.com/realms/example
+    clientID: resourcerer
+    redirectURL: https://resourcerer.example.com/auth/callback
+    scopes: [openid, profile, email, groups]
+    usernameClaim: preferred_username
+    groupsClaim: groups
+    # "yes" is a name YAML would otherwise read as a boolean: the render has to quote it for the server to read it back.
+    allowedGroups: [engineering, "yes", sre]
+    clientSecretSecretRef: { name: resourcerer-oidc, key: clientSecret }
+    sessionTTL: 8h
+    roles:
+      editorGroups: [engineering]
+      anyAuthenticatedIsViewer: false
+  session:
+    keySecretRef: { name: resourcerer-session, key: key }
+    keyPreviousSecretRef: { name: resourcerer-session-previous, key: key }

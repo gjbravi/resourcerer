@@ -375,6 +375,14 @@ body:has(.rz.dark) {
   gap: 12px;
   padding: 16px 20px 8px;
 }
+/* The last row of a card, below a header that insets its own text: an action added straight to the card otherwise
+   sits on its border, both at the left and at the bottom. */
+.rz-cardft {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 20px 16px;
+}
 .rz-grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

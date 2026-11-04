@@ -1,0 +1,57 @@
+{{- if eq .Values.auth.strategy "oidc" }}
+{{- /*
+Authentication parameters live here rather than in the -defaults ConfigMap because -defaults is read fail-open: a
+missing or unreadable ConfigMap falls back to the built-in defaults, and for authentication that fallback would be
+"anonymous". Only keys the user set are rendered: the server parses this document strictly, and an empty or null
+value would be a configuration error rather than an unset one.
+*/ -}}
+{{- $oidc := .Values.auth.oidc }}
+{{- /* The server refuses a TTL outside 5m to 168h and exits, so the chart refuses it here: helm upgrade changes this
+      ConfigMap without restarting the pod, which would keep the last good configuration and only crash-loop at the
+      next restart. The schema bounds the shape; the numbers are checked where they are read. */ -}}
+{{- $ttl := $oidc.sessionTTL | default "" }}
+{{- if $ttl }}
+{{- /* Both branches convert with atoi, never int: int runs ParseInt with base 0, which reads a leading zero as octal,
+       so "09m" would become 0 minutes (refused here, accepted by the server) and "0200h" would become 128 hours
+       (accepted here, refused by the server as 200h). time.ParseDuration reads decimal, and this check has to move
+       the same numbers it does. */ -}}
+{{-   if hasSuffix "m" $ttl }}
+{{-     $minutes := $ttl | trimSuffix "m" | atoi }}
+{{-     if or (lt $minutes 5) (gt $minutes 10080) }}
+{{-       fail (printf "auth.oidc.sessionTTL %s is out of range: the server accepts 5m to 168h (10080m)" $ttl) }}
+{{-     end }}
+{{-   else }}
+{{-     $hours := $ttl | trimSuffix "h" | atoi }}
+{{-     if or (lt $hours 1) (gt $hours 168) }}
+{{-       fail (printf "auth.oidc.sessionTTL %s is out of range: the server accepts 1h to 168h" $ttl) }}
+{{-     end }}
+{{-   end }}
+{{- end }}
+{{- $config := dict }}
+{{- with $oidc.issuer }}{{ $_ := set $config "issuer" . }}{{ end }}
+{{- with $oidc.clientID }}{{ $_ := set $config "clientID" . }}{{ end }}
+{{- with $oidc.redirectURL }}{{ $_ := set $config "redirectURL" . }}{{ end }}
+{{- with $oidc.scopes }}{{ $_ := set $config "scopes" . }}{{ end }}
+{{- with $oidc.usernameClaim }}{{ $_ := set $config "usernameClaim" . }}{{ end }}
+{{- with $oidc.groupsClaim }}{{ $_ := set $config "groupsClaim" . }}{{ end }}
+{{- with $oidc.allowedGroups }}{{ $_ := set $config "allowedGroups" . }}{{ end }}
+{{- with $oidc.sessionTTL }}{{ $_ := set $config "sessionTTL" . }}{{ end }}
+{{- $roles := dict }}
+{{- with $oidc.roles }}
+{{-   with .editorGroups }}{{ $_ := set $roles "editorGroups" . }}{{ end }}
+{{-   if kindIs "bool" .anyAuthenticatedIsViewer }}
+{{-     $_ := set $roles "anyAuthenticatedIsViewer" .anyAuthenticatedIsViewer }}
+{{-   end }}
+{{- end }}
+{{- if $roles }}{{ $_ := set $config "roles" $roles }}{{ end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "resourcerer.fullname" . }}-auth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "resourcerer.labels" . | nindent 4 }}
+data:
+  oidc.yaml: |
+    {{- toYaml $config | nindent 4 }}
+{{- end }}

@@ -50,7 +50,18 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 - --health-probe-bind-address=:8082
 {{- end }}
 
-{{- /* Deployment for one component. Call with dict "root" $ "component" name "values" .Values.<component> "args" list "ports" list. */ -}}
+{{- /* One container environment variable read from a Secret: `env` is a list of these, so secret material reaches the
+      container as a reference and never as a value in the chart. Call with dict "name" ENV "ref" (dict "name" .. "key" ..). */ -}}
+{{- define "resourcerer.secretEnv" -}}
+- name: {{ .name }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ .ref.name }}
+      key: {{ .ref.key }}
+{{- end -}}
+
+{{- /* Deployment for one component. Call with dict "root" $ "component" name "values" .Values.<component> "args" list
+      "ports" list and, for a component that needs secret material, "env" a list of resourcerer.secretEnv. */ -}}
 {{- define "resourcerer.deployment" -}}
 {{- $root := .root }}
 apiVersion: apps/v1
@@ -106,6 +117,12 @@ spec:
             {{- range .values.extraArgs }}
             - {{ . }}
             {{- end }}
+          {{- with .env }}
+          env:
+            {{- range . }}
+            {{- . | nindent 12 }}
+            {{- end }}
+          {{- end }}
           ports:
             {{- range .ports }}
             - name: {{ .name }}

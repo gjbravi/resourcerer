@@ -1,9 +1,74 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { api, refKey, type Range, type Ref, type ReliabilityWindow, type Resource } from "./api";
+import { api, refKey, type Range, type Ref, type ReliabilityWindow, type Resource, type Session } from "./api";
+import { afterMe, signOutKey, staleMarker, withoutSignedOut } from "./session";
 
-export const useInfo = () => useQuery({ queryKey: ["info"], queryFn: api.info, refetchInterval: 60_000 });
-export const useWorkloads = () => useQuery({ queryKey: ["workloads"], queryFn: api.list, refetchInterval: 15_000 });
+/**
+ * Who is calling, from `GET /api/v1/me`: the only call the server answers without a session, so the app asks it
+ * before anything else. It is rechecked when the window regains focus, which is how a session that ended while the
+ * page sat there is noticed; a caller who is gone from it is sent back to the provider, unless that round trip is what
+ * keeps bringing them here. The answer also settles the address it came to: an unauthenticated one starts the sign-in
+ * that the record may hold back, and an authenticated one retires the marker a sign-out left behind, because a tab
+ * with a session is no longer where that sign-out left anyone.
+ */
+export function useSession() {
+  const queryClient = useQueryClient();
+  const session = useQuery({
+    queryKey: ["me"],
+    queryFn: async () => {
+      const s = await api.me();
+      afterMe(s);
+      return s;
+    },
+  });
+  useStaleSignOutMarker(session.data);
+  useSignOutBroadcast(queryClient);
+  return session;
+}
+
+/**
+ * An address saying a sign-out left the browser here describes a tab that has no session. Once `/me` reports one the
+ * address is stale, and keeping it means the next time this session ends the page reads an expiry as a sign-out nobody
+ * asked for. Only the query goes: the hash is the page itself.
+ */
+function useStaleSignOutMarker(session: Session | undefined) {
+  useEffect(() => {
+    if (staleMarker(session, window.location.search)) {
+      window.history.replaceState("", "", withoutSignedOut(window.location));
+    }
+  }, [session]);
+}
+
+/**
+ * A sign-out is one tab's click and every tab's problem, because the cookie is shared while the address is not. The
+ * other tabs are held back from signing the browser back in, but nothing tells them they have been cut off, so a tab
+ * left on the app keeps rendering the identity and the write access of a session the browser no longer has — and it
+ * never finds out, since `me` is the one query nothing re-fetches. `localStorage` announces the write to every other
+ * tab, and this turns that announcement into one more question to `/me`, which the server answers without a session and
+ * never caches. The trigger is a deliberate sign-out, never a 401, so a request that fails on its own cannot pull down
+ * a page that still has a session behind it.
+ */
+function useSignOutBroadcast(queryClient: QueryClient) {
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      // The write that signs a browser out, from the store that holds the intent, and nothing else. Taking the intent
+      // away is the opposite news — someone asked for a session back — and re-asking on that would send every tab of
+      // this browser to the provider at once, where the attempts race on one state cookie and all but one come back
+      // refused. Clearing the whole store removes the intent too, so it reads the same way.
+      if (event.storageArea === localStorage && event.key === signOutKey && event.newValue !== null) {
+        void queryClient.invalidateQueries({ queryKey: ["me"] });
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [queryClient]);
+}
+
+/** The cluster's configuration; nothing to ask for until someone is signed in to ask as. */
+export const useInfo = (enabled = true) =>
+  useQuery({ queryKey: ["info"], queryFn: api.info, refetchInterval: 60_000, enabled });
+export const useWorkloads = (enabled = true) =>
+  useQuery({ queryKey: ["workloads"], queryFn: api.list, refetchInterval: 15_000, enabled });
 export const useWorkload = (w: Ref) =>
   useQuery({ queryKey: ["workload", refKey(w)], queryFn: () => api.get(w), refetchInterval: 5_000 });
 export const useSeries = (w: Ref, container: string, resource: Resource, range: Range) =>

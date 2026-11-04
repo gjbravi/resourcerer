@@ -55,11 +55,15 @@ payments    deployment-checkout   Deployment   checkout   Ready      45      96.
 
 ## 3. Open the UI
 
-The UI has no login for now (see [Exposing the UI](../guides/exposing-the-ui.md)), so reach it through a port-forward:
+The chart installs with `auth.strategy: anonymous`, so there is no login and the port-forward is what decides who gets
+in:
 
 ```bash
 kubectl -n resourcerer port-forward svc/resourcerer 8080:80
 ```
+
+To share the UI with a team, see [Exposing the UI](../guides/exposing-the-ui.md): OIDC sign-in, or an authenticating
+proxy.
 
 Open [http://localhost:8080](http://localhost:8080). The **Settings** page shows whether Prometheus answers and how
 much history it keeps; the **Overview** shows the cluster's cost and savings, and **Workloads** lists every

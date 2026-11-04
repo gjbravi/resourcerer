@@ -93,11 +93,12 @@ runs", not "nobody may act". Which one you get is one field:
 - **Committed.** List `Manual`. The click is refused with `409` and the reason, and in this version there is no way
   past it in the product.
 
-That second option decides for the person because resourcerer cannot yet tell who is clicking: authentication is
-`anonymous`, so `history[].by` records what the client claimed, not who acted, and an override with no caller
-behind it records nothing worth keeping. [#33](https://github.com/gjbravi/resourcerer/issues/33) brings the
-identity, and with it the override: a caller allowed to bypass the advisory rules (`windows`, `rate.cooldown`)
-applies with a reason the history keeps, while freezes, rate limits and a rollout in progress still hold.
+That second option decides for the person, so who is clicking is what makes it work. Under `auth.strategy: oidc` the
+history records the signed-in user in `history[].by`, and a caller without the editor role cannot apply at all; under
+`anonymous` (the default) there is nobody to record, and a name taken from the request would be a claim, not an
+identity. The override itself — a caller allowed past the advisory rules (`windows`, `rate.cooldown`) with a reason
+the history keeps, while freezes, rate limits and a rollout in progress still hold — is designed in
+[#33](https://github.com/gjbravi/resourcerer/issues/33).
 
 So list `Manual` where the rule is a promise to somebody else — a freeze for a sales event, a code freeze — and
 leave a window that only reflects traffic on `Auto`.

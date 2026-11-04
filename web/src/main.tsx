@@ -1,15 +1,25 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Boxes, LayoutDashboard, Moon, Server, Settings as SettingsIcon, Sun, Unlock } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { HatLogo } from "./art";
+import type { Me } from "./api";
 import { ErrorBox, Toasts } from "./components";
-import { useHash, useInfo, useWorkloads } from "./hooks";
-import { configureSignals } from "./reliability";
+import { useHash, useInfo, useSession, useWorkloads } from "./hooks";
 import { Details } from "./pages/Details";
 import { Overview } from "./pages/Overview";
 import { SettingsPage } from "./pages/SettingsPage";
 import { Workloads } from "./pages/Workloads";
+import { configureSignals } from "./reliability";
+import {
+  bootState,
+  clearSignOutIntent,
+  clearSignRecord,
+  readSignOutIntent,
+  readSignRecord,
+  shellLabels,
+  writeLock,
+} from "./session";
+import { Crumbs, Sidebar, Who } from "./shell";
 import "./styles.css";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, retry: 1 } } });
@@ -17,33 +27,50 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_
 function App() {
   const [dark, setDark] = useState(() => localStorage.getItem("resourcerer.theme") === "dark");
   const hash = useHash();
-  const info = useInfo();
+  // The session is the one call the server answers without a signed-in caller, so it comes first and everything else
+  // waits for it: asking as nobody would answer every request with 401.
+  const session = useSession();
+  const boot = bootState(session, readSignRecord(), window.location.search, readSignOutIntent());
+  const me = session.data?.authenticated ? session.data : undefined;
+  const asks = boot.view === "app";
+  const info = useInfo(asks);
   configureSignals(info.data?.reliability);
-  const workloads = useWorkloads();
+  const workloads = useWorkloads(asks);
   const [path, query = ""] = hash.slice(1).split("?");
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   const page = parts[0] === "w" ? "workloads" : (parts[0] ?? "overview");
   const rows = workloads.data ?? [];
-  const cluster = info.data?.cluster ?? "";
+  // Only the app view has labels to show. `info` stops being asked outside it, so whatever it holds there is the answer
+  // a previous session got, and a signed-out or refused screen wearing that session's cluster and Prometheus is the same
+  // kind of lie as a header still naming a caller who is gone.
+  const shell = shellLabels(asks ? info.data : undefined);
+  const cluster = shell.cluster ?? "";
   const readOnly = info.data?.readOnly ?? false;
-  const nav = [
-    ["#/overview", "overview", "Overview", LayoutDashboard],
-    ["#/workloads", "workloads", "Workloads", Boxes],
-    ["#/settings", "settings", "Settings", SettingsIcon],
-  ] as const;
+  const lock = writeLock(session.data, readOnly);
 
   let body;
-  if (parts[0] === "w" && parts.length >= 4) {
+  if (boot.view === "loading") body = <div className="rz-loading">Loading…</div>;
+  else if (boot.view === "error")
+    body = (
+      <div className="rz-page">
+        <ErrorBox error={boot.error} />
+      </div>
+    );
+  else if (boot.view === "signing-in") body = <div className="rz-loading">Signing in…</div>;
+  else if (boot.view === "signed-out") body = <SignedOut />;
+  else if (boot.view === "cookie-dropped") body = <CookieDropped />;
+  else if (boot.view === "no-access") body = <NoAccess me={boot.me} />;
+  else if (parts[0] === "w" && parts.length >= 4) {
     body = (
       <Details
         key={parts.slice(1, 4).join("/")}
         wref={{ namespace: parts[1], kind: parts[2], name: parts[3] }}
         tab={parts[4] ?? "recommendation"}
-        readOnly={readOnly}
+        lock={lock}
       />
     );
   } else if (page === "workloads") {
-    body = <Workloads key={query} rows={rows} query={query} readOnly={readOnly} />;
+    body = <Workloads key={query} rows={rows} query={query} lock={lock} />;
   } else if (page === "settings") {
     body = info.data ? <SettingsPage info={info.data} /> : <div className="rz-loading">Loading…</div>;
   } else {
@@ -52,55 +79,13 @@ function App() {
 
   return (
     <div className={`rz${dark ? " dark" : ""}`}>
-      <aside className="rz-side">
-        <a className="rz-logo" href="#/overview">
-          <HatLogo /> <span>resourcerer</span>
-          <span className="rz-beta" title="Beta: APIs, annotations and the CRD may change">
-            Beta
-          </span>
-        </a>
-        <div className="rz-cluster">
-          <Server size={14} />
-          <div>
-            <div className="rz-dim rz-xs">Cluster</div>
-            <b>{cluster || "…"}</b>
-          </div>
-        </div>
-        <nav>
-          {nav.map(([href, id, label, Icon]) => (
-            <a key={id} href={href} className={page === id ? "on" : ""} aria-current={page === id ? "page" : undefined}>
-              <Icon size={17} /> {label}
-            </a>
-          ))}
-        </nav>
-        <div className="rz-sidefoot">
-          <div className="rz-dim rz-xs">{info.data?.version}</div>
-          <div className="rz-dim rz-xs">Prometheus · {info.data?.prometheus.url.replace(/^https?:\/\//, "")}</div>
-        </div>
-      </aside>
+      <Sidebar page={page} shell={shell} configStale={me?.configStale} configError={me?.configError} />
       <div className="rz-main">
         <div className="rz-surface">
           <header className="rz-top">
-            <div className="rz-crumbs rz-dim">
-              {cluster} <span>/</span>
-              {parts[0] === "w" ? (
-                <>
-                  <a href="#/workloads">Workloads</a> <span>/</span>{" "}
-                  <b>
-                    {parts[1]}/{parts[3]}
-                  </b>
-                </>
-              ) : (
-                <b>{page[0].toUpperCase() + page.slice(1)}</b>
-              )}
-            </div>
+            <Crumbs page={page} parts={parts} shell={shell} />
             <div className="rz-topright">
-              <span
-                className="rz-anon"
-                title="Authentication strategy: anonymous. Anyone who reaches this page can use it."
-              >
-                <Unlock size={12} /> anonymous{readOnly ? " · read-only" : ""}
-              </span>
+              <Who session={session.data} readOnly={readOnly} />
               <button
                 className="rz-icon"
                 onClick={() => setDark((x) => (localStorage.setItem("resourcerer.theme", x ? "light" : "dark"), !x))}
@@ -110,15 +95,142 @@ function App() {
               </button>
             </div>
           </header>
-          {(info.error || workloads.error) && (
+          {/* A strip of its own only while there is a page under it: with no page at all the boot view carries the
+              failure, and saying it twice would only make it look like two problems. */}
+          {boot.view === "app" && (session.error || info.error || workloads.error) && (
             <div className="rz-page" style={{ paddingBottom: 0 }}>
-              <ErrorBox error={info.error ?? workloads.error} />
+              <ErrorBox error={session.error ?? info.error ?? workloads.error} />
             </div>
           )}
           {body}
         </div>
       </div>
       <Toasts />
+    </div>
+  );
+}
+
+/**
+ * Signed in, but with no role here. An empty page would read as a broken install, so this says what is missing. Which
+ * of the two rules refused the caller is the install's own business, so both are named and the user's own groups are
+ * the only list put on screen.
+ */
+function NoAccess({ me }: { me: Me }) {
+  return (
+    <div className="rz-page">
+      <section className="rz-card">
+        <div className="rz-cardhd">
+          <div>
+            <h2>Signed in without access</h2>
+            <p className="rz-dim rz-xs">
+              <b>{me.user}</b> signed in with {me.strategy}, but none of the groups below grants access here. Either
+              none of them is in <code>auth.oidc.allowedGroups</code>, or this install reads for editors only (
+              <code>auth.oidc.roles.anyAuthenticatedIsViewer: false</code>) and none of them is in{" "}
+              <code>auth.oidc.roles.editorGroups</code>. Ask whoever owns this install to check those two.
+            </p>
+            <p className="rz-dim rz-xs">
+              Signing out and in again will not change it: a first sign-in is refused before it reaches this page, so
+              you are here because the groups or the configuration changed since you signed in.
+            </p>
+          </div>
+        </div>
+        <div className="rz-cardft">
+          <div className="rz-chips">
+            {me.groups.length ? (
+              me.groups.map((g) => <code key={g}>{g}</code>)
+            ) : (
+              <span className="rz-dim">The provider presented no groups.</span>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Sign-out ended this browser's session and left it on the address that says so. Nothing happens here on its own: the
+ * provider still has a session of its own, so the round trip the SPA would otherwise make ends with the user signed
+ * back in and the screen that told them otherwise gone. Holding that back is the browser's own business, not this
+ * tab's — every tab shares one cookie — so the intent is kept where all of them read it, and this card's button is the
+ * only thing that lifts it.
+ */
+function SignedOut() {
+  return (
+    <div className="rz-page">
+      <section className="rz-card">
+        <div className="rz-cardhd">
+          <div>
+            <h2>Signed out</h2>
+            <p className="rz-dim rz-xs">
+              This browser holds no resourcerer session any more, and no tab of it will start one on its own — not on a
+              reload, not after the browser is closed and opened again — until someone presses Sign in again here. The
+              identity provider was not told: its own session stays open, so in another browser or profile on this
+              machine, which this answer does not reach, opening this address signs straight in with no click and no
+              password. Signing out of resourcerer is not signing out of the provider: whoever needs this machine to
+              forget them signs out there too.
+            </p>
+          </div>
+        </div>
+        <div className="rz-cardft">
+          <a
+            className="rz-btn"
+            href="/auth/login"
+            onClick={() => {
+              // Both halves of being signed out start over here: the answer every other tab reads, and this tab's own
+              // record of having been refused. That record lives in sessionStorage, so it survives the trip to the
+              // provider — a run of refusals counted before this sign-out would otherwise be waiting on the other side,
+              // ready to hand the session this click asks for the card about a server that disagrees.
+              clearSignOutIntent();
+              clearSignRecord();
+            }}
+          >
+            Sign in again
+          </a>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * The session cookie this page carries is not one the server will accept, so the SPA stopped sending the browser to
+ * the provider. Only the browser or the install's configuration can fix that, so this names them instead of looping.
+ */
+function CookieDropped() {
+  return (
+    <div className="rz-page">
+      <section className="rz-card">
+        <div className="rz-cardhd">
+          <div>
+            <h2>The session cookie was not kept</h2>
+            <p className="rz-dim rz-xs">
+              Either the cookie coming back from the provider held no session resourcerer could read, or this page reads
+              it fine while the calls that follow it are refused — one cookie, two answers. Either way this page stopped
+              asking rather than loop through it; where no cookie reads at all, coming back to this tab makes one more
+              attempt, and stops here again if it fails. A session is sealed with the key at{" "}
+              <code>auth.session.keySecretRef</code> and names the issuer and client it was minted for, so a cookie
+              written before either changed, one sealed with a key a rollout has since retired, one from another
+              install, or one a proxy stripped on the way here all read the same way. Check that the server's replicas
+              all mount the same session key, including <code>auth.session.keyPreviousSecretRef</code> while a rotation
+              is in flight, and that nothing between the browser and the server drops cookies.
+            </p>
+          </div>
+        </div>
+        <div className="rz-cardft">
+          <button
+            className="rz-btn"
+            onClick={() => {
+              // Retrying is the user's decision: it is the one action that ends a run of refusals, and the one that
+              // earns another round trip to the provider.
+              clearSignRecord();
+              window.location.reload();
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

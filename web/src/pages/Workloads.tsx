@@ -18,6 +18,7 @@ import { Delta, Modal, PHASE_NAMES, Ring, StatusBadge, WlCell } from "../compone
 import { fmt } from "../format";
 import { navigate, toast, workloadHash } from "../hooks";
 import { severity, signals } from "../reliability";
+import type { Lock } from "../session";
 
 const net = (w: Summary) => w.current.monthlyCost - w.recommended.monthlyCost;
 
@@ -160,7 +161,7 @@ function Pager({
   );
 }
 
-export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: string; readOnly: boolean }) {
+export function Workloads({ rows, query, lock }: { rows: Summary[]; query: string; lock: Lock }) {
   const params = new URLSearchParams(query);
   const qc = useQueryClient();
   const [view, setView] = useState(params.get("view") ?? "all");
@@ -312,7 +313,8 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
             </button>
             <button
               className="rz-btn primary small"
-              disabled={readOnly || !toApply.length}
+              disabled={!lock.write || !toApply.length}
+              title={lock.reason}
               onClick={() => setBulk(true)}
             >
               Apply {toApply.length} recommendations
@@ -327,7 +329,8 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
                   <input
                     type="checkbox"
                     aria-label="Select all ready to apply"
-                    disabled={readOnly}
+                    disabled={!lock.write}
+                    title={lock.reason}
                     checked={shown.some(applicable) && shown.filter(applicable).every((w) => sel.has(refKey(w)))}
                     onChange={(e) =>
                       setSel(e.target.checked ? new Set(shown.filter(applicable).map(refKey)) : new Set())
@@ -356,10 +359,10 @@ export function Workloads({ rows, query, readOnly }: { rows: Summary[]; query: s
                   <td className="chk" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
-                      disabled={readOnly || !applicable(w)}
+                      disabled={!lock.write || !applicable(w)}
                       checked={sel.has(refKey(w))}
                       aria-label={`Select ${w.name}`}
-                      title={applicable(w) ? "" : "Nothing to apply"}
+                      title={applicable(w) ? (lock.write ? "" : (lock.reason ?? "")) : "Nothing to apply"}
                       onChange={() => toggle(refKey(w))}
                     />
                   </td>

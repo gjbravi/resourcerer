@@ -9,9 +9,31 @@ import (
 // Resources are cores for CPU and bytes for memory; absent keys are unset.
 type Resources map[string]float64
 
+// Me is the signed-in caller as the server sees it.
+type Me struct {
+	Authenticated bool     `json:"authenticated"`
+	User          string   `json:"user"`
+	Groups        []string `json:"groups"`
+	// Role is editor, viewer or none.
+	Role          string `json:"role"`
+	Strategy      string `json:"strategy"`
+	Impersonating bool   `json:"impersonating"`
+	// ConfigStale is set when the authentication configuration could not be reread and the previous one applies.
+	ConfigStale bool   `json:"configStale"`
+	ConfigError string `json:"configError,omitempty"`
+	ExpiresAt   string `json:"expiresAt,omitempty"`
+}
+
+// Unauthenticated is all /api/v1/me tells a caller who is not signed in.
+type Unauthenticated struct {
+	Authenticated bool   `json:"authenticated"`
+	Strategy      string `json:"strategy"`
+}
+
 type Info struct {
-	Version            string        `json:"version"`
-	Cluster            string        `json:"cluster"`
+	Version string `json:"version"`
+	Cluster string `json:"cluster"`
+	// Auth is the authentication strategy.
 	Auth               string        `json:"auth"`
 	ReadOnly           bool          `json:"readOnly"`
 	Selection          string        `json:"selection"`

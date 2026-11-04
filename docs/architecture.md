@@ -331,17 +331,82 @@ flowchart LR
     api -->|apply, revert, regenerate, settings| kapi[Kubernetes API]
 ```
 
-- **Endpoints**: `info` (cluster, settings defaults, cost and reliability configuration, Prometheus status),
-  `workloads` (list), `workloads/{ns}/{kind}/{name}` (detail) and its `series`, `impact`, `reliability` and
-  `placement`, `cluster/series`, and the writes `apply`, `revert`, `regenerate` and `settings`.
+Under `auth.strategy=oidc`, a sign-in from end to end, and what each request after it costs:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant S as resourcerer
+    participant I as Identity provider
+
+    B->>S: GET /api/v1/me
+    S-->>B: 200 {"authenticated": false, "strategy": "oidc"}
+    B->>S: GET /auth/login?redirect=/workloads/demo/api
+    Note over S: discovery of the issuer, cached,<br/>state, nonce and the PKCE verifier sealed<br/>into resourcerer_login, good for 10 minutes
+    S-->>B: 302 /authorize?code_challenge=…<br/>code_challenge_method=S256&state&nonce
+    B->>I: sign in, or no prompt while its own session lasts
+    I-->>B: 302 /auth/callback?code=…&state=…
+    B->>S: GET /auth/callback
+    Note over S: state compared in constant time,<br/>the code exchanged with the verifier and the client secret
+    S->>I: POST /token
+    I-->>S: id_token
+    Note over S: signature against the JWKS, issuer, audience<br/>and expiry, then the nonce, in constant time
+    Note over S: allowedGroups grants viewer, roles.editorGroups grants editor,<br/>no role is a 403 without a session
+    S-->>B: 302 /workloads/demo/api<br/>Set-Cookie resourcerer_session: sealed, HttpOnly, SameSite=Lax
+    B->>S: GET /api/v1/workloads, with the cookie
+    Note over S: cookie opened, issuer and clientID must be the configured ones,<br/>role resolved from the groups against the configuration in force
+    S-->>B: 200
+    B->>S: POST …/apply, cookie + X-Resourcerer-Request: 1 + JSON body
+    Note over S: CSRF guard, then editors only.<br/>The requester recorded is the user in the cookie
+    S-->>B: 200
+    B->>S: GET /auth/logout
+    S-->>B: 302 /?signed-out, cookie cleared
+```
+
+- **Endpoints**: `me` (who is signed in; the only endpoint served without authentication), `info` (cluster, auth
+  strategy, settings defaults, cost and reliability configuration, Prometheus status), `workloads` (list),
+  `workloads/{ns}/{kind}/{name}` (detail) and its `series`, `impact`, `reliability` and `placement`,
+  `cluster/series`, and the writes `apply`, `revert`, `regenerate` and `settings`.
 - **Lists and details** come from the Recommendations in the cache: no Prometheus query, so they stay fast with
   thousands of workloads.
 - **Charts and live checks** query Prometheus on request, cached per key for a short time; concurrent identical
   requests share one query.
-- **Writes** go through `s.write`, which refuses them in read-only mode. Authentication is anonymous for now: keep
-  the Service internal or put an authenticating proxy in front.
-- **The UI** is embedded in the binary (`web.FS()`) and served as a single-page app. React Query polls the workload
-  every 5s, the list every 15s and charts every 30s; expensive views fetch only when shown.
+- **Authentication** is an `auth.Provider` chosen by `--auth-strategy`. `anonymous` (the default) lets anyone who
+  reaches the server do anything. `oidc` signs users in at an OpenID Connect provider (`/auth/login`,
+  `/auth/callback`, `/auth/logout`, authorization code with PKCE) and keeps the identity in an AES-GCM sealed cookie,
+  so no replica holds sessions. Signing out clears that cookie and lands the browser on `/?signed-out`, which the UI
+  shows as a signed-out screen instead of starting another sign-in; the UI remembers that choice for the whole browser,
+  in `localStorage`, so a tab left open on the sign-in screen does not quietly sign itself back in next to it, and only
+  pressing Sign in again clears it. The provider's own session is not touched and outlives it. Its parameters are read
+  from their own ConfigMap (`oidc.yaml`), fail-closed at start
+  and reread every 30s, keeping the last good configuration on errors; secrets come from the environment. Roles are
+  resolved from groups on every request, so a change to `editorGroups` applies without signing in again.
+- **`GET /api/v1/me`** always answers `200` with `Cache-Control: no-store`, so the UI learns whether to sign in
+  without an error path. A caller who is not signed in gets only `{"authenticated": false, "strategy": "oidc"}`. A
+  signed-in caller gets `{"authenticated": true, "user", "groups", "role", "strategy", "impersonating",
+  "configStale", "configError"?, "expiresAt"?}`, where `role` is `editor`, `viewer` or `none` (signed in, but outside
+  `allowedGroups` or not a viewer) and `configError`/`expiresAt` appear only when set. Under `anonymous` every caller
+  is signed in as `anonymous`, an editor. Every other `/api/v1` route answers `401` with `"reason":
+  "unauthenticated"` when not signed in and `403` with `"reason": "forbidden"` for role `none`.
+- **Session cookies** are `HttpOnly`, `SameSite=Lax` and `Path=/`. When `Secure`, the name carries the `__Host-`
+  prefix (`__Host-resourcerer_session`), which browsers refuse unless the cookie is Secure and host-only.
+  `--auth-cookie-secure=auto` decides from the request (TLS or `X-Forwarded-Proto: https`); behind a TLS-terminating
+  proxy set `--auth-cookie-secure=true` rather than relying on the proxy's header.
+- **Who controls authentication.** Anyone who can write the auth ConfigMap can point `issuer` at an IdP they run and
+  sign in as an editor: write access to ConfigMaps in the release namespace is admin access to resourcerer. Grant it
+  accordingly.
+- **Writes** go through `s.write`: refused under `oidc` unless the request carries the header the UI sends and a body
+  typed as JSON (`403`, `"reason": "ajax-required"`), which is the CSRF guard — a page on another origin can make the
+  browser send the session cookie, but not that header, since the API allows no cross-origin call. `anonymous` needs no
+  guard: there is no session to ride, and scripts and the e2e checks post to it directly. Then refused to everyone in
+  read-only mode (`403`, `"reason": "read-only"`), otherwise allowed to editors only (`403`,
+  `"reason": "editor-required"`). The requester recorded on an apply or revert is the authenticated user, never a value
+  from the request.
+- **The UI** is embedded in the binary (`web.FS()`) and served as a single-page app. It asks `me` before anything else,
+  because that is the one call served without a session, and sends anyone the server does not know to `/auth/login` with
+  the page they were on; everything it can only show an editor is disabled and says why rather than hiding. React Query
+  polls the workload every 5s, the list every 15s and charts every 30s; expensive views fetch only when shown.
 
 ## Deployment
 
