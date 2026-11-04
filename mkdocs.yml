@@ -139,6 +139,7 @@ nav:
       - Roll out auto-deploy: guides/auto-deploy.md
       - Apply policies: guides/apply-policies.md
       - Reliability signals: guides/reliability-signals.md
+      - Decision models: guides/decision-models.md
       - GitOps: guides/gitops.md
       - Argo Rollouts: guides/argo-rollouts.md
       - Karpenter costs: guides/karpenter-costs.md

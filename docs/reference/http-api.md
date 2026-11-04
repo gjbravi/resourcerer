@@ -40,6 +40,7 @@ on another origin riding the session. `anonymous` needs no guard, and sending th
 | `GET /api/v1/workloads/{ns}/{kind}/{name}/impact` | Cost and requests over time, before and after. |
 | `GET /api/v1/workloads/{ns}/{kind}/{name}/reliability?window=…` | Live reliability checks over a window: `15m`, `1h`, `6h`, `1d` or `learning`. |
 | `GET /api/v1/workloads/{ns}/{kind}/{name}/placement` | Where the workload ran: capacity and instance types with their cost. Cached for 5 minutes. |
+| `GET /api/v1/workloads/{ns}/{kind}/{name}/decision` | The [decision model](../guides/decision-models.md)'s last answer on the current recommendation, without asking it: `configured`, `model`, `reason` when there is no answer, and `evaluation` (`choice`, `options[]` with `name` and `probability`, `version`, `evaluatedAt`, `hash`). `?evaluate=1` asks the model when it has no answer for this recommendation; `&fresh=1` asks again. A read, so a read-only user can ask too. |
 | `GET /api/v1/cluster/series` | Cluster-wide requests, usage and recommendations over time. |
 
 ## Write

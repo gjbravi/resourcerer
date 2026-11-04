@@ -11,6 +11,7 @@ description: The words the UI and these docs use with a specific meaning.
 | **Busiest pod** | Usage is taken per container from the pod using the most at each step, not the average: the pod that would be throttled or OOM-killed first. |
 | **Cluster factor** | Calibrated rates over the configured rates: what capacity costs on this cluster relative to `cost.rates`. |
 | **Coverage** | The share of a workload's requests that ran on nodes with a known price. |
+| **Decision model** | A model asked, when a user clicks Evaluate, whether a recommendation is safe to apply: a second opinion beside the verdict, with a probability per answer. It never applies anything. See [Decision models](../guides/decision-models.md). |
 | **Evidence** | The replay of usage against the recommendation (`status.evidence`): peak and time above it, p95 usage priced. See [Verdict and evidence](verdict-and-evidence.md). |
 | **Freeze** | A one-off period in which nothing is applied, both kinds of apply included. |
 | **Goal** | `Savings`, `Balanced` or `Reliability`: the percentile and margin applied to usage, per resource. |

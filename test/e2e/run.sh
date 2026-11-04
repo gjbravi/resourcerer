@@ -346,6 +346,33 @@ wait_for "the applier counts the holds by the rule that held them" 60 metric '^r
 wait_for "the applier counts the reverts" 60 metric '^resourcerer_apply_reverted_total\{reason="manual"\} [1-9]'
 wait_for "a policy exports the slots it has left" 60 metric '^resourcerer_applypolicy_slots_available\{policy="ClusterApplyPolicy/e2e-slots"\}'
 
+# The decision model is asked only when a user evaluates a recommendation, from the server, and only about one with
+# something to apply. A fake decider answers a fixed verdict and keeps what it was sent.
+fake_decider="$(dirname "$0")/../../hack/fake-decider.yaml"
+saved_model=$(k get decisionmodel default -o json 2>/dev/null | jq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.generation, .metadata.managedFields)' || true)
+k apply -f "$fake_decider" >/dev/null
+k -n resourcerer rollout status deploy/fake-decider --timeout 120s >/dev/null
+target=$(curl -fs "$API/workloads" | jq -r '[.[] | select(.pending and (.phase == "Ready" or .phase == "Learning"))][0] | "\(.namespace)/\(.kind)/\(.name)"')
+[[ "$target" != "null/null/null" ]] || fail "a workload with something to apply for the decision model"
+dm() { curl -fs "$API/workloads/$target/decision$1"; }
+dm "" | jq -e '.configured and .model == "fake-decider" and (.evaluation == null)' >/dev/null \
+  && pass "the decision model is not asked before a user evaluates" \
+  || fail "the decision model is not asked before a user evaluates"
+wait_for "evaluating returns the model's verdict with every option" 60 bash -c \
+  "curl -fs '$API/workloads/$target/decision?evaluate=1' | jq -e '.evaluation.choice == \"review\" and .evaluation.version == \"fake-decider-1\" and ([.evaluation.options[].name] == [\"apply\", \"review\", \"wait\"])' >/dev/null"
+dm "" | jq -e '.evaluation.choice == "review"' >/dev/null \
+  && pass "the evaluation is kept for the recommendation" || fail "the evaluation is kept for the recommendation"
+sent=$(k -n resourcerer exec deploy/fake-decider -- cat /tmp/last.json)
+jq -e '.state.recommendation and .state.replay and .state.fixes and .questions.verdict.type == "choice"' <<<"$sent" >/dev/null \
+  && pass "the model is sent the recommendation, its replay and what applying fixes" \
+  || fail "the model is sent the recommendation, its replay and what applying fixes"
+# Container names are sent and often match the workload's name; the namespace never is.
+! grep -qw "${target%%/*}" <<<"$(jq -c .state <<<"$sent")" \
+  && pass "the state does not name the namespace" \
+  || fail "the state does not name the namespace: $(jq -c .state <<<"$sent")"
+k delete -f "$fake_decider" --ignore-not-found >/dev/null
+if [[ -n "$saved_model" ]]; then k apply -f - <<<"$saved_model" >/dev/null; fi
+
 # The server ends the placement window at the last full minute and caches the answer for minutes, so the first
 # request must come after the minute in which the controller's allocation above saw where on-demand-app ran.
 # Asked last, that minute has usually passed already.

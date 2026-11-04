@@ -49,10 +49,18 @@ CPU throttling, memory headroom, OOM kills, restarts, crash loops, an HPA at its
 signal you declare as PromQL, such as error rates or latency.
 
 A signal is **fixed by the recommendation** when the recommendation itself addresses it: OOM kills (memory goes above
-the limit that killed the container) and CPU throttling from 25% (the limit is raised). These count *for* applying;
-any other open signal asks for a review. See [Reliability signals](../guides/reliability-signals.md).
+the limit that killed the container) and CPU throttling from 25% in a container whose CPU limit the recommendation
+raises. These count *for* applying; any other open signal asks for a review. A container the recommendation leaves
+out (an `istio-proxy` sidecar in `containers.skip`, or a `RequestsOnly` limits policy) keeps its limit, so its
+throttling is not fixed by applying. See [Reliability signals](../guides/reliability-signals.md).
 
 ## Where the verdict comes from
 
 The verdict is computed in the UI from the `Recommendation`'s status (phase, pending, evidence, impact) and the open
 signals. It is not stored, so it always reflects the latest status and the latest live checks.
+
+## A second opinion
+
+With a [decision model](../guides/decision-models.md) configured, a second block beside the verdict lets you ask a
+model the same question from the same evidence, and shows its answer (apply, review or wait) with a probability for
+each. It is advice: the verdict above stays as it is, and the decision is yours.

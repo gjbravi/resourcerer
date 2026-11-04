@@ -28,10 +28,11 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 | `internal/policy` | When an apply may start, from the apply policies that select the workload: **pure**, table-driven tests |
 | `internal/settings` | Settings, their defaults, validation and resolution (values → namespace → workload annotations) |
 | `internal/signals` | Reliability signals: built-in toggles and PromQL templates declared in the values |
+| `internal/decision` | The decision model's state from a Recommendation's status and usage, and the check of its answer: **pure**, plus one HTTP call (`Ask`) |
 | `web/` | React 19 + TypeScript + Vite UI, React Query, Recharts 3; `web/src/api.ts` mirrors `internal/server/types.go` |
 | `charts/resourcerer` | Helm chart; `values.schema.json` rejects unknown keys |
 | `charts/resourcerer-crds` | The CRDs as a chart of their own, a separate release installed before `resourcerer`; `files/crds.yaml` is generated |
-| `hack/` | kind environment: cluster, Prometheus, demo workloads, a fake Karpenter exporter |
+| `hack/` | kind environment: cluster, Prometheus, demo workloads, a fake Karpenter exporter, a fake decider for e2e |
 | `test/e2e/run.sh` | End-to-end checks against kind |
 | `docs/` | The user docs, by section (`getting-started/`, `concepts/`, `configuration/`, `guides/`, `reference/`), and `architecture.md` (components, data flow, diagrams) |
 | `mkdocs.yml`, `website/` | The documentation site: Zensical builds `docs/` (config in `mkdocs.yml`, pinned version in `website/requirements.txt`), published to GitHub Pages by `.github/workflows/docs.yaml` |
@@ -89,7 +90,7 @@ must not be stored as valid, and cap windows and points so large clusters stay c
 
 ### UI
 
-See the `resourcerer-ui` skill. In short: logic in pure, tested modules (`verdict.ts`, `placement.ts`,
+See the `resourcerer-ui` skill. In short: logic in pure, tested modules (`verdict.ts`, `decision.ts`, `placement.ts`,
 `reliability.ts`, `format.ts`), components reuse the `rz-` classes and theme variables in `styles.css`, one color per
 chart series, shimmer skeletons for loading (no loading texts, no mascots), and no new dependencies without a reason.
 
@@ -128,6 +129,12 @@ cluster") and fictional examples (`payments/checkout`, `demo/api`). Grep the dif
   a rate. Every policy that selects the workload must allow it, so a namespace can be stricter but never looser.
   The applier records the decision in `status.applyPolicy`, with the rule that blocked and when it stops; the server
   answers a held click with 409, a revert is never held, and a policy that cannot be read holds.
+- **Decision models** give a second opinion on the verdict, never a decision: the server asks the `DecisionModel`
+  named `default` only when a user clicks Evaluate, about a recommendation with something to apply, and caches the
+  answer per recommendation hash. The controller never calls a model and nothing is stored in the status; the rules
+  verdict stays beside it, unchanged. The state is built by `internal/decision` from the status and the usage series,
+  never names the workload, its namespace or people, and tags the signals the recommendation fixes. See
+  `docs/guides/decision-models.md`.
 - **Reliability signals** are built-in or declared as PromQL templates (`docs/guides/reliability-signals.md`). A
   signal with no data does not apply to a workload.
 - **Live data** for the workload page (reliability windows, placement) is computed by the server on request and
@@ -142,7 +149,8 @@ cluster") and fictional examples (`payments/checkout`, `demo/api`). Grep the dif
 Design issues describe the next steps; read the relevant one before working in that area:
 reliability signals as custom resources (#28), `ApplyPolicy` (#29: windows, freezes and rate limits are in; the
 disruption budget, `freezeWhen`, verification with revert and change limits as settings are next), `OptimizationPolicy`
-(#30), `CostProfile` (#27), decision models with Jev/decider (#26), shimmer skeletons (#31).
+(#30), `CostProfile` (#27), decision models with Jev/decider (#26: a second opinion on request is in; an auto-deploy
+gate requiring the rules and the model, and calibration on past applies, are next), shimmer skeletons (#31).
 
 ## Glossary
 
@@ -159,6 +167,7 @@ Words the code and the UI use with a specific meaning:
 | **Basis** | The per-value explanation shown in the UI ("p95 + 10% over 7d"). |
 | **Evidence** | The replay of usage against the recommendation (`status.evidence`): peak and time above it, p95 usage priced. |
 | **Verdict** | The Impact tab's answer on whether to apply, from phase, evidence and reliability signals. |
+| **Decision model** | A model the server asks, when a user clicks Evaluate, whether a recommendation is safe to apply: apply, review or wait, with a probability each. A second opinion beside the verdict; it never applies anything. |
 | **Signal** | A reliability check, built-in (throttling, memory headroom, restarts…) or declared as a PromQL template. "Fixed by apply" when the recommendation itself addresses it. |
 | **Cluster factor** | Calibrated rates over the configured rates: what capacity costs on this cluster relative to `cost.rates`. |
 | **Workload factor** | The same for one workload's nodes, under `cost.allocation: node`. |

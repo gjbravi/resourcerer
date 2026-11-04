@@ -30,6 +30,17 @@ Behind a TLS-intercepting proxy, pass its root CA: `EXTRA_CA_CERT=/path/to/ca.pe
 The values used are in `hack/resourcerer-values.yaml`: a good example of a configuration with Karpenter pricing,
 node allocation and declared reliability signals.
 
+## A decision model
+
+To try [decision models](decision-models.md), start a decider server on your machine and point the cluster at it; the
+commands are at the top of `hack/decision-model.yaml`:
+
+```bash
+kubectl --context kind-resourcerer apply -f hack/decision-model.yaml
+```
+
+kind's pods reach your machine at `host.docker.internal`, which Docker Desktop provides.
+
 ## Clean up
 
 ```bash

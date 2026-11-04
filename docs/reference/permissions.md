@@ -51,6 +51,8 @@ Serves the UI and the API. With `readOnly: true` the **patch** verbs below are n
 | `recommendations` | get, list, watch, **patch** (apply, revert and regenerate requests) |
 | ConfigMaps, Events | get, list, watch |
 | Pods, HorizontalPodAutoscalers | get, list |
+| `decisionmodels` | get |
+| Secrets, in resourcerer's namespace only (a `Role`) | get: the token of a managed [decision model](../guides/decision-models.md) |
 
 ## Who can do what, in practice
 

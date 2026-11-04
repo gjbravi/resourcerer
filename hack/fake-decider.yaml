@@ -1,0 +1,58 @@
+# Stands in for a decider server in kind, so the decision model integration is tested end to end without the
+# model's weights: it answers every POST /v1/systemone with a fixed verdict and keeps the last request in
+# /tmp/last.json, for checks on what was sent. test/e2e/run.sh applies it with a DecisionModel pointing at it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fake-decider
+  namespace: resourcerer
+data:
+  systemone: |
+    #!/bin/sh
+    head -c "${CONTENT_LENGTH:-0}" > /tmp/last.json
+    printf 'Content-Type: application/json\r\n\r\n'
+    printf '{"model":"fake-decider-1","answers":{"verdict":{"type":"choice","choice":"review",'
+    printf '"probabilities":{"apply":0.25,"review":0.6,"wait":0.15}}}}'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fake-decider
+  namespace: resourcerer
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: fake-decider }
+  template:
+    metadata:
+      labels: { app: fake-decider }
+    spec:
+      containers:
+        - name: httpd
+          image: busybox:1.37
+          command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
+          ports: [{ containerPort: 8080 }]
+          resources: { requests: { cpu: 5m, memory: 8Mi } }
+          volumeMounts: [{ name: cgi, mountPath: /www/cgi-bin }]
+      volumes:
+        - name: cgi
+          configMap: { name: fake-decider, defaultMode: 0755 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fake-decider
+  namespace: resourcerer
+spec:
+  selector: { app: fake-decider }
+  ports: [{ port: 8080, targetPort: 8080 }]
+---
+apiVersion: resourcerer.io/v1alpha1
+kind: DecisionModel
+metadata:
+  name: default
+spec:
+  provider: decider
+  endpoint: http://fake-decider.resourcerer.svc:8080/cgi-bin/systemone
+  model: fake-decider
+  timeoutSeconds: 10

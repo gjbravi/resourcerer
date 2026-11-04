@@ -1,9 +1,9 @@
 ---
 title: Custom resources
-description: The fields of Recommendation, ApplyPolicy and ClusterApplyPolicy (resourcerer.io/v1alpha1).
+description: The fields of Recommendation, ApplyPolicy, ClusterApplyPolicy and DecisionModel (resourcerer.io/v1alpha1).
 ---
 
-All three are in the API group `resourcerer.io`, version `v1alpha1`. The Go types, with every field documented, are in
+All four are in the API group `resourcerer.io`, version `v1alpha1`. The Go types, with every field documented, are in
 [`api/v1alpha1`](https://github.com/gjbravi/resourcerer/blob/main/api/v1alpha1/recommendation_types.go). The definitions
 are installed by the `resourcerer-crds` chart, a release of its own installed before resourcerer; see
 [Installation](../getting-started/installation.md#the-crds-are-a-release-of-their-own).
@@ -98,3 +98,32 @@ kubectl -n payments get applypolicies
 |---|---|
 | `workloads` | How many workloads the policy selects. |
 | `conditions` | `Valid`: `True` when the policy is applied to the workloads it selects; `False` with reason `InvalidPolicy` and the error when it cannot be interpreted (it then holds the applies it governs). |
+
+## DecisionModel
+
+Cluster-scoped, short name `dm`. The model the server asks, when a user clicks **Evaluate** on the workload page,
+whether a recommendation is safe to apply. Only the one named `default` is used; without it, the page has no decision
+model block. It never applies anything. See [Decision models](../guides/decision-models.md).
+
+```yaml
+apiVersion: resourcerer.io/v1alpha1
+kind: DecisionModel
+metadata:
+  name: default
+spec:
+  provider: decider
+  endpoint: http://decider.decider.svc:8000/v1/systemone
+  model: decider-4b
+```
+
+### spec
+
+| Field | Type | Description |
+|---|---|---|
+| `provider` | `decider`, `typesafe` | A self-hosted decider server, or TypeSafe's managed Jev API. |
+| `endpoint` | `http://` or `https://` URL | The model's `POST /v1/systemone`. |
+| `model` | string, up to 128 | The model's name, shown with every answer, such as `decider-4b`. |
+| `credentialsSecretRef.name`, `.key` | strings | Required for `typesafe`: the Secret, in resourcerer's namespace, holding the token sent as `Authorization: Bearer`. |
+| `timeoutSeconds` | 1–300, default 30 | How long one request may take. |
+
+There is no status: an evaluation that fails shows why on the workload page.
