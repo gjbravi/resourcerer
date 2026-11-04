@@ -2,8 +2,9 @@
 clusterName: kind-resourcerer
 prometheus:
   url: http://prometheus-server.monitoring.svc
-  rateWindow: 40s
-  minStep: 10s
+  # 4× and 1× the 5s scrape interval of hack/prometheus-values.yaml.
+  rateWindow: 20s
+  minStep: 5s
 defaults:
   learning-period: PT15M
   schedule: "@every 1m"

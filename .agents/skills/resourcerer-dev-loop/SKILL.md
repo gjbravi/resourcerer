@@ -13,7 +13,7 @@ make kind-deploy    # builds the image, loads it into kind, installs the chart w
 make e2e
 ```
 
-`kind-up` creates `kind-resourcerer` with Prometheus (10s scrape), metrics-server, VPA, Argo Rollouts, the demo
+`kind-up` creates `kind-resourcerer` with Prometheus (5s scrape), metrics-server, VPA, Argo Rollouts, the demo
 workloads in `hack/demo.yaml` and `hack/fake-karpenter.sh`.
 
 ## After each change
@@ -26,7 +26,8 @@ kubectl --context kind-resourcerer -n resourcerer port-forward svc/resourcerer 8
 
 - `kind-deploy` rolls the pods, which breaks a running port-forward: restart it.
 - The kind values use short periods so things move quickly: `learning-period: PT15M`, `schedule: "@every 1m"`,
-  `rateWindow: 40s`, `minStep: 10s`. A recommendation leaves `Pending` within a few minutes of a workload starting.
+  `rateWindow: 20s`, `minStep: 5s`. A recommendation leaves `Pending` once it has 10 samples (50s at 5s), so
+  within about two minutes of a workload starting, counting the 1-minute schedule.
 - `@every 1m` is the shortest valid schedule; shorter values are rejected.
 
 ## Fake Karpenter
