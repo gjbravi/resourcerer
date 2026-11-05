@@ -3,6 +3,10 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "global": {
+      "type": "object",
+      "description": "Values Helm propagates from a parent chart; resourcerer reads none of them."
+    },
     "clusterName": { "type": "string" },
     "selection": { "type": "string", "enum": ["all", "label"] },
     "excludedNamespaces": { "type": "array", "items": { "type": "string" } },
