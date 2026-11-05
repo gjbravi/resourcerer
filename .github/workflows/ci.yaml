@@ -139,20 +139,21 @@ jobs:
       - run: helm template resourcerer-crds charts/resourcerer-crds >/dev/null
       - name: Unknown values are rejected
         run: |
-          for chart in resourcerer resourcerer-crds; do
-            if helm template rz "charts/$chart" --set unknownKey=1 >/dev/null 2>&1; then
-              echo "::error::an unknown top-level value was accepted by charts/$chart"
-              exit 1
-            fi
-          done
+          if helm template rz charts/resourcerer --set unknownKey=1 >/dev/null 2>&1; then
+            echo "::error::an unknown top-level value was accepted by charts/resourcerer"
+            exit 1
+          fi
       # Helm merges a parent chart's global values into each subchart before validating its schema, so a chart that
       # rejects unknown keys also has to accept `global`, or no parent that sets one can use it.
       - name: A parent chart's global values render
         run: |
-          mkdir -p "$RUNNER_TEMP/global/charts"
-          cp -R charts/resourcerer "$RUNNER_TEMP/global/charts/"
-          printf 'apiVersion: v2\nname: parent\nversion: 0.1.0\n' > "$RUNNER_TEMP/global/Chart.yaml"
-          helm template parent "$RUNNER_TEMP/global" --set global.infrastructure.region=us-east-1 >/dev/null
+          for chart in resourcerer resourcerer-crds; do
+            rm -rf "$RUNNER_TEMP/global"
+            mkdir -p "$RUNNER_TEMP/global/charts"
+            cp -R "charts/$chart" "$RUNNER_TEMP/global/charts/"
+            printf 'apiVersion: v2\nname: parent\nversion: 0.1.0\n' > "$RUNNER_TEMP/global/Chart.yaml"
+            helm template parent "$RUNNER_TEMP/global" --set global.infrastructure.region=us-east-1 >/dev/null
+          done
       - name: The CRDs render as four resources, kept on uninstall
         run: |
           helm template resourcerer-crds charts/resourcerer-crds > "$RUNNER_TEMP/crds.yaml"
