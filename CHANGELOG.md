@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-rc.5](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.4...v1.0.0-rc.5) (2026-11-05)
+
+
+### Bug Fixes
+
+* **decision:** send the model's name with every request ([#68](https://github.com/gjbravi/resourcerer/issues/68)) ([102e0e3](https://github.com/gjbravi/resourcerer/commit/102e0e3fbe299e0b55e3d2ebe56d5c11ef66768a))
+
 ## [1.0.0-rc.4](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.3...v1.0.0-rc.4) (2026-11-05)
 
 
