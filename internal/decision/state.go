@@ -78,6 +78,8 @@ func (c criteria) MarshalJSON() ([]byte, error) {
 
 // Request is the body of POST /v1/systemone.
 type Request struct {
+	// Model is the DecisionModel's model: a decider ignores it, a gateway in front of one routes by it.
+	Model     string              `json:"model,omitempty"`
 	State     State               `json:"state"`
 	Questions map[string]Question `json:"questions"`
 }

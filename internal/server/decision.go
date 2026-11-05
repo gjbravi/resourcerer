@@ -103,6 +103,7 @@ func (s *Server) evaluate(ctx context.Context, rec *v1alpha1.Recommendation, dm 
 	}
 	now := time.Now()
 	req, _ := decision.Build(decision.Input{Kind: rec.Spec.TargetRef.Kind, Replicas: s.replicas(ctx, rec), Status: st, Usage: usage, Now: now})
+	req.Model = dm.Spec.Model
 
 	token := ""
 	if ref := dm.Spec.CredentialsSecretRef; ref != nil {
