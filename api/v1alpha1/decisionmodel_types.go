@@ -32,11 +32,12 @@ type DecisionModelSpec struct {
 	// Endpoint is the URL of the model's POST /v1/systemone.
 	// +kubebuilder:validation:Pattern=`^https?://`
 	Endpoint string `json:"endpoint"`
-	// Model names the model behind the endpoint, such as decider-4b, shown with every answer.
+	// Model names the model behind the endpoint, such as decider-4b: sent with every request, for a gateway that routes
+	// by it, and shown with every answer.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=128
 	Model string `json:"model"`
-	// CredentialsSecretRef holds the API token, for typesafe.
+	// CredentialsSecretRef holds the API token: required for typesafe, and for a decider behind a gateway that wants one.
 	// +optional
 	CredentialsSecretRef *SecretKeyRef `json:"credentialsSecretRef,omitempty"`
 	// TimeoutSeconds bounds one request to the model.

@@ -139,6 +139,7 @@ signals are left out, and the recommendation lists it as unchanged.
 
 ```json title="POST /v1/systemone"
 {
+  "model": "decider-4b",
   "state": {
     "workload": "Deployment, 2 replicas now, 2 on average; runs on 50% spot, 50% on-demand nodes",
     "window": "7d learning period, fully covered",

@@ -123,8 +123,8 @@ spec:
 |---|---|---|
 | `provider` | `decider`, `typesafe` | A self-hosted decider server, or TypeSafe's managed Jev API. |
 | `endpoint` | `http://` or `https://` URL | The model's `POST /v1/systemone`. |
-| `model` | string, up to 128 | The model's name, shown with every answer, such as `decider-4b`. |
-| `credentialsSecretRef.name`, `.key` | strings | Required for `typesafe`: the Secret, in resourcerer's namespace, holding the token sent as `Authorization: Bearer`. |
+| `model` | string, up to 128 | The model's name, such as `decider-4b`: sent in every request, for a gateway in front of the model that routes by it, and shown with every answer. |
+| `credentialsSecretRef.name`, `.key` | strings | The Secret, in resourcerer's namespace, holding the token sent as `Authorization: Bearer`. Required for `typesafe`; with `decider`, for a gateway in front of it that asks for a token. |
 | `timeoutSeconds` | 1–300, default 30 | How long one request may take. |
 
 There is no status: an evaluation that fails shows why on the workload page.
