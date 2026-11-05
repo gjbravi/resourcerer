@@ -14,7 +14,13 @@ chart as a release of its own, **before** `resourcerer`: the main chart can decl
 `applyPolicies.cluster`, and Helm resolves every object of a release before creating any of them, so a CRD it needs
 cannot come from that same release.
 
-The chart has no values: `values.yaml` is empty and `values.schema.json` rejects every key.
+The chart has no settings: `values.yaml` is empty and `values.schema.json` rejects every key but the `global` map a
+parent chart passes down to its subcharts.
+
+The CRDs carry `argocd.argoproj.io/sync-options: Prune=false,Delete=false`, because Argo CD ignores
+`helm.sh/resource-policy`: it would otherwise prune the definitions when they leave the sources, or delete them, and
+every Recommendation and policy with them, when the application goes away. Under Argo CD this chart can be rendered
+as a subchart of the application that installs resourcerer instead of a release of its own.
 
 ## Install
 

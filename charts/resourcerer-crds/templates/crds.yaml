@@ -1,15 +1,20 @@
 {{- /* The CRDs are ordinary resources here, not files in crds/, so that `helm upgrade` maintains them. The same
-       definitions, without Helm labels, are in files/crds.yaml for a team that applies them with kubectl. */ -}}
+       definitions, without Helm labels, are in files/crds.yaml for a team that applies them with kubectl.
+       Argo CD ignores `helm.sh/resource-policy`: it tracks what it applies, so Prune=false keeps the definitions
+       when they leave the sources, and Delete=false keeps them, and the objects they hold, when the application
+       goes away. */ -}}
 {{- $labels := dict
       "helm.sh/chart" (printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-")
       "app.kubernetes.io/name" .Chart.Name
       "app.kubernetes.io/instance" .Release.Name
       "app.kubernetes.io/version" (.Chart.AppVersion | toString)
       "app.kubernetes.io/managed-by" .Release.Service -}}
+{{- $annotations := dict "argocd.argoproj.io/sync-options" "Prune=false,Delete=false" -}}
 {{- range $doc := splitList "\n---\n" (.Files.Get "files/crds.yaml") }}
 {{- if trim $doc }}
 {{- $crd := fromYaml $doc }}
 {{- $_ := set (get $crd "metadata") "labels" (mergeOverwrite (deepCopy $labels) (get (get $crd "metadata") "labels" | default dict)) }}
+{{- $_ := set (get $crd "metadata") "annotations" (mergeOverwrite (deepCopy $annotations) (get (get $crd "metadata") "annotations" | default dict)) }}
 ---
 {{ toYaml $crd }}
 {{- end }}
