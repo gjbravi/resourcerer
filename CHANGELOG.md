@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-rc.2](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.1...v1.0.0-rc.2) (2026-11-05)
+
+
+### Features
+
+* **decision:** ask a decision model for a second opinion on applying ([#59](https://github.com/gjbravi/resourcerer/issues/59)) ([c37f7cb](https://github.com/gjbravi/resourcerer/commit/c37f7cb6970cdef9718a6c172f28f881eee3a157))
+
 ## [1.0.0-rc.1](https://github.com/gjbravi/resourcerer/compare/v0.9.0...v1.0.0-rc.1) (2026-11-04)
 
 
