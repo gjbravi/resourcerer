@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-rc.3](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.2...v1.0.0-rc.3) (2026-11-05)
+
+
+### Bug Fixes
+
+* **chart:** accept the global values a parent chart passes ([#62](https://github.com/gjbravi/resourcerer/issues/62)) ([a829f64](https://github.com/gjbravi/resourcerer/commit/a829f64a073b9c13084e995ae76aadadd422b41a))
+
 ## [1.0.0-rc.2](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.1...v1.0.0-rc.2) (2026-11-05)
 
 
