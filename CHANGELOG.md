@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-rc.4](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.3...v1.0.0-rc.4) (2026-11-05)
+
+
+### Bug Fixes
+
+* **chart:** drop the values schema of the crds chart ([#65](https://github.com/gjbravi/resourcerer/issues/65)) ([aa452f9](https://github.com/gjbravi/resourcerer/commit/aa452f94dff2e45c45ccd380c8e4a0402da36881))
+
 ## [1.0.0-rc.3](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.2...v1.0.0-rc.3) (2026-11-05)
 
 
