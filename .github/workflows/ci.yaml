@@ -145,6 +145,14 @@ jobs:
               exit 1
             fi
           done
+      # Helm merges a parent chart's global values into each subchart before validating its schema, so a chart that
+      # rejects unknown keys also has to accept `global`, or no parent that sets one can use it.
+      - name: A parent chart's global values render
+        run: |
+          mkdir -p "$RUNNER_TEMP/global/charts"
+          cp -R charts/resourcerer "$RUNNER_TEMP/global/charts/"
+          printf 'apiVersion: v2\nname: parent\nversion: 0.1.0\n' > "$RUNNER_TEMP/global/Chart.yaml"
+          helm template parent "$RUNNER_TEMP/global" --set global.infrastructure.region=us-east-1 >/dev/null
       - name: The CRDs render as four resources, kept on uninstall
         run: |
           helm template resourcerer-crds charts/resourcerer-crds > "$RUNNER_TEMP/crds.yaml"
