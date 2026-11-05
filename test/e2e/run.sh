@@ -380,8 +380,9 @@ wait_for "auto-deploy limited to a container that is not optimized applies nothi
   "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.autoDeployScope.reason | test(\"none of the containers\")'"
 orders_resources() { kubectl --context "$CTX" -n demo get deploy orders -o json | jq -c "[.spec.template.spec.containers[] | select(.name != \"istio-proxy\") | {name, resources}]"; }
 others_before=$(orders_resources)
-k -n demo annotate deploy orders --overwrite resourcerer.io/containers.skip=none >/dev/null
-wait_for "auto-deploy limited to istio-proxy changes it alone once the recommendation is Ready" 900 bash -c \
+# A short learning period makes it Ready without waiting for the 15 minutes of the kind values.
+k -n demo annotate deploy orders --overwrite resourcerer.io/containers.skip=none resourcerer.io/learning-period=PT2M >/dev/null
+wait_for "auto-deploy limited to istio-proxy changes it alone once the recommendation is Ready" 300 bash -c \
   "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.history[0].by == \"auto-deploy\" and ([.status.history[0].containers[].name] == [\"istio-proxy\"])'"
 # Server-side apply removes the fields a manager owned and leaves out: the earlier apply and revert of worker must
 # survive an apply that changes istio-proxy alone.
@@ -390,7 +391,8 @@ wait_for "auto-deploy limited to istio-proxy changes it alone once the recommend
 order=$(k -n demo get deploy orders -o jsonpath='{.spec.template.spec.containers[*].name}')
 [[ "$order" == "app worker log-shipper istio-proxy" ]] && pass "the containers keep their order" \
   || fail "the containers keep their order: $order"
-k -n demo annotate deploy orders resourcerer.io/auto-deploy- resourcerer.io/auto-deploy.containers- resourcerer.io/containers.skip- >/dev/null
+k -n demo annotate deploy orders resourcerer.io/auto-deploy- resourcerer.io/auto-deploy.containers- resourcerer.io/containers.skip- \
+  resourcerer.io/learning-period- >/dev/null
 curl -fs -X POST "$API/workloads/demo/Deployment/orders/revert" >/dev/null
 
 # The decision model is asked only when a user evaluates a recommendation, from the server, and only about one with
