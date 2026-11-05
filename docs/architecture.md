@@ -31,6 +31,7 @@ flowchart LR
     applier[applier]
     server[server<br/>HTTP API + UI]
     ui[Browser UI]
+    model[Decision model<br/>decider · Jev]
 
     prom -->|usage, requests, prices| controller
     prom -->|live checks, charts| server
@@ -46,6 +47,7 @@ flowchart LR
     server -->|spec.applyRequest<br/>spec.regenerateRequestedAt| rec
     server -->|settings annotations| ann
     ui <-->|/api/v1| server
+    server -.->|on Evaluate<br/>POST /v1/systemone| model
     controller -.->|resourcerer_recommendation<br/>resourcerer_optimization_score| prom
 ```
 
@@ -53,7 +55,7 @@ flowchart LR
 |---|---|---|---|
 | **controller** (`internal/recommender`) | Workloads, their HPAs, namespaces, the defaults ConfigMap, Recommendations | `Recommendation` objects and their `status`; Prometheus metrics | yes |
 | **applier** (`internal/applier`) | Recommendations | Workload pod templates and HPA targets (server-side apply, field manager `resourcerer`); `status.history`, `status.lastApplyResult` | yes |
-| **server** (`internal/server`) | Recommendations, workloads, namespaces, pods (through the cache) | `spec.applyRequest` and `spec.regenerateRequestedAt` on Recommendations; settings annotations on namespaces and workloads | no: every replica serves |
+| **server** (`internal/server`) | Recommendations, workloads, namespaces, pods (through the cache); reads the `DecisionModel` on request | `spec.applyRequest` and `spec.regenerateRequestedAt` on Recommendations; settings annotations on namespaces and workloads | no: every replica serves |
 
 `resourcerer all` runs the three in one process (`make run`). The applier is the only component that changes
 workloads, so a read-only install leaves it out and starts the server with `--read-only`.
@@ -254,6 +256,9 @@ Signals that requests or limits are too tight, or that the workload is unhealthy
   (`internal/signals`, [Reliability signals](guides/reliability-signals.md)). A signal with no data does not apply to the workload; one that
   fails is skipped and never blocks the recommendation.
 
+Containers in `containers.skip` are left out of every per-container signal, in the status and in the live checks: the
+apply never changes them, so they must not weigh on the verdict. Pod- and workload-level signals still count.
+
 The controller stores the learning-period view in `status.reliability`, which drives the workload list and the
 verdict. The server checks the same signals live (`GET .../reliability?window=15m|1h|6h|1d|learning`), so a fix shows
 up as resolved within minutes instead of when old samples leave the learning period.
@@ -267,7 +272,50 @@ priced like the requests (what the workload actually needs). It is stored in `st
 The workload page, right under the apply button, turns phase, history coverage, evidence and open reliability signals into a verdict
 (`web/src/verdict.ts`): "Safe to apply", "Review before applying", "Apply to fix reliability", "Already
 right-sized", or a waiting or error state. Signals the recommendation itself fixes (OOM kills, CPU throttling from
-25%, where it raises the limit) count for applying; others ask for a review.
+25% in a container whose limit it raises, which the server lists in `cpuLimitRaised`) count for applying; others ask
+for a review.
+
+## Decision models
+
+A decision model gives a second opinion on the verdict's question, on request. The rules above stay as they are and
+nothing is applied from its answer; see [Decision models](guides/decision-models.md) for the user's side.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant B as Browser
+    participant S as server
+    participant K as Kubernetes API
+    participant P as Prometheus
+    participant M as Decision model
+
+    B->>S: GET .../decision
+    S->>K: get DecisionModel "default" (uncached)
+    S-->>B: configured, the kept answer if any
+    U->>B: Evaluate
+    B->>S: GET .../decision?evaluate=1
+    S->>P: busiest-pod CPU and memory over the learning period, up to status.generatedAt
+    S->>S: decision.Build(status, usage): state + the verdict question
+    S->>M: POST /v1/systemone (Bearer token from a Secret, for typesafe)
+    M-->>S: choice and a probability per option
+    S->>S: decision.Verdict: refuse an answer outside apply / review / wait
+    S-->>B: evaluation, cached per recommendation hash for an hour
+```
+
+- **Where the code is.** `internal/decision` is pure: `Build` turns a `Recommendation`'s status and the usage series
+  into the state (`ShapeOf` describes a series: percentiles, spikiness, a daily pattern from the hour-of-day share of
+  the variance, a trend from the slope of daily means), and `Verdict` checks the answer against the options asked.
+  `Ask` is the only I/O, a POST with a timeout. `internal/server/decision.go` reads the `DecisionModel`, the usage and
+  the credentials, and caches the answer.
+- **Why the server and not the controller.** The answer is advice a user asks for, so it costs nothing until then,
+  and the controller's status stays small and model-free. The server never writes status; answers live in its cache,
+  keyed by the recommendation hash and generation time, the endpoint and the model, so a regenerated recommendation or
+  a new model starts without an answer.
+- **What the state leaves out.** Names of the workload and namespace, who applied, labels, raw series. The usage
+  series end at `status.generatedAt`, so the state describes the history the recommendation was computed from.
+- **Tested** by table tests in `internal/decision`, a handler test with fake Prometheus and decider servers, and an
+  e2e check against `hack/fake-decider.yaml`, a busybox CGI that answers a fixed verdict and keeps what it was sent.
 
 ## How a recommendation is applied
 
@@ -280,8 +328,8 @@ sequenceDiagram
     participant A as applier
     participant W as Deployment / StatefulSet / Rollout controller
 
-    U->>S: POST .../apply {hash}
-    S->>K: set spec.applyRequest {id, Apply, hash, requestedBy}
+    U->>S: POST .../apply {hash, containers?}
+    S->>K: set spec.applyRequest {id, Apply, hash, containers, requestedBy}
     K-->>A: Recommendation changed
     A->>A: request id not handled yet?
     alt hash differs from status.hash
@@ -290,7 +338,7 @@ sequenceDiagram
         A->>K: status.lastApplyResult = Rejected
     else
         A->>K: read live resources (API server, not cache)
-        A->>K: server-side apply pod template resources<br/>field manager "resourcerer", force
+        A->>K: server-side apply pod template resources<br/>of the listed containers, or all<br/>field manager "resourcerer", force
         opt HPA on CPU
             A->>K: patch HPA target utilization
         end
@@ -302,11 +350,18 @@ sequenceDiagram
 
 - **Auto-deploy**: with `auto-deploy: Enabled`, the applier applies a `Ready`, pending recommendation as
   `auto-deploy`, once per hash; a hash already in the history (applied, or reverted by someone) is never re-applied.
+  With `auto-deploy.containers`, the controller records in `status.autoDeployScope` which containers auto-deploy may
+  change, whether those alone are pending (`engine.Scope`), and why it applies nothing when it cannot; the applier
+  applies that scope only.
 - **Apply policies** (`internal/policy`) decide *when* an apply may start: windows in a time zone, freezes, and how
   many applies run at once. The applier reads the `ApplyPolicy` and `ClusterApplyPolicy` objects uncached before
   each decision, records it in `status.applyPolicy` for each kind of apply, and looks again at the first instant a
   rule changes. Every policy that selects a workload must allow it; a `409` from the server answers a held click at
   once, and a revert is never held. See [Apply policies](guides/apply-policies.md).
+- **Some containers only**: `applyRequest.containers` limits an apply to those containers. `applier.Selection`,
+  shared by the server (which answers a bad selection with `409`) and the applier, refuses unknown or skipped
+  containers, and a partial apply when an HPA target changes, since that target holds only with every container's
+  CPU applied. The history lists only what changed, so a revert restores only that.
 - **Revert** applies the `from` values of the last apply, through the same path.
 - **Server-side apply** with the `resourcerer` field manager owns only the resources fields it sets, so GitOps tools
   can ignore them by manager instead of fighting over them.

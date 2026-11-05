@@ -7,6 +7,7 @@ Installs the custom resource definitions of [resourcerer](https://github.com/gjb
 | `recommendations.resourcerer.io` | `Recommendation` | namespaced |
 | `applypolicies.resourcerer.io` | `ApplyPolicy` | namespaced |
 | `clusterapplypolicies.resourcerer.io` | `ClusterApplyPolicy` | cluster |
+| `decisionmodels.resourcerer.io` | `DecisionModel` | cluster |
 
 They are rendered as ordinary resources rather than files in `crds/`, so `helm upgrade` maintains them. Install this
 chart as a release of its own, **before** `resourcerer`: the main chart can declare `ClusterApplyPolicy` objects from
@@ -71,9 +72,10 @@ helm uninstall resourcerer-crds -n resourcerer
 Uninstall `resourcerer` first: its applier reads the policies and its controller writes Recommendations.
 
 Every CRD carries `helm.sh/resource-policy: keep`, so uninstalling `resourcerer-crds` leaves the CRDs and every
-`Recommendation`, `ApplyPolicy` and `ClusterApplyPolicy` in place. Deleting them takes a deliberate command, which also
-deletes every object of those kinds:
+`Recommendation`, `ApplyPolicy`, `ClusterApplyPolicy` and `DecisionModel` in place. Deleting them takes a deliberate
+command, which also deletes every object of those kinds:
 
 ```bash
-kubectl delete crd recommendations.resourcerer.io applypolicies.resourcerer.io clusterapplypolicies.resourcerer.io
+kubectl delete crd recommendations.resourcerer.io applypolicies.resourcerer.io clusterapplypolicies.resourcerer.io \
+  decisionmodels.resourcerer.io
 ```

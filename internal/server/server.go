@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
+	"github.com/gjbravi/resourcerer/internal/applier"
 	"github.com/gjbravi/resourcerer/internal/cluster"
 	"github.com/gjbravi/resourcerer/internal/engine"
 	"github.com/gjbravi/resourcerer/internal/prom"
@@ -72,6 +73,7 @@ func (s *Server) routes() []route {
 		{"GET /api/v1/workloads/{ns}/{kind}/{name}/impact", s.impact},
 		{"GET /api/v1/workloads/{ns}/{kind}/{name}/reliability", s.reliability},
 		{"GET /api/v1/workloads/{ns}/{kind}/{name}/placement", s.placement},
+		{"GET /api/v1/workloads/{ns}/{kind}/{name}/decision", s.decision},
 		{"POST /api/v1/workloads/{ns}/{kind}/{name}/apply", s.apply},
 		{"POST /api/v1/workloads/{ns}/{kind}/{name}/revert", s.revert},
 		{"POST /api/v1/workloads/{ns}/{kind}/{name}/regenerate", s.regenerate},
@@ -202,7 +204,7 @@ func (s *Server) reliabilityInfo(ctx context.Context, cfg signals.Config) Reliab
 		info := SignalInfo{ID: sig.ID, Name: sig.Name, Description: sig.Description, Unit: sig.Unit, Above: sig.Above,
 			Below: sig.Below, Query: sig.Query, Runbook: sig.Runbook}
 		v := s.cache.get("signal-probe|"+sig.ID+"|"+sig.Query, 5*time.Minute, func() (any, error) {
-			_, err := sig.Evaluate(ctx, s.Prom, signals.VarsFor(probe, 5*time.Minute), signals.Levels{})
+			_, err := sig.Evaluate(ctx, s.Prom, signals.VarsFor(probe, 5*time.Minute), signals.Levels{}, nil)
 			if err != nil {
 				return err.Error(), nil
 			}
@@ -340,6 +342,9 @@ func summarize(rec *v1alpha1.Recommendation, replicas int32) Summary {
 				sum.Under = true
 			}
 		}
+		if lim, ok := workload.ToValues(c.Current.Limits)[engine.CPU]; ok && workload.ToValues(c.Recommended.Limits)[engine.CPU] > lim {
+			sum.CPULimitRaised = append(sum.CPULimitRaised, c.Name)
+		}
 	}
 	if st.HPA != nil {
 		sum.HPA = []string{"cpu"}
@@ -423,6 +428,7 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 	d.Capacity = s.capacity(r.Context(), rec)
 	d.Pricing = rec.Status.Pricing
 	d.Evidence = rec.Status.Evidence
+	d.AutoDeployScope = rec.Status.AutoDeployScope
 	writeJSON(w, d)
 }
 
@@ -728,10 +734,11 @@ func (s *Server) patchSpec(w http.ResponseWriter, r *http.Request, mutate func(*
 
 func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Hash string `json:"hash"`
+		Hash       string   `json:"hash"`
+		Containers []string `json:"containers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Hash == "" {
-		writeError(w, http.StatusBadRequest, "body must be {\"hash\": \"<recommendation hash>\"}")
+		writeError(w, http.StatusBadRequest, "body must be {\"hash\": \"<recommendation hash>\", \"containers\": [optional names]}")
 		return
 	}
 	s.patchSpec(w, r, func(rec *v1alpha1.Recommendation) error {
@@ -743,7 +750,11 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 		if d := rec.Status.ApplyPolicy; d != nil && heldByPolicy(d.Manual) {
 			return fmt.Errorf("held by %s: %s", d.Manual.Policy, d.Manual.Reason)
 		}
-		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionApply, Hash: body.Hash, RequestedBy: requester(r), RequestedAt: metav1.NewTime(time.Now())}
+		if err := applier.Selection(rec.Status, body.Containers); err != nil {
+			return err
+		}
+		rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: requestID(), Action: v1alpha1.ActionApply, Hash: body.Hash,
+			Containers: body.Containers, RequestedBy: requester(r), RequestedAt: metav1.NewTime(time.Now())}
 		return nil
 	})
 }
@@ -887,6 +898,26 @@ func (c *cache) get(key string, ttl time.Duration, fetch func() (any, error)) an
 	c.mu.Unlock()
 	close(e.done)
 	return e.value
+}
+
+// peek returns a fetched, unexpired value without fetching.
+func (c *cache) peek(key string) (any, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.entries[key]
+	if !ok || e.expires.IsZero() || time.Now().After(e.expires) {
+		return nil, false
+	}
+	return e.value, true
+}
+
+// drop forgets a fetched value, so the next get fetches again.
+func (c *cache) drop(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, ok := c.entries[key]; ok && !e.expires.IsZero() {
+		delete(c.entries, key)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

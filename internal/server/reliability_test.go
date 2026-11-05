@@ -40,7 +40,7 @@ func TestPodChecks(t *testing.T) {
 		}),
 		pod("api-3", corev1.PodQOSBurstable, corev1.ContainerStatus{Name: "api", LastTerminationState: terminated("OOMKilled", 137, now.Add(-time.Hour))}),
 	}
-	got := byID(podChecks(pods, since, map[string]float64{"api": 2}, "q"))
+	got := byID(podChecks(pods, since, map[string]float64{"api": 2}, "q", nil))
 	if c := got["oom"]; c.Status != "bad" || c.Value != 1 || c.Pod != "api-1" {
 		t.Errorf("oom = %+v, want 1 kill in the window, in api-1", c)
 	}
@@ -51,11 +51,30 @@ func TestPodChecks(t *testing.T) {
 		t.Errorf("crashloop = %+v", c)
 	}
 
-	quiet := byID(podChecks(pods[2:], since, map[string]float64{}, "q"))
+	quiet := byID(podChecks(pods[2:], since, map[string]float64{}, "q", nil))
 	for _, id := range []string{"oom", "restarts", "crashloop"} {
 		if quiet[id].Status != "ok" {
 			t.Errorf("%s = %s, want ok when the only kill is older than the window", id, quiet[id].Status)
 		}
+	}
+}
+
+func TestPodChecksLeaveOutSkippedContainers(t *testing.T) {
+	now := time.Now()
+	sidecar := corev1.ContainerStatus{
+		Name:                 "istio-proxy",
+		State:                corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"}},
+		LastTerminationState: terminated("OOMKilled", 137, now.Add(-time.Minute)),
+	}
+	pods := []corev1.Pod{pod("api-1", corev1.PodQOSBurstable, corev1.ContainerStatus{Name: "api"}, sidecar)}
+	got := byID(podChecks(pods, now.Add(-15*time.Minute), map[string]float64{"istio-proxy": 4}, "q", []string{"istio-proxy"}))
+	for _, id := range []string{"oom", "restarts", "crashloop"} {
+		if got[id].Status != "ok" {
+			t.Errorf("%s = %+v, want ok: only the skipped sidecar failed", id, got[id])
+		}
+	}
+	if got := byID(podChecks(pods, now.Add(-15*time.Minute), map[string]float64{"istio-proxy": 4}, "q", nil)); got["oom"].Status != "bad" {
+		t.Errorf("without the skip list the sidecar's OOM kill counts: %+v", got["oom"])
 	}
 }
 

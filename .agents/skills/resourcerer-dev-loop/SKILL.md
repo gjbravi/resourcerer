@@ -40,6 +40,18 @@ from a busybox httpd. The file is `metrics.txt` so busybox serves `text/plain`, 
 names are read from the cluster, so it works with one or two workers. `pricing/on-demand-app`, `pricing/spot-app` and
 `pricing/mixed-app` are pinned to give predictable costs.
 
+## Decision models
+
+`make e2e` applies `hack/fake-decider.yaml`: a busybox httpd whose CGI script answers every `POST /v1/systemone` with
+a fixed verdict (`review`) and keeps the last request in `/tmp/last.json`, with a `DecisionModel` pointing at it. The
+checks read what was sent with `kubectl -n resourcerer exec deploy/fake-decider -- cat /tmp/last.json`, then delete it
+and restore any `DecisionModel` that was there.
+
+To look at a real model, run a decider on your machine and apply `hack/decision-model.yaml`, whose comment has the
+commands; pods reach your machine at `host.docker.internal`. On Apple Silicon decider-4b needs `DECIDER_IMAGES=0`
+(the image part wants `torchvision`) and answers in one to three seconds. Bind it to `127.0.0.1`: it has no
+authentication.
+
 ## Adding an e2e check
 
 Edit `test/e2e/run.sh`. Use `wait_for "<what>" <seconds> <command>` for things the controller reaches eventually

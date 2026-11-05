@@ -47,16 +47,20 @@ export function signals(w: Summary): Signal[] {
     });
   for (const c of r?.containers ?? []) {
     const t = c.cpuThrottledPercent ?? 0;
+    // Fixed only where the recommendation raises the limit: not for a container it leaves out (containers.skip,
+    // RequestsOnly, DoNotOptimize), which keeps its limit and its throttling.
+    const raised = t >= THROTTLED_RAISE && !!w.cpuLimitRaised?.includes(c.name);
     if (t >= levels.throttling)
       out.push({
         tone: t >= THROTTLED_RAISE ? "bad" : "warn",
         title: `CPU throttled ${t}% of the time · ${c.name}`,
-        detail:
-          t >= THROTTLED_RAISE
-            ? "The CPU limit caps it in bursts; the recommendation raises the limit."
+        detail: raised
+          ? "The CPU limit caps it in bursts; the recommendation raises the limit."
+          : t >= THROTTLED_RAISE
+            ? "The CPU limit caps it in bursts, and the recommendation leaves this container's limit as it is."
             : "The CPU limit caps it in short bursts.",
         check: { id: "throttling", container: c.name },
-        fixed: t >= THROTTLED_RAISE,
+        fixed: raised,
       });
   }
   if (w.oomKills === 0)

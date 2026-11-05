@@ -62,6 +62,35 @@ rules:
     resources: ["leases"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
+# The decision model's API token, for a managed provider, is read from resourcerer's own namespace only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-server-secrets
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "resourcerer.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-server-secrets
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "resourcerer.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-server-secrets
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}-server
+    namespace: {{ .Release.Namespace }}
+---
 # Reads for the UI; writes apply requests on Recommendations and resourcerer.io/* annotations.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -92,6 +121,10 @@ rules:
   - apiGroups: ["resourcerer.io"]
     resources: ["recommendations"]
     verbs: ["get", "list", "watch"{{ if not .Values.readOnly }}, "patch"{{ end }}]
+  # Read when a user asks the decision model about a recommendation.
+  - apiGroups: ["resourcerer.io"]
+    resources: ["decisionmodels"]
+    verbs: ["get"]
 {{- if .Values.applier.enabled }}
 ---
 # The only role that changes workload resources and HPA targets.

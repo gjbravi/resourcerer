@@ -24,7 +24,33 @@ It is recorded as an apply by `auto-deploy` in the history and the events, and c
 |---|---|---|
 | `resourcerer.io/auto-deploy` | `Disabled` | `Enabled`, `Disabled` |
 | `resourcerer.io/auto-deploy.threshold` | `10%` | A percentage, `0%` to `100%` |
+| `resourcerer.io/auto-deploy.containers` | `all` | `all`, or container names separated by commas |
 | `resourcerer.io/apply-method` | `PatchImmediateRollout` | `PatchImmediateRollout`: patch the pod template, which starts a rollout at once |
+
+## Some containers only
+
+`auto-deploy.containers` limits auto-deploy to the containers it lists; the others stay manual, with their
+recommendation on the page to [apply by hand](apply-and-revert.md#apply-some-containers-only). Auto-deploy then looks
+at those containers alone: it applies when **they** move past the threshold, and changes only them.
+
+To let auto-deploy keep the `istio-proxy` sidecars right while people decide on the application containers, optimize
+the sidecar (it is in `containers.skip` by default) and limit auto-deploy to it:
+
+```bash
+kubectl annotate namespace payments \
+  resourcerer.io/auto-deploy=Enabled \
+  resourcerer.io/containers.skip=none \
+  resourcerer.io/auto-deploy.containers=istio-proxy
+```
+
+`containers.skip` decides what resourcerer optimizes at all; `auto-deploy.containers` decides what auto-deploy may
+apply among those. Auto-deploy applies nothing, and the auto-deploy card and `status.autoDeployScope.reason` say why,
+when none of the listed containers is optimized, or when the list leaves some out while the recommendation changes an
+HPA's CPU target (that target holds only with every container's CPU applied). Names the workload does not have are
+ignored, so one namespace annotation can serve workloads with different sidecars.
+
+Once auto-deploy has applied a hash in part, it does not come back for the other containers: the hash is in the
+history. They are applied by hand, or by auto-deploy with the next recommendation if the list then includes them.
 
 ## A gradual rollout
 

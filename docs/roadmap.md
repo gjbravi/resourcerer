@@ -13,7 +13,7 @@ matter to you: a concrete use case is the most useful input.
 | Settings | [#30 OptimizationPolicy](https://github.com/gjbravi/resourcerer/issues/30) | Settings by selector instead of annotations, maximums, and per-container rules. |
 | Costs | [#27 CostProfile](https://github.com/gjbravi/resourcerer/issues/27) | Savings Plans, Reserved Instances and discounts in cost estimates. |
 | Reliability | [#28 ReliabilitySignal](https://github.com/gjbravi/resourcerer/issues/28) | Reliability signals as custom resources, so teams declare their own. |
-| Decisions | [#26 Decision models](https://github.com/gjbravi/resourcerer/issues/26) | Pluggable models behind the apply verdict. |
+| Decisions | [#26 Decision models](https://github.com/gjbravi/resourcerer/issues/26) | A second opinion on request is in. Next: auto-deploy that can require the rules and the model above a confidence, and measuring the model's calibration on past applies. |
 | Scaling | [#39 Horizontal scaling](https://github.com/gjbravi/resourcerer/issues/39) | Full HPA support and KEDA ScaledObjects. |
 
 Released changes are in the [changelog](https://github.com/gjbravi/resourcerer/blob/main/CHANGELOG.md).

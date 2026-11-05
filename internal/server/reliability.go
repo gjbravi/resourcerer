@@ -139,13 +139,14 @@ func (s *Server) reliabilityReport(ctx context.Context, rec *v1alpha1.Recommenda
 	}
 
 	pods, hpa := s.workloadPods(ctx, rec), s.workloadHPA(ctx, rec)
-	rep.Checks = append(rep.Checks, podChecks(pods, start, restarts, restartsQ)...)
+	skip := settings.ParseSkipList(rec.Status.Settings[settings.SkipContainers].Value)
+	rep.Checks = append(rep.Checks, podChecks(pods, start, restarts, restartsQ, skip)...)
 	rep.Checks = append(rep.Checks, hpaCheck(hpa), qosCheck(pods))
 	rep.Checks = slices.DeleteFunc(rep.Checks, func(c Check) bool {
 		t, builtin := builtinToggle(cfg.Builtin, c.ID)
 		return builtin && (!t.On() || ov.Disabled[builtinIDs[c.ID]])
 	})
-	rep.Checks = append(rep.Checks, s.signalChecks(ctx, ref, cfg, ov, start, end, step, rateWindow)...)
+	rep.Checks = append(rep.Checks, s.signalChecks(ctx, ref, cfg, ov, start, end, step, rateWindow, skip)...)
 	return rep, nil
 }
 
@@ -173,7 +174,7 @@ func builtinToggle(b signals.Builtin, check string) (signals.Toggle, bool) {
 
 // signalChecks evaluates the declared signals over the window, with a series for the chart. Signals without data
 // do not apply to the workload and are left out; a failing one shows its error.
-func (s *Server) signalChecks(ctx context.Context, ref prom.Ref, cfg signals.Config, ov signals.Overrides, start, end time.Time, step, rateWindow time.Duration) []Check {
+func (s *Server) signalChecks(ctx context.Context, ref prom.Ref, cfg signals.Config, ov signals.Overrides, start, end time.Time, step, rateWindow time.Duration, skip []string) []Check {
 	var out []Check
 	for _, sig := range cfg.Signals {
 		if ov.Disabled[sig.ID] {
@@ -189,7 +190,7 @@ func (s *Server) signalChecks(ctx context.Context, ref prom.Ref, cfg signals.Con
 		}
 		vars := signals.VarsFor(ref, end.Sub(start))
 		c.Query, _ = sig.Render(vars)
-		res, err := sig.Evaluate(ctx, s.Prom, vars, levels)
+		res, err := sig.Evaluate(ctx, s.Prom, vars, levels, skip)
 		if err != nil {
 			c.Status, c.Display, c.Detail = "warn", "error", "The query failed: "+err.Error()
 			out = append(out, c)
@@ -223,7 +224,8 @@ func (s *Server) overrides(ctx context.Context, rec *v1alpha1.Recommendation) si
 }
 
 // podChecks reads OOM kills, restarts and crash loops from pod status, the source the kubelet writes.
-func podChecks(pods []corev1.Pod, since time.Time, restarts map[string]float64, restartsQ string) []Check {
+// podChecks reads OOM kills, restarts and crash loops from the pods, leaving out the containers in skip.
+func podChecks(pods []corev1.Pod, since time.Time, restarts map[string]float64, restartsQ string, skip []string) []Check {
 	type exit struct {
 		pod string
 		t   *corev1.ContainerStateTerminated
@@ -233,6 +235,9 @@ func podChecks(pods []corev1.Pod, since time.Time, restarts map[string]float64, 
 	crashing := map[string]string{}
 	for _, p := range pods {
 		for _, cs := range p.Status.ContainerStatuses {
+			if slices.Contains(skip, cs.Name) {
+				continue
+			}
 			if w := cs.State.Waiting; w != nil && w.Reason == "CrashLoopBackOff" {
 				crashing[cs.Name] = p.Name
 			}
@@ -269,8 +274,10 @@ func podChecks(pods []corev1.Pod, since time.Time, restarts map[string]float64, 
 	}
 
 	total := 0.0
-	for _, v := range restarts {
-		total += math.Round(v)
+	for c, v := range restarts {
+		if !slices.Contains(skip, c) {
+			total += math.Round(v)
+		}
 	}
 	re := Check{ID: "restarts", Name: "Restarts", Status: "ok", Unit: "count", Value: total, Display: fmt.Sprint(int(total)),
 		Detail: "No container restarted.", Query: restartsQ,

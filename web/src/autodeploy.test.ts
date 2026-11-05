@@ -31,6 +31,23 @@ describe("autoDeploy", () => {
     expect(autoDeploy({ ...base, phase: "Learning" }).tone).toBe("wait");
     expect(autoDeploy({ ...base, phase: "Warning" }).text).toBe("Paused while the recommendation is Warning.");
   });
+  it("names the containers it is limited to", () => {
+    const scoped = { ...base, autoDeployScope: { containers: ["istio-proxy"], pending: true } };
+    expect(autoDeploy(scoped).text).toBe("Applies this recommendation to istio-proxy in a moment.");
+    expect(autoDeploy({ ...scoped, pending: false }).tone).toBe("on");
+    expect(autoDeploy({ ...scoped, autoDeployScope: { containers: ["istio-proxy"] } }).text).toBe(
+      "Nothing to apply in istio-proxy: requests are within 15%.",
+    );
+    expect(
+      autoDeploy({
+        ...scoped,
+        autoDeployScope: { reason: "none of the containers in auto-deploy.containers is optimized" },
+      }),
+    ).toMatchObject({
+      tone: "wait",
+      text: "Applies nothing: none of the containers in auto-deploy.containers is optimized.",
+    });
+  });
   it("does nothing within the threshold", () => {
     expect(autoDeploy({ ...base, pending: false }).text).toBe("Nothing to apply: requests are within 15%.");
   });

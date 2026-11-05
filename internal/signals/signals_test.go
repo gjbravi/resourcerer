@@ -102,3 +102,32 @@ func TestFormat(t *testing.T) {
 		}
 	}
 }
+
+func TestWorstLeavesOutSkippedContainers(t *testing.T) {
+	c := Parse(config)
+	up, down := c.Signals[0], c.Signals[1]
+	cases := []struct {
+		name string
+		sig  Signal
+		vals map[string]float64
+		skip []string
+		want *Result
+	}{
+		{name: "worst above", sig: up, vals: map[string]float64{"app": 0.02, "istio-proxy": 0.09}, want: &Result{Value: 0.09, Container: "istio-proxy"}},
+		{name: "a skipped sidecar does not hide the app", sig: up, vals: map[string]float64{"app": 0.02, "istio-proxy": 0.09},
+			skip: []string{"istio-proxy"}, want: &Result{Value: 0.02, Container: "app"}},
+		{name: "worst below", sig: down, vals: map[string]float64{"app": 0.999, "istio-proxy": 0.9}, skip: []string{"istio-proxy"},
+			want: &Result{Value: 0.999, Container: "app"}},
+		{name: "only skipped containers", sig: up, vals: map[string]float64{"istio-proxy": 0.09}, skip: []string{"istio-proxy"}},
+		{name: "a workload-level value is never skipped", sig: up, vals: map[string]float64{"": 0.03}, skip: []string{""},
+			want: &Result{Value: 0.03}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.sig.worst(tc.vals, tc.skip)
+			if (got == nil) != (tc.want == nil) || (got != nil && (got.Value != tc.want.Value || got.Container != tc.want.Container)) {
+				t.Errorf("worst = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}

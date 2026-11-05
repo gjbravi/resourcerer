@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -158,7 +159,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if r.seen(key, id) {
 			return requeue, nil
 		}
-		return requeue, r.once(key, id, func() (bool, error) { return r.apply(ctx, rec, AutoDeployUser, nil) })
+		return requeue, r.once(key, id, func() (bool, error) { return r.apply(ctx, rec, AutoDeployUser, nil, autoContainers(rec.Status)) })
 	}
 	return requeue, nil
 }
@@ -177,7 +178,11 @@ func (r *Reconciler) once(key, id string, step func() (bool, error)) error {
 
 func (r *Reconciler) autoDue(rec *v1alpha1.Recommendation) bool {
 	st := rec.Status
-	if st.Settings[settings.AutoDeploy].Value != "Enabled" || st.Phase != v1alpha1.PhaseReady || !st.Pending || st.Hash == "" {
+	pending := st.Pending
+	if s := st.AutoDeployScope; s != nil {
+		pending = s.Pending && s.Reason == "" && len(s.Containers) > 0
+	}
+	if st.Settings[settings.AutoDeploy].Value != "Enabled" || st.Phase != v1alpha1.PhaseReady || !pending || st.Hash == "" {
 		return false
 	}
 	// Do not re-apply a recommendation that was already applied, or reverted by someone.
@@ -206,10 +211,22 @@ func (r *Reconciler) handle(ctx context.Context, rec *v1alpha1.Recommendation, a
 		deferApply(d.BlockedBy)
 		return rejected(heldReason(d))
 	}
-	return r.apply(ctx, rec, ar.RequestedBy, &ar)
+	if err := Selection(rec.Status, ar.Containers); err != nil {
+		return rejected(err.Error())
+	}
+	return r.apply(ctx, rec, ar.RequestedBy, &ar, ar.Containers)
 }
 
-func (r *Reconciler) apply(ctx context.Context, rec *v1alpha1.Recommendation, by string, ar *v1alpha1.ApplyRequest) (bool, error) {
+// autoContainers is the containers auto-deploy changes: those auto-deploy.containers lists, or all.
+func autoContainers(st v1alpha1.RecommendationStatus) []string {
+	if s := st.AutoDeployScope; s != nil {
+		return s.Containers
+	}
+	return nil
+}
+
+// apply changes the containers in only, or every optimized one when only is empty.
+func (r *Reconciler) apply(ctx context.Context, rec *v1alpha1.Recommendation, by string, ar *v1alpha1.ApplyRequest, only []string) (bool, error) {
 	failed := func(msg string) (bool, error) { return false, r.finish(ctx, rec, ar, "Failed", msg) }
 	live, err := r.liveResources(ctx, rec)
 	if err != nil {
@@ -217,7 +234,7 @@ func (r *Reconciler) apply(ctx context.Context, rec *v1alpha1.Recommendation, by
 	}
 	var changes []v1alpha1.ContainerChange
 	for _, c := range rec.Status.Containers {
-		if c.Skipped {
+		if c.Skipped || (len(only) > 0 && !slices.Contains(only, c.Name)) {
 			continue
 		}
 		changes = append(changes, v1alpha1.ContainerChange{Name: c.Name, From: live[c.Name], To: c.Recommended})
@@ -271,40 +288,71 @@ func (r *Reconciler) revert(ctx context.Context, rec *v1alpha1.Recommendation, a
 
 // liveResources reads container resources from the API server, not the cache, so history records what was really replaced.
 func (r *Reconciler) liveResources(ctx context.Context, rec *v1alpha1.Recommendation) (map[string]corev1.ResourceRequirements, error) {
-	w, err := workload.Get(ctx, r.APIReader, rec.Spec.TargetRef.Kind, client.ObjectKey{Namespace: rec.Namespace, Name: rec.Spec.TargetRef.Name})
+	cs, err := r.liveContainers(ctx, rec)
 	if err != nil {
 		return nil, err
 	}
 	out := map[string]corev1.ResourceRequirements{}
-	for _, c := range w.Containers() {
+	for _, c := range cs {
 		out[c.Name] = c.Resources
 	}
 	return out, nil
 }
 
-// patchWorkload server-side applies only the resources of the listed containers; other fields keep their owners.
+// liveContainers reads the pod template's containers from the API server, in their order.
+func (r *Reconciler) liveContainers(ctx context.Context, rec *v1alpha1.Recommendation) ([]corev1.Container, error) {
+	w, err := workload.Get(ctx, r.APIReader, rec.Spec.TargetRef.Kind, client.ObjectKey{Namespace: rec.Namespace, Name: rec.Spec.TargetRef.Name})
+	if err != nil {
+		return nil, err
+	}
+	return w.Containers(), nil
+}
+
+// applyContainers is the containers of a server-side apply: every container of the pod template, the changed ones
+// with their new resources and the others with the ones they have now. Server-side apply removes the fields a manager
+// owned and leaves out, so an apply that named only the changed containers would delete what an earlier apply set on
+// the others, such as after an apply of some containers only, or after a container joined containers.skip.
+// They keep the template's order: server-side apply orders a list the way the manager that owns it lists it.
+func applyContainers(live []corev1.Container, changes []v1alpha1.ContainerChange) []map[string]any {
+	to := map[string]corev1.ResourceRequirements{}
+	for _, c := range changes {
+		to[c.Name] = c.To
+	}
+	out := make([]map[string]any, 0, len(live))
+	for _, c := range live {
+		name := c.Name
+		r, changed := to[name]
+		if !changed {
+			r = c.Resources
+		}
+		res := map[string]any{}
+		if len(r.Requests) > 0 {
+			res["requests"] = r.Requests
+		}
+		if len(r.Limits) > 0 {
+			res["limits"] = r.Limits
+		}
+		out = append(out, map[string]any{"name": name, "resources": res})
+	}
+	return out
+}
+
+// patchWorkload server-side applies the resources of the pod template's containers; other fields keep their owners.
 func (r *Reconciler) patchWorkload(ctx context.Context, rec *v1alpha1.Recommendation, changes []v1alpha1.ContainerChange) error {
 	// A Rollout with spec.workloadRef takes its template from a Deployment; changing it starts a new rollout.
 	t := rec.Spec.TargetRef
 	if rec.Status.TemplateRef != nil {
 		t = *rec.Status.TemplateRef
 	}
-	containers := make([]map[string]any, 0, len(changes))
-	for _, c := range changes {
-		res := map[string]any{}
-		if len(c.To.Requests) > 0 {
-			res["requests"] = c.To.Requests
-		}
-		if len(c.To.Limits) > 0 {
-			res["limits"] = c.To.Limits
-		}
-		containers = append(containers, map[string]any{"name": c.Name, "resources": res})
+	live, err := r.liveContainers(ctx, rec)
+	if err != nil {
+		return err
 	}
 	body, err := json.Marshal(map[string]any{
 		"apiVersion": t.APIVersion,
 		"kind":       t.Kind,
 		"metadata":   map[string]any{"name": t.Name, "namespace": rec.Namespace},
-		"spec":       map[string]any{"template": map[string]any{"spec": map[string]any{"containers": containers}}},
+		"spec":       map[string]any{"template": map[string]any{"spec": map[string]any{"containers": applyContainers(live, changes)}}},
 	})
 	if err != nil {
 		return err

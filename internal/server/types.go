@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/gjbravi/resourcerer/api/v1alpha1"
+	"github.com/gjbravi/resourcerer/internal/decision"
 	"github.com/gjbravi/resourcerer/internal/prom"
 	"github.com/gjbravi/resourcerer/internal/signals"
 )
@@ -113,27 +114,30 @@ type Score struct {
 }
 
 type Summary struct {
-	Namespace    string                `json:"namespace"`
-	Kind         string                `json:"kind"`
-	Name         string                `json:"name"`
-	Replicas     int32                 `json:"replicas"`
-	AvgReplicas  float64               `json:"avgReplicas"`
-	Phase        string                `json:"phase"`
-	Message      string                `json:"message,omitempty"`
-	Score        *Score                `json:"score,omitempty"`
-	Current      Totals                `json:"current"`
-	Recommended  Totals                `json:"recommended"`
-	Pending      bool                  `json:"pending"`
-	AutoDeploy   bool                  `json:"autoDeploy"`
-	OOMKills     int32                 `json:"oomKills"`
-	Reliability  *v1alpha1.Reliability `json:"reliability,omitempty"`
-	NoRequests   bool                  `json:"noRequests"`
-	Under        bool                  `json:"under"`
-	HPA          []string              `json:"hpa,omitempty"`
-	GeneratedAt  string                `json:"generatedAt,omitempty"`
-	LastApplied  string                `json:"lastAppliedAt,omitempty"`
-	Hash         string                `json:"hash,omitempty"`
-	NamespaceSet bool                  `json:"namespaceAnnotated"`
+	Namespace   string                `json:"namespace"`
+	Kind        string                `json:"kind"`
+	Name        string                `json:"name"`
+	Replicas    int32                 `json:"replicas"`
+	AvgReplicas float64               `json:"avgReplicas"`
+	Phase       string                `json:"phase"`
+	Message     string                `json:"message,omitempty"`
+	Score       *Score                `json:"score,omitempty"`
+	Current     Totals                `json:"current"`
+	Recommended Totals                `json:"recommended"`
+	Pending     bool                  `json:"pending"`
+	AutoDeploy  bool                  `json:"autoDeploy"`
+	OOMKills    int32                 `json:"oomKills"`
+	Reliability *v1alpha1.Reliability `json:"reliability,omitempty"`
+	NoRequests  bool                  `json:"noRequests"`
+	Under       bool                  `json:"under"`
+	HPA         []string              `json:"hpa,omitempty"`
+	// CPULimitRaised names the containers whose CPU limit the recommendation raises: their throttling is fixed by
+	// applying. A container left out (containers.skip, RequestsOnly) keeps its limit and stays throttled.
+	CPULimitRaised []string `json:"cpuLimitRaised,omitempty"`
+	GeneratedAt    string   `json:"generatedAt,omitempty"`
+	LastApplied    string   `json:"lastAppliedAt,omitempty"`
+	Hash           string   `json:"hash,omitempty"`
+	NamespaceSet   bool     `json:"namespaceAnnotated"`
 }
 
 type Container struct {
@@ -189,16 +193,18 @@ type Detail struct {
 	// Evidence is how the recommendation holds up against the usage history.
 	Evidence *v1alpha1.Evidence `json:"evidence,omitempty"`
 	// Pricing is how the workload's costs were priced.
-	Pricing         *v1alpha1.Pricing `json:"pricing,omitempty"`
-	NextScheduleAt  string            `json:"nextScheduleAt,omitempty"`
-	Containers      []Container       `json:"containers"`
-	HPARec          *HPA              `json:"hpaRecommendation,omitempty"`
-	Settings        []SettingInfo     `json:"settings"`
-	Warnings        []string          `json:"warnings,omitempty"`
-	History         []History         `json:"history"`
-	Events          []Event           `json:"events"`
-	LastApplyResult *ApplyResult      `json:"lastApplyResult,omitempty"`
-	ApplyMethod     string            `json:"applyMethod"`
+	Pricing *v1alpha1.Pricing `json:"pricing,omitempty"`
+	// AutoDeployScope limits auto-deploy to some containers, when auto-deploy.containers lists them.
+	AutoDeployScope *v1alpha1.AutoDeployScope `json:"autoDeployScope,omitempty"`
+	NextScheduleAt  string                    `json:"nextScheduleAt,omitempty"`
+	Containers      []Container               `json:"containers"`
+	HPARec          *HPA                      `json:"hpaRecommendation,omitempty"`
+	Settings        []SettingInfo             `json:"settings"`
+	Warnings        []string                  `json:"warnings,omitempty"`
+	History         []History                 `json:"history"`
+	Events          []Event                   `json:"events"`
+	LastApplyResult *ApplyResult              `json:"lastApplyResult,omitempty"`
+	ApplyMethod     string                    `json:"applyMethod"`
 	// ApplyPolicy is when an apply may start, from the policies that select the workload.
 	ApplyPolicy *v1alpha1.ApplyPolicyStatus `json:"applyPolicy,omitempty"`
 	// TemplateKind and TemplateName name where resources are applied, when not the workload itself.
@@ -285,4 +291,24 @@ type PlacementBucket struct {
 	T        float64            `json:"t"`
 	Requests map[string]float64 `json:"requests"`
 	Cost     map[string]float64 `json:"cost"`
+}
+
+// DecisionReport is the decision model's opinion on a recommendation, asked for by the user. Without Configured
+// there is no model to ask; Reason says why there is no evaluation, when there is none.
+type DecisionReport struct {
+	Configured bool        `json:"configured"`
+	Model      string      `json:"model,omitempty"`
+	Reason     string      `json:"reason,omitempty"`
+	Evaluation *Evaluation `json:"evaluation,omitempty"`
+}
+
+// Evaluation is one answer of the model: apply, review or wait, with the probability of each.
+type Evaluation struct {
+	// Version is the model and version the server reported answering with.
+	Version     string `json:"version,omitempty"`
+	EvaluatedAt string `json:"evaluatedAt"`
+	// Hash is the recommendation evaluated.
+	Hash    string            `json:"hash"`
+	Choice  string            `json:"choice"`
+	Options []decision.Option `json:"options"`
 }

@@ -2827,3 +2827,112 @@ body:has(.rz.dark) {
 .rz-infotip .pop .rz-dim {
   font-size: 0.75rem;
 }
+
+/* The rule-based verdict and the decision model's second opinion, side by side */
+.rz-safety {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.rz-actionsrow + .rz-safety {
+  margin-top: 14px;
+}
+.rz-safety > .rz-verdict {
+  margin: 0;
+  min-width: 0;
+}
+.rz-verdict .kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  margin-bottom: 2px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+/* A busy button stays readable while its icon spins; disabled alone would fade it. */
+.rz-model .kicker .rz-btn[aria-busy="true"] {
+  opacity: 1;
+  cursor: progress;
+}
+.rz-model .kicker .rz-btn {
+  flex: none;
+  white-space: nowrap;
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
+  gap: 5px;
+}
+.rz-verdict.t-model {
+  border-left-color: var(--accent);
+  background: linear-gradient(90deg, var(--accent-soft), var(--panel) 60%);
+}
+.rz-verdict.t-model .ic {
+  color: var(--accent);
+}
+.rz-verdict.t-wait .ic {
+  color: var(--dim);
+}
+.rz-model .ask {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink2);
+}
+.rz-model .opts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(60px, 1fr) 3em;
+  gap: 5px 10px;
+  align-items: center;
+  font-size: 0.78rem;
+  max-width: 420px;
+}
+.rz-model .opts li {
+  display: contents;
+}
+.rz-model .opts li.chosen .nm,
+.rz-model .opts li.chosen .p {
+  font-weight: 700;
+  color: var(--text);
+}
+.rz-model .nm {
+  color: var(--ink2);
+}
+.rz-model .bar {
+  height: 6px;
+  border-radius: 99px;
+  background: var(--track);
+  overflow: hidden;
+}
+.rz-model .bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.rz-model.t-ok .bar i {
+  background: var(--c-rec);
+}
+.rz-model.t-warn .bar i {
+  background: var(--c-curlim);
+}
+.rz-model .p {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink2);
+}
+.rz-model .foot {
+  margin: 10px 0 0;
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+
+/* A container left out of a partial apply, in the apply dialog */
+.rz-table tr.rz-off td:not(:first-child) {
+  opacity: 0.45;
+}

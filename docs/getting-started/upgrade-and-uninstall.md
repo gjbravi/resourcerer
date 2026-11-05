@@ -68,12 +68,13 @@ What stays:
 - **Applied requests and limits stay on your workloads.** Uninstalling does not revert anything. To go back to the
   previous values, revert the workloads from the UI first, or let your next deploy from Git overwrite them.
 - **HPA targets** changed by an apply stay as they are, for the same reason.
-- **The CRDs and every `Recommendation`, `ApplyPolicy` and `ClusterApplyPolicy`.** Every CRD carries
+- **The CRDs and every `Recommendation`, `ApplyPolicy`, `ClusterApplyPolicy` and `DecisionModel`.** Every CRD carries
   `helm.sh/resource-policy: keep`, so uninstalling `resourcerer-crds` does not delete them. Remove them when you are
   sure, which deletes every object of those kinds:
 
     ```bash
-    kubectl delete crd recommendations.resourcerer.io applypolicies.resourcerer.io clusterapplypolicies.resourcerer.io
+    kubectl delete crd recommendations.resourcerer.io applypolicies.resourcerer.io clusterapplypolicies.resourcerer.io \
+      decisionmodels.resourcerer.io
     ```
 
 - **Annotations** `resourcerer.io/*` on namespaces and workloads, and the `resourcerer.io/enabled` labels. They do

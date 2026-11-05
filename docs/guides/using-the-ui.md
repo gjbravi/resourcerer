@@ -45,7 +45,9 @@ holds the apply, the button says why and until when. The tabs:
 
 Cost and requests before and after, and **How the cost is calculated**: the rates, the replica average, and with
 `cost.allocation: node` where the workload ran (capacity types and instance types). The verdict's reasons are
-detailed here. See [Verdict and evidence](../concepts/verdict-and-evidence.md).
+detailed here. See [Verdict and evidence](../concepts/verdict-and-evidence.md). With a
+[decision model](decision-models.md) configured, a second block beside the verdict asks it for a second opinion when
+you click **Evaluate**.
 
 ### Recommendation
 

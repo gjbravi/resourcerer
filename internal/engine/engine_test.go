@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -204,5 +205,42 @@ func TestShortLearningPeriodNeedsFewerSamples(t *testing.T) {
 	in.Expected = 8
 	if p := Recommend(in).Phase; p == "Pending" {
 		t.Errorf("6 of 8 expected samples should be enough, got Pending")
+	}
+}
+
+func TestScope(t *testing.T) {
+	c := func(name string, req, rec float64) (ContainerInput, ContainerOutput) {
+		return ContainerInput{Name: name, Requests: Values{CPU: req}}, ContainerOutput{Name: name, Requests: Values{CPU: rec}}
+	}
+	app, appOut := c("app", 1, 0.2)
+	worker, workerOut := c("worker", 0.1, 0.1)
+	proxy, proxyOut := c("istio-proxy", 0.1, 0.1)
+	proxyOut.Skipped = true
+	in := []ContainerInput{app, worker, proxy}
+	out := Output{Containers: []ContainerOutput{appOut, workerOut, proxyOut}}
+	withHPA := out
+	withHPA.HPA = &HPAOutput{Name: "orders", Current: 70, Recommended: 80}
+	cases := []struct {
+		name  string
+		names []string
+		out   Output
+		want  AutoScope
+	}{
+		{name: "a changing container", names: []string{"app"}, out: out, want: AutoScope{Containers: []string{"app"}, Pending: true}},
+		{name: "a container within the threshold", names: []string{"worker"}, out: out, want: AutoScope{Containers: []string{"worker"}}},
+		{name: "in the workload's order", names: []string{"worker", "app"}, out: out, want: AutoScope{Containers: []string{"app", "worker"}, Pending: true}},
+		{name: "a skipped or unknown container is dropped", names: []string{"istio-proxy", "db"}, out: out,
+			want: AutoScope{Reason: "none of the containers in auto-deploy.containers is optimized"}},
+		{name: "partial with an HPA", names: []string{"app"}, out: withHPA,
+			want: AutoScope{Containers: []string{"app"}, Reason: "HPA orders's new target needs every container's CPU, and auto-deploy.containers leaves some out"}},
+		{name: "all with an HPA", names: []string{"app", "worker"}, out: withHPA, want: AutoScope{Containers: []string{"app", "worker"}, Pending: true}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Scope(tc.names, in, tc.out, 0.1)
+			if !slices.Equal(got.Containers, tc.want.Containers) || got.Pending != tc.want.Pending || got.Reason != tc.want.Reason {
+				t.Errorf("Scope = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }

@@ -17,6 +17,7 @@ const base: Summary = {
   under: false,
   namespaceAnnotated: false,
   reliability: { containers: [{ name: "burner", cpuThrottledPercent: 71 }], restarts: 2 },
+  cpuLimitRaised: ["burner"],
 };
 
 const report = (checks: Partial<Check>[]): ReliabilityReport => ({
@@ -80,6 +81,18 @@ describe("declared signals and severity", () => {
     expect(severity(custom("warn")).level).toBe("warning");
     expect(severity({ ...base, reliability: {} }).level).toBe("healthy");
     expect(severity(custom("critical")).rank).toBeGreaterThan(severity(custom("warn")).rank);
+  });
+
+  it("counts throttling as fixed only where the recommendation raises the limit", () => {
+    const sidecar = {
+      ...base,
+      cpuLimitRaised: undefined,
+      reliability: { containers: [{ name: "istio-proxy", cpuThrottledPercent: 30 }] },
+    };
+    const [s] = signals(sidecar);
+    expect(s).toMatchObject({ tone: "bad", fixed: false });
+    expect(s.detail).toContain("leaves this container's limit as it is");
+    expect(severity(sidecar)).toMatchObject({ level: "critical", label: "1 critical" });
   });
 
   it("uses the configured warning levels of built-in signals", () => {

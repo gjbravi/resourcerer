@@ -91,6 +91,12 @@ wait_for "recommendations leave Pending once history exists" 360 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.phase}') =~ ^(Learning|Ready)$ ]]"
 wait_for "istio-proxy is not optimized" 60 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.containers[?(@.name==\"istio-proxy\")].skipped}') == true ]]"
+# The demo's istio-proxy is throttled by its CPU limit; a container resourcerer does not optimize stays out of
+# reliability, so it cannot weigh on applying. Its live checks leave it out too.
+wait_for "a skipped container is left out of the recommendation's reliability" 120 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-api -o json | jq -e '.status.generatedAt and ([.status.reliability.containers[]?.name] | index(\"istio-proxy\") | not)'"
+wait_for "a skipped container is left out of the live reliability checks" 60 bash -c \
+  "curl -fs '$API/workloads/demo/Deployment/api/reliability?window=15m' | jq -e '[.checks[] | select(.container == \"istio-proxy\")] | length == 0'"
 wait_for "HPA target is recommended for web" 360 bash -c \
   "[[ -n \$(kubectl --context $CTX -n demo get rec deployment-web -o jsonpath='{.status.hpa.recommended}') ]]"
 
@@ -136,6 +142,27 @@ wait_for "apply is recorded in history" 30 bash -c \
 
 curl -fs -X POST "$API/workloads/demo/Deployment/api/revert" >/dev/null
 wait_for "Revert restores the previous requests ($before)" 60 bash -c "[[ \$(kubectl --context $CTX -n demo get deploy api -o jsonpath='{.spec.template.spec.containers[?(@.name==\"api\")].resources.requests.cpu}') == '$before' ]]"
+
+# demo/orders runs several containers in one pod: an apply limited to one of them leaves the others alone, and its
+# revert restores only that one.
+wait_for "a pod with several containers has a recommendation to apply" 360 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.pending and (.status.phase == \"Learning\" or .status.phase == \"Ready\")'"
+orders_cpu() { echo "kubectl --context $CTX -n demo get deploy orders -o jsonpath='{.spec.template.spec.containers[?(@.name==\"$1\")].resources.requests.cpu}'"; }
+app_before=$(eval "$(orders_cpu app)") worker_before=$(eval "$(orders_cpu worker)")
+hash=$(rec_field demo deployment-orders '{.status.hash}')
+worker_want=$(rec_field demo deployment-orders '{.status.containers[?(@.name=="worker")].recommended.requests.cpu}')
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/workloads/demo/Deployment/orders/apply" \
+  -d "{\"hash\":\"$hash\",\"containers\":[\"istio-proxy\"]}")
+[[ "$code" == 409 ]] && pass "an apply limited to a container resourcerer does not optimize is refused" \
+  || fail "an apply limited to a container resourcerer does not optimize is refused (got $code)"
+curl -fs -X POST "$API/workloads/demo/Deployment/orders/apply" -d "{\"hash\":\"$hash\",\"containers\":[\"worker\"]}" >/dev/null
+wait_for "an apply limited to one container patches only it (worker $worker_before → $worker_want, app stays $app_before)" 60 bash -c \
+  "[[ \$($(orders_cpu worker)) == '$worker_want' && \$($(orders_cpu app)) == '$app_before' ]]"
+wait_for "its history lists that container only" 30 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.history[0].action == \"Apply\" and ([.status.history[0].containers[].name] == [\"worker\"])'"
+curl -fs -X POST "$API/workloads/demo/Deployment/orders/revert" >/dev/null
+wait_for "its revert restores that container only" 60 bash -c \
+  "[[ \$($(orders_cpu worker)) == '$worker_before' && \$($(orders_cpu app)) == '$app_before' ]]"
 
 curl -fs -X PUT "$API/workloads/demo/Deployment/worker/settings" -d '{"key":"memory.optimization-goal","value":"Savings"}' >/dev/null
 wait_for "a workload setting is stored as an annotation and resolved" 60 bash -c \
@@ -345,6 +372,53 @@ wait_for "the applier exports the apply counters" 60 metric '^resourcerer_apply_
 wait_for "the applier counts the holds by the rule that held them" 60 metric '^resourcerer_apply_deferred_total\{reason="window"\} [1-9]'
 wait_for "the applier counts the reverts" 60 metric '^resourcerer_apply_reverted_total\{reason="manual"\} [1-9]'
 wait_for "a policy exports the slots it has left" 60 metric '^resourcerer_applypolicy_slots_available\{policy="ClusterApplyPolicy/e2e-slots"\}'
+
+# auto-deploy.containers limits auto-deploy to some containers. Naming only istio-proxy, which containers.skip leaves
+# out by default, applies nothing and says why; once it is optimized, auto-deploy changes it alone.
+k -n demo annotate deploy orders --overwrite resourcerer.io/auto-deploy=Enabled resourcerer.io/auto-deploy.containers=istio-proxy >/dev/null
+wait_for "auto-deploy limited to a container that is not optimized applies nothing, and says why" 120 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.autoDeployScope.reason | test(\"none of the containers\")'"
+orders_resources() { kubectl --context "$CTX" -n demo get deploy orders -o json | jq -c "[.spec.template.spec.containers[] | select(.name != \"istio-proxy\") | {name, resources}]"; }
+others_before=$(orders_resources)
+k -n demo annotate deploy orders --overwrite resourcerer.io/containers.skip=none >/dev/null
+wait_for "auto-deploy limited to istio-proxy changes it alone once the recommendation is Ready" 900 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.history[0].by == \"auto-deploy\" and ([.status.history[0].containers[].name] == [\"istio-proxy\"])'"
+# Server-side apply removes the fields a manager owned and leaves out: the earlier apply and revert of worker must
+# survive an apply that changes istio-proxy alone.
+[[ "$(orders_resources)" == "$others_before" ]] && pass "the other containers keep every request and limit" \
+  || fail "the other containers keep every request and limit: $others_before → $(orders_resources)"
+order=$(k -n demo get deploy orders -o jsonpath='{.spec.template.spec.containers[*].name}')
+[[ "$order" == "app worker log-shipper istio-proxy" ]] && pass "the containers keep their order" \
+  || fail "the containers keep their order: $order"
+k -n demo annotate deploy orders resourcerer.io/auto-deploy- resourcerer.io/auto-deploy.containers- resourcerer.io/containers.skip- >/dev/null
+curl -fs -X POST "$API/workloads/demo/Deployment/orders/revert" >/dev/null
+
+# The decision model is asked only when a user evaluates a recommendation, from the server, and only about one with
+# something to apply. A fake decider answers a fixed verdict and keeps what it was sent.
+fake_decider="$(dirname "$0")/../../hack/fake-decider.yaml"
+saved_model=$(k get decisionmodel default -o json 2>/dev/null | jq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.generation, .metadata.managedFields)' || true)
+k apply -f "$fake_decider" >/dev/null
+k -n resourcerer rollout status deploy/fake-decider --timeout 120s >/dev/null
+target=$(curl -fs "$API/workloads" | jq -r '[.[] | select(.pending and (.phase == "Ready" or .phase == "Learning"))][0] | "\(.namespace)/\(.kind)/\(.name)"')
+[[ "$target" != "null/null/null" ]] || fail "a workload with something to apply for the decision model"
+dm() { curl -fs "$API/workloads/$target/decision$1"; }
+dm "" | jq -e '.configured and .model == "fake-decider" and (.evaluation == null)' >/dev/null \
+  && pass "the decision model is not asked before a user evaluates" \
+  || fail "the decision model is not asked before a user evaluates"
+wait_for "evaluating returns the model's verdict with every option" 60 bash -c \
+  "curl -fs '$API/workloads/$target/decision?evaluate=1' | jq -e '.evaluation.choice == \"review\" and .evaluation.version == \"fake-decider-1\" and ([.evaluation.options[].name] == [\"apply\", \"review\", \"wait\"])' >/dev/null"
+dm "" | jq -e '.evaluation.choice == "review"' >/dev/null \
+  && pass "the evaluation is kept for the recommendation" || fail "the evaluation is kept for the recommendation"
+sent=$(k -n resourcerer exec deploy/fake-decider -- cat /tmp/last.json)
+jq -e '.state.recommendation and .state.replay and .state.fixes and .questions.verdict.type == "choice"' <<<"$sent" >/dev/null \
+  && pass "the model is sent the recommendation, its replay and what applying fixes" \
+  || fail "the model is sent the recommendation, its replay and what applying fixes"
+# Container names are sent and often match the workload's name; the namespace never is.
+! grep -qw "${target%%/*}" <<<"$(jq -c .state <<<"$sent")" \
+  && pass "the state does not name the namespace" \
+  || fail "the state does not name the namespace: $(jq -c .state <<<"$sent")"
+k delete -f "$fake_decider" --ignore-not-found >/dev/null
+if [[ -n "$saved_model" ]]; then k apply -f - <<<"$saved_model" >/dev/null; fi
 
 # The server ends the placement window at the last full minute and caches the answer for minutes, so the first
 # request must come after the minute in which the controller's allocation above saw where on-demand-app ran.

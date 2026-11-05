@@ -4,6 +4,7 @@ package settings
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -41,6 +42,7 @@ const (
 	Schedule       = "schedule"
 	AutoDeploy     = "auto-deploy"
 	AutoThreshold  = "auto-deploy.threshold"
+	AutoContainers = "auto-deploy.containers"
 	ApplyMethod    = "apply-method"
 	CPULimits      = "cpu.limits-policy"
 	MemoryLimits   = "memory.limits-policy"
@@ -65,6 +67,7 @@ var All = []Definition{
 	{Key: Schedule, Default: "@daily", Validate: func(s string) error { _, err := ParseSchedule(s); return err }},
 	{Key: AutoDeploy, Default: "Disabled", Options: []string{"Enabled", "Disabled"}},
 	{Key: AutoThreshold, Default: "10%", Validate: func(s string) error { _, err := ParsePercent(s); return err }},
+	{Key: AutoContainers, Default: "all", Validate: validateContainerList},
 	{Key: ApplyMethod, Default: "PatchImmediateRollout", Options: []string{"PatchImmediateRollout"}},
 	{Key: CPULimits, Default: "RequestsRaiseLimitsIfNeeded", Options: policies},
 	{Key: MemoryLimits, Default: "RequestsRaiseLimitsIfNeeded", Options: policies},
@@ -213,6 +216,33 @@ func validateRatio(s string) error {
 	return nil
 }
 
+// containerName is a DNS-1123 label, what Kubernetes accepts as a container name.
+var containerName = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+
+func validateContainerList(s string) error {
+	if s == "all" {
+		return nil
+	}
+	names := ParseSkipList(s)
+	if len(names) == 0 {
+		return fmt.Errorf("%q: want all or container names separated by commas", s)
+	}
+	for _, n := range names {
+		if !containerName.MatchString(n) {
+			return fmt.Errorf("%q is not a container name", n)
+		}
+	}
+	return nil
+}
+
+// AutoDeployContainers is the containers auto-deploy may change; nil means every one the recommendation changes.
+func (e Effective) AutoDeployContainers() []string {
+	if v := e.Get(AutoContainers); v != "all" {
+		return ParseSkipList(v)
+	}
+	return nil
+}
+
 func validateQuantity(s string) error {
 	_, err := resource.ParseQuantity(s)
 	return err
@@ -233,8 +263,10 @@ func (e Effective) Duration(key string) time.Duration {
 	return d
 }
 
-func (e Effective) SkipList() []string {
-	v := e.Get(SkipContainers)
+func (e Effective) SkipList() []string { return ParseSkipList(e.Get(SkipContainers)) }
+
+// ParseSkipList reads a containers.skip value: names separated by commas, or "none".
+func ParseSkipList(v string) []string {
 	if v == "" || v == "none" {
 		return nil
 	}

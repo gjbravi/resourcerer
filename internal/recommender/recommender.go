@@ -237,6 +237,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	rec.Status.NextScheduleAt = &metav1.Time{Time: next}
 	rec.Status.Hash = hash
 	rec.Status.Pending = out.Phase != "Pending" && engine.Pending(in.Containers, out, threshold)
+	rec.Status.AutoDeployScope = nil
+	if names := eff.AutoDeployContainers(); names != nil {
+		s := engine.Scope(names, in.Containers, out, threshold)
+		rec.Status.AutoDeployScope = &v1alpha1.AutoDeployScope{Containers: s.Containers, Pending: out.Phase != "Pending" && s.Pending, Reason: s.Reason}
+	}
 	rec.Status.Settings = toSettings(eff)
 	rec.Status.Warnings = eff.Warnings
 	rec.Status.TargetLabels = w.Labels()
@@ -267,11 +272,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 	}
 	since := now.Add(-eff.Duration(settings.LearningPeriod))
-	rec.Status.OOMKills = int32(r.oomKills(ctx, w, since))
+	// Containers resourcerer does not optimize are left out of reliability: applying never changes them, so what
+	// they show says nothing about whether to apply.
+	skip := eff.SkipList()
+	rec.Status.OOMKills = int32(r.oomKills(ctx, w, since, skip))
 	rel := cluster.Reliability(defaults)
 	ov := signals.OverridesFrom(ns.Annotations, obj.GetAnnotations())
-	rec.Status.Reliability = r.reliability(ctx, w, in.Containers, since, rel.Builtin, ov)
-	rec.Status.Reliability.Signals = r.signals(ctx, w, rel, ov, eff.Duration(settings.LearningPeriod))
+	rec.Status.Reliability = r.reliability(ctx, w, in.Containers, since, rel.Builtin, ov, skip)
+	rec.Status.Reliability.Signals = r.signals(ctx, w, rel, ov, eff.Duration(settings.LearningPeriod), skip)
 	if err := r.Status().Patch(ctx, rec, patch); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -408,10 +416,13 @@ func (r *Reconciler) oomContainers(ctx context.Context, w *workload.Workload, si
 }
 
 // oomKills approximates kills in the window by restarts of containers whose last termination was an OOM kill.
-func (r *Reconciler) oomKills(ctx context.Context, w *workload.Workload, since time.Time) int {
+func (r *Reconciler) oomKills(ctx context.Context, w *workload.Workload, since time.Time, skip []string) int {
 	n := 0
 	for _, p := range r.pods(ctx, w) {
 		for _, cs := range p.Status.ContainerStatuses {
+			if slices.Contains(skip, cs.Name) {
+				continue
+			}
 			if t := cs.LastTerminationState.Terminated; t != nil && t.Reason == "OOMKilled" && t.FinishedAt.After(since) {
 				n += int(max(cs.RestartCount, 1))
 			}
@@ -421,7 +432,7 @@ func (r *Reconciler) oomKills(ctx context.Context, w *workload.Workload, since t
 }
 
 // reliability collects signals that requests or limits are too tight, beyond OOM kills.
-func (r *Reconciler) reliability(ctx context.Context, w *workload.Workload, cs []engine.ContainerInput, since time.Time, b signals.Builtin, ov signals.Overrides) *v1alpha1.Reliability {
+func (r *Reconciler) reliability(ctx context.Context, w *workload.Workload, cs []engine.ContainerInput, since time.Time, b signals.Builtin, ov signals.Overrides, skip []string) *v1alpha1.Reliability {
 	on := func(id string, t signals.Toggle) bool { return t.On() && !ov.Disabled[id] }
 	rel := &v1alpha1.Reliability{}
 	defer func() {
@@ -452,6 +463,9 @@ func (r *Reconciler) reliability(ctx context.Context, w *workload.Workload, cs [
 		}
 	}()
 	for _, c := range cs {
+		if slices.Contains(skip, c.Name) {
+			continue
+		}
 		cr := v1alpha1.ContainerReliability{Name: c.Name, CPUThrottledPercent: int32(math.Round(c.CPUThrottled * 100))}
 		if lim := c.Limits[engine.Memory]; lim > 0 && len(c.Memory) > 0 {
 			cr.MemoryPeakPercent = int32(math.Round(slices.Max(c.Memory) / lim * 100))
@@ -466,6 +480,9 @@ func (r *Reconciler) reliability(ctx context.Context, w *workload.Workload, cs [
 			rel.BestEffortPods++
 		}
 		for _, s := range p.Status.ContainerStatuses {
+			if slices.Contains(skip, s.Name) {
+				continue
+			}
 			if s.State.Waiting != nil && s.State.Waiting.Reason == "CrashLoopBackOff" {
 				crashing[s.Name] = true
 			}
@@ -488,14 +505,14 @@ func (r *Reconciler) reliability(ctx context.Context, w *workload.Workload, cs [
 
 // signals evaluates the declared reliability signals over the learning period. A signal without data does not apply
 // to the workload; one that fails is logged and left out, so a bad query never blocks the recommendation.
-func (r *Reconciler) signals(ctx context.Context, w *workload.Workload, cfg signals.Config, ov signals.Overrides, learning time.Duration) []v1alpha1.SignalStatus {
+func (r *Reconciler) signals(ctx context.Context, w *workload.Workload, cfg signals.Config, ov signals.Overrides, learning time.Duration, skip []string) []v1alpha1.SignalStatus {
 	vars := signals.VarsFor(prom.Ref{Namespace: w.Namespace(), Kind: w.Kind, Name: w.Name()}, learning)
 	var out []v1alpha1.SignalStatus
 	for _, s := range cfg.Signals {
 		if ov.Disabled[s.ID] {
 			continue
 		}
-		res, err := s.Evaluate(ctx, r.Prom, vars, s.LevelsWith(ov))
+		res, err := s.Evaluate(ctx, r.Prom, vars, s.LevelsWith(ov), skip)
 		if err != nil {
 			log.FromContext(ctx).V(1).Info("evaluate reliability signal", "signal", s.ID, "error", err.Error())
 			continue

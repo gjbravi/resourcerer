@@ -359,3 +359,107 @@ func TestARecreatedRecommendationIsAppliedAgain(t *testing.T) {
 		t.Fatalf("the recreated Recommendation should be applied: %+v", st.History)
 	}
 }
+
+func TestManualApplyOfSomeContainers(t *testing.T) {
+	f := newFixture(t, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+	ctx := context.Background()
+	key := types.NamespacedName{Namespace: "demo", Name: "api"}
+	cpu := func(v string) corev1.ResourceRequirements {
+		return corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(v)}}
+	}
+	requests := func() map[string]string {
+		var d appsv1.Deployment
+		if err := f.reconciler.Get(ctx, key, &d); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, c := range d.Spec.Template.Spec.Containers {
+			out[c.Name] = c.Resources.Requests.Cpu().String()
+		}
+		return out
+	}
+	var d appsv1.Deployment
+	if err := f.reconciler.Get(ctx, key, &d); err != nil {
+		t.Fatal(err)
+	}
+	d.Spec.Template.Spec.Containers = append(d.Spec.Template.Spec.Containers, corev1.Container{Name: "worker", Resources: cpu("200m")})
+	if err := f.reconciler.Update(ctx, &d); err != nil {
+		t.Fatal(err)
+	}
+	f.update(t, false, func(rec *v1alpha1.Recommendation) {
+		rec.Status.Settings[settings.AutoDeploy] = v1alpha1.Setting{Value: "Disabled", Source: "cluster"}
+		rec.Status.Containers = append(rec.Status.Containers, v1alpha1.ContainerRecommendation{Name: "worker", Current: cpu("200m"), Recommended: cpu("100m")})
+	})
+	request := func(id string, action v1alpha1.Action, containers ...string) {
+		f.update(t, true, func(rec *v1alpha1.Recommendation) {
+			rec.Spec.ApplyRequest = &v1alpha1.ApplyRequest{ID: id, Action: action, Hash: "abc", Containers: containers,
+				RequestedBy: "alice", RequestedAt: metav1.NewTime(f.now)}
+		})
+		f.reconcile(t)
+	}
+
+	request("r1", v1alpha1.ActionApply, "worker")
+	if got := requests(); got["api"] != "1" || got["worker"] != "100m" {
+		t.Fatalf("requests = %v, want only worker applied", got)
+	}
+	st := f.status(t)
+	if st.LastApplyResult == nil || st.LastApplyResult.Result != "Succeeded" || len(st.History) != 1 ||
+		len(st.History[0].Containers) != 1 || st.History[0].Containers[0].Name != "worker" {
+		t.Fatalf("result %+v, history %+v: want one apply that changed worker only", st.LastApplyResult, st.History)
+	}
+
+	request("r2", v1alpha1.ActionRevert)
+	if got := requests(); got["api"] != "1" || got["worker"] != "200m" {
+		t.Fatalf("requests = %v, want the revert to restore worker only", got)
+	}
+
+	request("r3", v1alpha1.ActionApply, "db")
+	if st := f.status(t); st.LastApplyResult.Result != "Rejected" || st.LastApplyResult.Message != `the workload has no container "db"` {
+		t.Fatalf("result = %+v, want an unknown container rejected", st.LastApplyResult)
+	}
+}
+
+func TestAutoDeployLimitedToSomeContainers(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		scope  v1alpha1.AutoDeployScope
+		worker string
+	}{
+		{name: "applies the listed container only", scope: v1alpha1.AutoDeployScope{Containers: []string{"worker"}, Pending: true}, worker: "100m"},
+		{name: "nothing pending in the listed containers", scope: v1alpha1.AutoDeployScope{Containers: []string{"worker"}}, worker: "200m"},
+		{name: "a reason holds it", scope: v1alpha1.AutoDeployScope{Containers: []string{"worker"}, Pending: true, Reason: "HPA orders's new target needs every container's CPU"}, worker: "200m"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+			ctx := context.Background()
+			key := types.NamespacedName{Namespace: "demo", Name: "api"}
+			cpu := func(v string) corev1.ResourceRequirements {
+				return corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(v)}}
+			}
+			var d appsv1.Deployment
+			if err := f.reconciler.Get(ctx, key, &d); err != nil {
+				t.Fatal(err)
+			}
+			d.Spec.Template.Spec.Containers = append(d.Spec.Template.Spec.Containers, corev1.Container{Name: "worker", Resources: cpu("200m")})
+			if err := f.reconciler.Update(ctx, &d); err != nil {
+				t.Fatal(err)
+			}
+			scope := tc.scope
+			f.update(t, false, func(rec *v1alpha1.Recommendation) {
+				rec.Status.Containers = append(rec.Status.Containers, v1alpha1.ContainerRecommendation{Name: "worker", Current: cpu("200m"), Recommended: cpu("100m")})
+				rec.Status.AutoDeployScope = &scope
+			})
+			f.reconcile(t)
+			if err := f.reconciler.Get(ctx, key, &d); err != nil {
+				t.Fatal(err)
+			}
+			got := map[string]string{}
+			for _, c := range d.Spec.Template.Spec.Containers {
+				got[c.Name] = c.Resources.Requests.Cpu().String()
+			}
+			if got["api"] != "1" || got["worker"] != tc.worker {
+				t.Fatalf("requests = %v, want api 1 and worker %s", got, tc.worker)
+			}
+		})
+	}
+}

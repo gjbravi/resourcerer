@@ -131,6 +131,8 @@ export interface Summary {
   noRequests: boolean;
   under: boolean;
   hpa?: string[];
+  /** Containers whose CPU limit the recommendation raises: their throttling is fixed by applying. */
+  cpuLimitRaised?: string[];
   generatedAt?: string;
   lastAppliedAt?: string;
   hash?: string;
@@ -265,11 +267,39 @@ export interface ApplyPolicyStatus {
   evaluatedAt?: string;
 }
 
+export interface DecisionOption {
+  name: "apply" | "review" | "wait" | string;
+  probability: number;
+}
+
+/** One answer of the decision model on whether a recommendation is safe to apply. */
+export interface Evaluation {
+  /** The model and version the server reported answering with. */
+  version?: string;
+  evaluatedAt: string;
+  /** The recommendation evaluated. */
+  hash: string;
+  choice: string;
+  /** Apply, review and wait, in that order. */
+  options: DecisionOption[];
+}
+
+/** The decision model's opinion, asked for by the user; it never applies anything. */
+export interface DecisionReport {
+  configured: boolean;
+  model?: string;
+  /** Why there is no evaluation, when there is none. */
+  reason?: string;
+  evaluation?: Evaluation;
+}
+
 export interface Detail extends Summary {
   /** Pods per capacity type of their Karpenter node. */
   capacity?: Record<string, number>;
   pricing?: Pricing;
   evidence?: Evidence;
+  /** Auto-deploy limited to some containers (auto-deploy.containers): those it changes, whether they are pending, and why it applies nothing. */
+  autoDeployScope?: { containers?: string[]; pending?: boolean; reason?: string };
   nextScheduleAt?: string;
   containers: Container[] | null;
   hpaRecommendation?: { name: string; current: number; recommended: number; clamped: boolean };
@@ -358,11 +388,16 @@ export const api = {
   impact: (w: Ref, resource: Resource, range: Range) =>
     call<Series>("GET", `${path(w)}/impact?resource=${resource}&range=${range}`),
   placement: (w: Ref) => call<Placement>("GET", `${path(w)}/placement`),
+  /** Without evaluate, the last evaluation of the current recommendation; fresh asks the model again. */
+  decision: (w: Ref, evaluate = false, fresh = false) =>
+    call<DecisionReport>("GET", `${path(w)}/decision${evaluate ? `?evaluate=1${fresh ? "&fresh=1" : ""}` : ""}`),
   reliability: (w: Ref, window: ReliabilityWindow) =>
     call<ReliabilityReport>("GET", `${path(w)}/reliability?window=${window}`),
   clusterSeries: (resource: Resource, range: Range) =>
     call<Series>("GET", `/cluster/series?resource=${resource}&range=${range}`),
-  apply: (w: Ref, hash: string) => call<unknown>("POST", `${path(w)}/apply`, { hash }),
+  /** Applies the recommendation with that hash; containers limits it to those, and every changing one when absent. */
+  apply: (w: Ref, hash: string, containers?: string[]) =>
+    call<unknown>("POST", `${path(w)}/apply`, containers ? { hash, containers } : { hash }),
   revert: (w: Ref) => call<unknown>("POST", `${path(w)}/revert`),
   regenerate: (w: Ref) => call<unknown>("POST", `${path(w)}/regenerate`),
   setWorkloadSetting: (w: Ref, key: string, value: string | null) =>

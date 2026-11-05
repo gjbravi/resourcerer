@@ -1,0 +1,16 @@
+# A DecisionModel for the kind environment: a decider server running on the host, which kind's pods reach through
+# Docker Desktop's host.docker.internal. Start it first (Apple Silicon runs it on MPS; images are not needed):
+#
+#   uv venv --python 3.12 && . .venv/bin/activate && uv pip install "decider-ai[serve]>=1.10.0"
+#   DECIDER_IMAGES=0 DECIDER_MODEL=Mapika/decider-4b uvicorn decider.serve:app --host 127.0.0.1 --port 8000
+#
+# then: kubectl --context kind-resourcerer apply -f hack/decision-model.yaml
+apiVersion: resourcerer.io/v1alpha1
+kind: DecisionModel
+metadata:
+  name: default
+spec:
+  provider: decider
+  endpoint: http://host.docker.internal:8000/v1/systemone
+  model: decider-4b
+  timeoutSeconds: 60
