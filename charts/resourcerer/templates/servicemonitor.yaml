@@ -16,4 +16,6 @@ spec:
   endpoints:
     - port: metrics
       interval: {{ .Values.metrics.serviceMonitor.interval }}
+      # The metrics carry the namespace and container of the workload they describe, not of our pods.
+      honorLabels: true
 {{- end }}
