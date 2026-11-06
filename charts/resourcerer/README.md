@@ -47,6 +47,7 @@ helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <ver
 | `server.service`, `server.ingress` | ClusterIP, disabled | The chart authenticates nothing at the Ingress; `auth.strategy` decides who may use the UI. |
 | `metrics.scrapeAnnotations` | `true` | `prometheus.io/scrape` on the controller, server and applier metrics Services. |
 | `metrics.serviceMonitor.enabled` | `false` | Prometheus Operator ServiceMonitor instead, for all of them. |
+| `metrics.grafanaDashboard.enabled` | `false` | A Grafana dashboard of how resourcerer is doing, in a ConfigMap for the Grafana sidecar (`labels`, `annotations`, `namespace`). |
 
 With `auth.strategy: oidc` the parameters are rendered into a ConfigMap named `<fullname>-auth` — release
 `rz` gives `rz-resourcerer-auth` — under the key `oidc.yaml`, which the server reads at start and every 30s, and the

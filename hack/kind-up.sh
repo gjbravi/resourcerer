@@ -9,6 +9,7 @@ CTX="kind-$CLUSTER_NAME"
 PROMETHEUS_CHART_VERSION="${PROMETHEUS_CHART_VERSION:-29.37.2}"
 METRICS_SERVER_CHART_VERSION="${METRICS_SERVER_CHART_VERSION:-3.14.0}"
 ARGO_ROLLOUTS_CHART_VERSION="${ARGO_ROLLOUTS_CHART_VERSION:-2.43.8}"
+GRAFANA_CHART_VERSION="${GRAFANA_CHART_VERSION:-10.5.15}"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 
@@ -30,7 +31,8 @@ log "helm repositories"
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update >/dev/null
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ --force-update >/dev/null
 helm repo add argo https://argoproj.github.io/argo-helm --force-update >/dev/null
-helm repo update prometheus-community metrics-server argo >/dev/null
+helm repo add grafana https://grafana.github.io/helm-charts --force-update >/dev/null
+helm repo update prometheus-community metrics-server argo grafana >/dev/null
 
 # metrics-server and Prometheus install in the background while the rest goes on: one after the other they took
 # most of this script. Nothing below needs them until the end; the demo only needs the Rollout CRD.
@@ -64,6 +66,9 @@ start metrics-server helm upgrade --install metrics-server metrics-server/metric
 start prometheus helm upgrade --install prometheus prometheus-community/prometheus \
   --kube-context "$CTX" --namespace monitoring --create-namespace --version "$PROMETHEUS_CHART_VERSION" \
   -f "$ROOT/hack/prometheus-values.yaml" --wait --timeout 5m
+start grafana helm upgrade --install grafana grafana/grafana \
+  --kube-context "$CTX" --namespace monitoring --create-namespace --version "$GRAFANA_CHART_VERSION" \
+  -f "$ROOT/hack/grafana-values.yaml" --wait --timeout 5m
 
 log "argo rollouts"
 helm upgrade --install argo-rollouts argo/argo-rollouts \
@@ -86,7 +91,8 @@ if ! kubectl --context "$CTX" -n demo wait deploy --all --for=condition=Availabl
   exit 1
 fi
 
-log "waiting for metrics-server and prometheus"
+log "waiting for metrics-server, prometheus and grafana"
 finish
 
 log "ready: run 'make kind-deploy' to install resourcerer"
+log "grafana: kubectl --context $CTX -n monitoring port-forward svc/grafana 3000:80, then http://localhost:3000/d/resourcerer"

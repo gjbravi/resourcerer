@@ -81,6 +81,8 @@ own logs.
 | `resourcerer_apply_reverted_total` | counter | `reason`: `manual` | Reverts. |
 | `resourcerer_applypolicy_slots_available` | gauge | `policy` | Applies a policy's `maxConcurrent` still allows. |
 
+The [Grafana dashboard](../guides/grafana-dashboard.md) the chart ships charts most of them.
+
 ### Queries worth having
 
 ```promql title="Estimated savings per month, over time"

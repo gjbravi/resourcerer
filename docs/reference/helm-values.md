@@ -101,6 +101,10 @@ See [Exposing the UI](../guides/exposing-the-ui.md) for the two ways to put an i
 | `metrics.serviceMonitor.enabled` | `false` | A Prometheus Operator `ServiceMonitor` for all of them instead. |
 | `metrics.serviceMonitor.interval` | `30s` | |
 | `metrics.serviceMonitor.labels` | `{}` | Labels your Prometheus selects ServiceMonitors by. |
+| `metrics.grafanaDashboard.enabled` | `false` | Ship the [Grafana dashboard](../guides/grafana-dashboard.md) in a ConfigMap. |
+| `metrics.grafanaDashboard.labels` | `grafana_dashboard: "1"` | Labels the Grafana sidecar selects dashboards by. |
+| `metrics.grafanaDashboard.annotations` | `{}` | Annotations on the ConfigMap, such as the sidecar's folder annotation. |
+| `metrics.grafanaDashboard.namespace` | release namespace | Where the ConfigMap goes, when the sidecar only watches some namespaces. |
 
 ## Pods
 

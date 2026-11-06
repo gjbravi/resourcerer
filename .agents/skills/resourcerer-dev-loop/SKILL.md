@@ -13,8 +13,12 @@ make kind-deploy    # builds the image, loads it into kind, installs the chart w
 make e2e
 ```
 
-`kind-up` creates `kind-resourcerer` with Prometheus (10s scrape), metrics-server, VPA, Argo Rollouts, the demo
-workloads in `hack/demo.yaml` and `hack/fake-karpenter.sh`.
+`kind-up` creates `kind-resourcerer` with Prometheus (10s scrape), Grafana (anonymous admin, dashboards from
+labelled ConfigMaps), metrics-server, VPA, Argo Rollouts, the demo workloads in `hack/demo.yaml` and
+`hack/fake-karpenter.sh`. The kind values enable the chart's Grafana dashboard: after a dashboard change
+(`hack/grafana-dashboard.py`, then `make dashboard`), `make kind-deploy` and
+`kubectl --context kind-resourcerer -n monitoring port-forward svc/grafana 3000:80`, then
+http://localhost:3000/d/resourcerer.
 
 ## After each change
 

@@ -84,6 +84,8 @@ k -n demo delete deploy idle --ignore-not-found >/dev/null 2>&1 || true
 k label ns demo resourcerer.io/apply-policy- >/dev/null 2>&1 || true
 k -n demo annotate deploy api resourcerer.io/auto-deploy- resourcerer.io/cpu.optimization-goal- >/dev/null 2>&1 || true
 k -n demo annotate deploy worker resourcerer.io/memory.optimization-goal- >/dev/null 2>&1 || true
+k -n demo annotate deploy orders resourcerer.io/auto-deploy- resourcerer.io/auto-deploy.containers- resourcerer.io/containers.skip- \
+  resourcerer.io/learning-period- >/dev/null 2>&1 || true
 k -n payments annotate deploy checkout resourcerer.io/learning-period- >/dev/null 2>&1 || true
 
 rec_field() { k -n "$1" get rec "$2" -o jsonpath="$3"; }
@@ -429,7 +431,9 @@ wait_for "the server counts its Prometheus queries by the route that sent them" 
 wait_for "the server counts its cache lookups" 30 smetric '^resourcerer_server_cache_requests_total\{query="[a-z]+",result="miss"\} [1-9]'
 
 # auto-deploy.containers limits auto-deploy to some containers. Naming only istio-proxy, which containers.skip leaves
-# out by default, applies nothing and says why; once it is optimized, auto-deploy changes it alone.
+# out by default, applies nothing and says why; once it is optimized, auto-deploy changes it alone. Auto-deploy never
+# applies a hash twice, and an earlier run may have applied and reverted this one: start from a new Recommendation.
+k -n demo delete rec deployment-orders --ignore-not-found >/dev/null
 k -n demo annotate deploy orders --overwrite resourcerer.io/auto-deploy=Enabled resourcerer.io/auto-deploy.containers=istio-proxy >/dev/null
 wait_for "auto-deploy limited to a container that is not optimized applies nothing, and says why" 120 bash -c \
   "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.autoDeployScope.reason | test(\"none of the containers\")'"
@@ -489,6 +493,16 @@ wait_for "and the overwrite is announced on the workload" 30 bash -c \
   "kubectl --context $CTX -n demo get events --field-selector reason=RecommendationOverwritten -o json | jq -e '.items | length > 0'"
 curl -fs -X POST "$API/workloads/demo/Deployment/api/revert" >/dev/null
 wait_for "a revert ends the drift" 120 bash -c "! curl -fs http://localhost:$CPORT/metrics | grep -q '^resourcerer_workload_drifted{namespace=\"demo\",workload=\"api\"'"
+
+# The chart ships its Grafana dashboard to the sidecar of the Grafana make kind-up runs; a cluster made before that has none.
+if k -n monitoring get svc grafana >/dev/null 2>&1; then
+  k -n resourcerer get cm resourcerer-grafana-dashboard -o json | jq -e '.data["resourcerer.json"] | fromjson | .uid == "resourcerer"' >/dev/null \
+    && pass "the chart ships the Grafana dashboard" || fail "the chart ships the Grafana dashboard"
+  wait_for "Grafana loads the dashboard" 120 bash -c \
+    "kubectl --context $CTX get --raw /api/v1/namespaces/monitoring/services/grafana:80/proxy/api/dashboards/uid/resourcerer | jq -e '.dashboard.panels | length > 40'"
+else
+  echo "SKIP Grafana is not installed: recreate the cluster with make kind-up to check the dashboard"
+fi
 
 # The server ends the placement window at the last full minute and caches the answer for minutes, so the first
 # request must come after the minute in which the controller's allocation above saw where on-demand-app ran.

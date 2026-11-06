@@ -32,7 +32,7 @@ is, and why the numbers can be trusted. Prefer changes that serve that decision 
 | `web/` | React 19 + TypeScript + Vite UI, React Query, Recharts 3; `web/src/api.ts` mirrors `internal/server/types.go` |
 | `charts/resourcerer` | Helm chart; `values.schema.json` rejects unknown keys |
 | `charts/resourcerer-crds` | The CRDs as a chart of their own, a separate release installed before `resourcerer`; `files/crds.yaml` is generated |
-| `hack/` | kind environment: cluster, Prometheus, demo workloads, a fake Karpenter exporter, a fake decider for e2e |
+| `hack/` | kind environment: cluster, Prometheus, Grafana, demo workloads, a fake Karpenter exporter, a fake decider for e2e; the Grafana dashboard's generator |
 | `test/e2e/run.sh` | End-to-end checks against kind |
 | `docs/` | The user docs, by section (`getting-started/`, `concepts/`, `configuration/`, `guides/`, `reference/`), and `architecture.md` (components, data flow, diagrams) |
 | `mkdocs.yml`, `website/` | The documentation site: Zensical builds `docs/` (config in `mkdocs.yml`, pinned version in `website/requirements.txt`), published to GitHub Pages by `.github/workflows/docs.yaml` |
@@ -44,8 +44,9 @@ make lint            # golangci-lint, actionlint, eslint, prettier, tsc, helm li
 make lint-docs       # docs and skills match the repository; MERMAID=1 also renders the diagrams
 make test            # Go and UI unit tests
 make generate        # deepcopy + the CRDs into charts/resourcerer-crds/files/crds.yaml; run after changing api/
+make dashboard       # the Grafana dashboard into the chart, from hack/grafana-dashboard.py
 make verify-generate # fails when generated files are stale (compares with git: commit first)
-make kind-up         # kind cluster with Prometheus, metrics-server, VPA, demo workloads, fake Karpenter
+make kind-up         # kind cluster with Prometheus, Grafana, metrics-server, VPA, demo workloads, fake Karpenter
 make kind-deploy     # build the image, load it into kind, install the chart with hack/resourcerer-values.yaml
 make e2e             # end-to-end checks against kind
 make web-dev         # UI dev server proxied to a running server on :8080
