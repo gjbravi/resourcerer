@@ -68,10 +68,12 @@ func TestATimeoutIsCountedAsOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	timeouts := requestsCounter.WithLabelValues("test-timeout", "instant", "timeout")
+	before := testutil.ToFloat64(timeouts)
 	if _, err := c.Instant(For(context.Background(), "test-timeout"), "up", ""); err == nil {
 		t.Fatal("want an error from a query slower than the timeout")
 	}
-	if got := testutil.ToFloat64(requestsCounter.WithLabelValues("test-timeout", "instant", "timeout")); got != 1 {
+	if got := testutil.ToFloat64(timeouts) - before; got != 1 {
 		t.Errorf("timeouts = %v, want 1", got)
 	}
 }
