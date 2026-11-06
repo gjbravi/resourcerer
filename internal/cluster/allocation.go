@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/gjbravi/resourcerer/internal/engine"
 	"github.com/gjbravi/resourcerer/internal/prom"
 )
@@ -53,10 +51,11 @@ func (a Allocation) Rates(static engine.Rates) engine.Rates {
 
 var errNoRequests = errors.New("no running pods with requests in the window")
 
-// Allocate reads where the workload's pods ran over the window ending at end and prices them at their nodes.
-// clusterFactor is the calibrated rates over the configured ones, used for requests on nodes without a price.
-func Allocate(ctx context.Context, p *prom.Client, ref prom.Ref, static engine.Rates, clusterFactor float64, window time.Duration, end time.Time, minStep time.Duration) (Allocation, error) {
-	h, err := fetch(ctx, p, ref, static, window, end, minStep)
+// Allocate reads where the workload's pods ran over the window ending at end and prices them at their nodes, at the
+// nodes' current prices (see Pricer.Nodes). clusterFactor is the calibrated rates over the configured ones, used for
+// requests on nodes without a price.
+func Allocate(ctx context.Context, pr *Pricer, ref prom.Ref, static engine.Rates, clusterFactor float64, window time.Duration, end time.Time, minStep time.Duration) (Allocation, error) {
+	h, err := fetch(ctx, pr, ref, static, window, end, minStep)
 	if err != nil {
 		return Allocation{}, err
 	}
@@ -71,34 +70,22 @@ type history struct {
 	step                time.Duration
 }
 
-func fetch(ctx context.Context, p *prom.Client, ref prom.Ref, static engine.Rates, window time.Duration, end time.Time, minStep time.Duration) (history, error) {
+// fetch reads one series per node the workload ran on, a light query on kube-state-metrics alone, and prices it with
+// the cluster's node prices: Karpenter's nodes and offering prices are read once for every workload, not with each.
+func fetch(ctx context.Context, pr *Pricer, ref prom.Ref, static engine.Rates, window time.Duration, end time.Time, minStep time.Duration) (history, error) {
 	h := history{step: max(window/allocationPoints, minStep).Truncate(time.Second), start: end.Add(-window), end: end}
+	nodes, err := pr.Nodes(ctx, static, window, end)
+	if err != nil {
+		return h, fmt.Errorf("price the Karpenter nodes: %w", err)
+	}
 	ctx, cancel := context.WithTimeout(ctx, allocationTimeout)
 	defer cancel()
-	types, err := p.LabelValues(ctx, "instance_type", prom.KarpenterNodeSeries, h.start, end)
+	byNode, err := pr.Prom.RangeComplete(ctx, prom.WorkloadRequestsByNode(ref, static.CPUCoreHour, static.MemoryGiBHour), h.start, end, h.step, "node")
 	if err != nil {
-		return h, fmt.Errorf("query the instance types of Karpenter nodes: %w", err)
+		return h, fmt.Errorf("query where the workload's pods ran: %w", err)
 	}
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() (err error) {
-		if h.cost, err = p.RangeComplete(ctx, prom.WorkloadNodeCost(ref, static.CPUCoreHour, static.MemoryGiBHour, false, types), h.start, end, h.step, "key"); err != nil {
-			return fmt.Errorf("query node prices of the workload's pods: %w", err)
-		}
-		return nil
-	})
-	g.Go(func() (err error) {
-		if h.priced, err = p.RangeComplete(ctx, prom.WorkloadNodeCost(ref, static.CPUCoreHour, static.MemoryGiBHour, true, types), h.start, end, h.step, "key"); err != nil {
-			return fmt.Errorf("query the workload's priced requests: %w", err)
-		}
-		return nil
-	})
-	g.Go(func() (err error) {
-		if h.total, err = p.RangeComplete(ctx, prom.WorkloadRequestValue(ref, static.CPUCoreHour, static.MemoryGiBHour), h.start, end, h.step, ""); err != nil {
-			return fmt.Errorf("query the workload's requests: %w", err)
-		}
-		return nil
-	})
-	return h, g.Wait()
+	h.cost, h.priced, h.total = split(byNode, nodes)
+	return h, nil
 }
 
 // combine turns request-weighted sums into an allocation. cost and priced are keyed "capacity_type|instance_type":

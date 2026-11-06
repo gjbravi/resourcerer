@@ -148,6 +148,42 @@ func Restarts(r Ref, window time.Duration) string {
 		quote(r.Namespace), model.Duration(window), owner(r))
 }
 
+// Sample is one series of an instant query: its labels and value.
+type Sample struct {
+	Labels map[string]string
+	Value  float64
+}
+
+// Vector runs an instant query at t and returns every series with its labels. It fails on warnings, such as a
+// partial response from Thanos, like RangeComplete: its callers store what it returns.
+func (c *Client) Vector(ctx context.Context, q string, t time.Time) ([]Sample, error) {
+	v, warnings, err := c.API.Query(ctx, q, t)
+	if err != nil {
+		return nil, err
+	}
+	if len(warnings) > 0 {
+		return nil, fmt.Errorf("incomplete result: %s", strings.Join(warnings, "; "))
+	}
+	vec, ok := v.(model.Vector)
+	if !ok {
+		return nil, fmt.Errorf("unexpected result type %s", v.Type())
+	}
+	countSamples(ctx, len(vec))
+	out := make([]Sample, 0, len(vec))
+	for _, s := range vec {
+		f := float64(s.Value)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			continue
+		}
+		l := make(map[string]string, len(s.Metric))
+		for k, v := range s.Metric {
+			l[string(k)] = string(v)
+		}
+		out = append(out, Sample{Labels: l, Value: f})
+	}
+	return out, nil
+}
+
 // Instant runs an instant query and returns one value per value of label.
 func (c *Client) Instant(ctx context.Context, q string, label string) (map[string]float64, error) {
 	v, _, err := c.API.Query(ctx, q, time.Now())
@@ -180,9 +216,6 @@ func (c *Client) LabelValues(ctx context.Context, label, match string, start, en
 	}
 	return out, nil
 }
-
-// KarpenterNodeSeries matches the nodes Karpenter launched, for LabelValues.
-const KarpenterNodeSeries = `karpenter_nodes_allocatable{resource_type="cpu"}`
 
 // Karpenter metrics can reach Prometheus a minute late, through Thanos for example, so an instant query at
 // "now" can find none: these read the latest sample of the last few minutes.
@@ -222,16 +255,20 @@ func PodsByCapacity(r Ref) string {
 )`, quote(r.Namespace), owner(r))
 }
 
-// nodeFactor is each Karpenter node's hourly price over what its allocatable capacity costs at the given rates,
-// labeled node, capacity_type and instance_type. Reserved capacity is priced as on-demand. A node name reused by a
-// new instance keeps both series for a few minutes, so the current series wins and one is kept per node.
-// Karpenter prices every offering of the region, tens of thousands of series that dominate the query: types, the
-// instance types the nodes had, narrows them down (none reads every offering).
-func nodeFactor(cpuRate, memRate float64, types []string) string {
-	alloc := func(r string) string {
-		sel := fmt.Sprintf(`karpenter_nodes_allocatable{resource_type="%s"}`, r)
-		return fmt.Sprintf(`(max by (node_name, instance_type, zone, capacity_type) (%s) or on (node_name) max by (node_name, instance_type, zone, capacity_type) (last_over_time(%s[5m])))`, sel, sel)
-	}
+// KarpenterNodes is every Karpenter node seen over the window, one series per node labeled node_name, instance_type,
+// zone and capacity_type, valued at its allocatable resource (cpu in cores, memory in bytes). It is an instant query:
+// a node's type and capacity do not change over its life, so the window is read once for the whole cluster rather
+// than at every step for every workload. A node name reused by a new instance keeps one series.
+func KarpenterNodes(resource string, window time.Duration) string {
+	return fmt.Sprintf(`topk by (node_name) (1, max by (node_name, instance_type, zone, capacity_type) (max_over_time(karpenter_nodes_allocatable{resource_type="%s"}[%s])))`,
+		resource, model.Duration(window))
+}
+
+// KarpenterOfferingPrices is Karpenter's current hourly price estimate per instance type, zone and capacity type.
+// Karpenter prices every offering of the region, tens of thousands of series: types, the instance types the nodes
+// had, narrows them down (none reads every offering). Current prices only: reading their history for every workload
+// is what made node allocation too heavy for a Thanos store, and an estimate prices at today's rates anyway.
+func KarpenterOfferingPrices(types []string) string {
 	offerings := "karpenter_cloudprovider_instance_type_offering_price_estimate"
 	if len(types) > 0 {
 		re := make([]string, len(types))
@@ -240,13 +277,7 @@ func nodeFactor(cpuRate, memRate float64, types []string) string {
 		}
 		offerings += fmt.Sprintf(`{instance_type=~"%s"}`, quote(strings.Join(re, "|")))
 	}
-	price := fmt.Sprintf(`label_replace(max by (instance_type, zone, capacity_type) (last_over_time(%s[5m])), "price_type", "$1", "capacity_type", "(.*)")`, offerings)
-	nodes := fmt.Sprintf(`label_replace(label_replace(topk by (node_name) (1, %s), "price_type", "$1", "capacity_type", "(.*)"), "price_type", "on-demand", "capacity_type", "reserved")`, alloc("cpu"))
-	value := fmt.Sprintf(`(max by (node_name) (%s) * %g + max by (node_name) (%s) / 2^30 * %g)`, alloc("cpu"), cpuRate, alloc("memory"), memRate)
-	return fmt.Sprintf(`label_replace(
-  (%s * 0 + on (instance_type, zone, price_type) group_left () max by (instance_type, zone, price_type) (%s))
-  / on (node_name) group_left () %s,
-  "node", "$1", "node_name", "(.*)")`, nodes, price, value)
+	return fmt.Sprintf(`max by (instance_type, zone, capacity_type) (last_over_time(%s[5m]))`, offerings)
 }
 
 // podWeight is what each running pod of the workload requests, valued at the given rates and labeled with its node.
@@ -263,23 +294,10 @@ func podWeight(r Ref, cpuRate, memRate float64) string {
 		ns, cpuRate, memRate, owner(r))
 }
 
-// WorkloadNodeCost is the workload's requests valued at the given rates and multiplied by its nodes' factor, per
-// capacity type and instance type joined as "capacity_type|instance_type" in the key label. With priced set, the
-// factor is left out: the requests that run on priced nodes. types are the instance types to price (see nodeFactor).
-func WorkloadNodeCost(r Ref, cpuRate, memRate float64, priced bool, types []string) string {
-	f := nodeFactor(cpuRate, memRate, types)
-	if priced {
-		f = fmt.Sprintf("(%s * 0 + 1)", f)
-	}
-	return fmt.Sprintf(`label_join(sum by (capacity_type, instance_type) (
-  (%s)
-  * on (node) group_left (capacity_type, instance_type) %s
-), "key", "|", "capacity_type", "instance_type")`, podWeight(r, cpuRate, memRate), f)
-}
-
-// WorkloadRequestValue is the workload's requests valued at the given rates, on any node.
-func WorkloadRequestValue(r Ref, cpuRate, memRate float64) string {
-	return fmt.Sprintf("sum(%s)", podWeight(r, cpuRate, memRate))
+// WorkloadRequestsByNode is the workload's requests valued at the given rates, per node: where it ran over time,
+// which the caller prices with KarpenterNodes and KarpenterOfferingPrices.
+func WorkloadRequestsByNode(r Ref, cpuRate, memRate float64) string {
+	return fmt.Sprintf("sum by (node) (%s)", podWeight(r, cpuRate, memRate))
 }
 
 // ClusterAllocatable is what the nodes offer to pods, from kube-state-metrics.

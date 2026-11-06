@@ -48,7 +48,7 @@ func (s *Server) placement(w http.ResponseWriter, r *http.Request) {
 	key := strings.Join([]string{"placement", rec.Namespace, rec.Name, end.Truncate(placementCache).String()}, "|")
 	ref := prom.Ref{Namespace: rec.Namespace, Kind: rec.Spec.TargetRef.Kind, Name: rec.Spec.TargetRef.Name}
 	v := s.cache.get(key, placementCache, func() (any, error) {
-		return cluster.Place(r.Context(), s.Prom, ref, pricing.Static, pricing.ClusterFactor(), win, end, s.MinStep)
+		return cluster.Place(r.Context(), s.Cluster.Pricer, ref, pricing.Static, pricing.ClusterFactor(), win, end, s.MinStep)
 	})
 	pl, isPlacement := v.(cluster.Placement)
 	if !isPlacement {

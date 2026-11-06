@@ -35,22 +35,37 @@ func TestRolloutOwnerUsesReplicaSets(t *testing.T) {
 	}
 }
 
-func TestWorkloadNodeCost(t *testing.T) {
-	q := WorkloadNodeCost(Ref{Namespace: "demo", Kind: "StatefulSet", Name: "cache"}, 0.0316, 0.0042, false, []string{"m5.large", "c7i-flex.xlarge"})
+func TestNodeAllocationQueries(t *testing.T) {
+	nodes := KarpenterNodes("memory", 7*24*time.Hour)
 	for _, want := range []string{
-		`offering_price_estimate{instance_type=~"m5\\.large|c7i-flex\\.xlarge"}[5m]`,
-		`kube_pod_container_resource_requests{namespace="demo", resource="cpu"} * 0.0316`,
-		`topk by (namespace, pod) (1,`,
+		`max_over_time(karpenter_nodes_allocatable{resource_type="memory"}[1w])`,
 		`topk by (node_name) (1,`,
-		`"price_type", "on-demand", "capacity_type", "reserved"`,
-		`owner_kind="StatefulSet", owner_name="cache"`,
+		`max by (node_name, instance_type, zone, capacity_type)`,
 	} {
-		if !strings.Contains(q, want) {
-			t.Errorf("node cost query lacks %s:\n%s", want, q)
+		if !strings.Contains(nodes, want) {
+			t.Errorf("nodes query lacks %s:\n%s", want, nodes)
 		}
 	}
-	if p := WorkloadNodeCost(Ref{Namespace: "demo", Kind: "StatefulSet", Name: "cache"}, 0.0316, 0.0042, true, nil); !strings.Contains(p, "* 0 + 1)") || !strings.Contains(p, "offering_price_estimate[5m]") {
-		t.Errorf("priced query must leave the factor out, and read every offering without types:\n%s", p)
+	prices := KarpenterOfferingPrices([]string{"m5.large", "c7i-flex.xlarge"})
+	if !strings.Contains(prices, `offering_price_estimate{instance_type=~"m5\\.large|c7i-flex\\.xlarge"}[5m]`) {
+		t.Errorf("prices must read only the nodes' instance types, over the last minutes:\n%s", prices)
+	}
+	if all := KarpenterOfferingPrices(nil); !strings.Contains(all, "offering_price_estimate[5m]") {
+		t.Errorf("without types every offering is read:\n%s", all)
+	}
+	w := WorkloadRequestsByNode(Ref{Namespace: "demo", Kind: "StatefulSet", Name: "cache"}, 0.0316, 0.0042)
+	for _, want := range []string{
+		`sum by (node) (`,
+		`kube_pod_container_resource_requests{namespace="demo", resource="cpu"} * 0.0316`,
+		`topk by (namespace, pod) (1,`,
+		`owner_kind="StatefulSet", owner_name="cache"`,
+	} {
+		if !strings.Contains(w, want) {
+			t.Errorf("requests by node query lacks %s:\n%s", want, w)
+		}
+	}
+	if strings.Contains(w, "karpenter") {
+		t.Errorf("a workload's query must not read Karpenter's series:\n%s", w)
 	}
 }
 

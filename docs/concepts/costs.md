@@ -45,8 +45,9 @@ calibration. The **Settings** page shows the configured and calibrated rates.
 | `cluster` (default) | The cluster's average rates. Two workloads with the same requests cost the same. |
 | `node` | The rates of the nodes its pods ran on, weighted by time and requests over the learning period. A workload on on-demand nodes costs more than the same requests on spot. |
 
-`node` needs Karpenter prices. For each node, its **node factor** is its price divided by its capacity at the configured
-rates; reserved capacity is priced as on-demand. A workload's **workload factor** is the request-weighted average of the
+`node` needs Karpenter prices. For each node, its **node factor** is its current price divided by its capacity at the
+configured rates; reserved capacity is priced as on-demand. Where the workload ran comes from its history; what each
+node costs is today's price, since an estimate prices the months ahead. A workload's **workload factor** is the request-weighted average of the
 factors of the nodes it ran on. Requests on nodes without a known price count at the cluster factor; the share of
 requests that ran on priced nodes is the **coverage**.
 

@@ -94,7 +94,9 @@ In order:
 - **All rates are the defaults**: `cost.source` is `auto` and Karpenter's metrics are not in Prometheus. Set
   `karpenter` to get an error instead, then fix the scrape.
 - **Node allocation falls back to cluster rates**: `status.pricing.reason` says why; low coverage means many of the
-  workload's requests ran on nodes without a price.
+  workload's requests ran on nodes without a price. `price the Karpenter nodes: … incomplete result` means Prometheus
+  answered only in part, usually a Thanos store that cannot serve the window: the reason names the store, and
+  resourcerer prices at the cluster rates rather than with part of the nodes.
 
 ## Getting help
 

@@ -79,6 +79,10 @@ type Pricer struct {
 	good      *Pricing
 	err       error
 	failures  int
+
+	// nodes keeps the node prices per window and configured rates; see Nodes.
+	nodesMu sync.Mutex
+	nodes   map[string]nodeEntry
 }
 
 // Pricing returns the rates for the configured source, recalibrating once refresh has passed.

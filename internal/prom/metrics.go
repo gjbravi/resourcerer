@@ -105,11 +105,13 @@ func queryType(path string) string {
 	return "other"
 }
 
-// errorCode tells a query that ran out of time from one that failed. The client's timeout cancels the request through
-// its context, and the transport may report that as a plain cancellation: the context says why.
+// errorCode tells a query that ran out of time from one that failed. The client's timeout cancels the request at
+// its deadline twice, through the context and through Request.Cancel, and the transport may report the second as a
+// plain cancellation before the context says why: a deadline already past says it either way.
 func errorCode(ctx context.Context, err error) string {
 	var ne net.Error
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) {
+	deadline, ok := ctx.Deadline()
+	if errors.Is(err, context.DeadlineExceeded) || (ok && !time.Now().Before(deadline)) || (errors.As(err, &ne) && ne.Timeout()) {
 		return "timeout"
 	}
 	return "error"
