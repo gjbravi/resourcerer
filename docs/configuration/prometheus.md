@@ -63,3 +63,8 @@ The UI's charts show how the recommended values changed over time from the contr
 - with annotation-based discovery, keep `metrics.scrapeAnnotations: true` (the default);
 - with the Prometheus Operator, set `metrics.serviceMonitor.enabled: true`, and its `labels` to what your Prometheus
   selects.
+
+Either way the scrape must keep the metrics' own `namespace` and `container` labels, which name the workload, not
+resourcerer's pods: the chart's `ServiceMonitor` sets `honorLabels: true`, and an annotation-based job needs
+`honor_labels: true`. Without it Prometheus renames them `exported_namespace` and `exported_container`, and the
+charts show no recommended lines.
