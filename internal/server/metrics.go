@@ -20,7 +20,7 @@ var (
 	httpSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "resourcerer_http_request_duration_seconds",
 		Help:    "Time to answer API and UI requests, by route and method.",
-		Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
+		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
 	}, []string{"route", "method"})
 	cacheCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "resourcerer_server_cache_requests_total",

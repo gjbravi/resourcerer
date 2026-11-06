@@ -25,7 +25,7 @@ var (
 	durationHistogram = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "resourcerer_prometheus_request_duration_seconds",
 		Help:    "Time from sending a query to Prometheus to reading the whole response.",
-		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
 	}, []string{"purpose", "type"})
 	inflightGauge = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "resourcerer_prometheus_requests_in_flight",

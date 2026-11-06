@@ -31,7 +31,7 @@ var (
 	generationSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "resourcerer_recommendation_generation_duration_seconds",
 		Help:    "Time to compute one recommendation, Prometheus queries included.",
-		Buckets: []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+		Buckets: []float64{0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
 	}, []string{"workload_kind"})
 	signalErrorsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "resourcerer_signal_errors_total",
