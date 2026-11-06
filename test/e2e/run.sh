@@ -474,7 +474,7 @@ jq -e '.state.recommendation and .state.replay and .state.fixes and .questions.v
 ! grep -qw "${target%%/*}" <<<"$(jq -c .state <<<"$sent")" \
   && pass "the state does not name the namespace" \
   || fail "the state does not name the namespace: $(jq -c .state <<<"$sent")"
-wait_for "the server counts the decision model's answers" 30 smetric '^resourcerer_decision_requests_total\{result="ok"\} [1-9]'
+wait_for "the server counts the decision model's answers" 30 smetric '^resourcerer_decision_requests_total\{model="fake-decider",result="ok"\} [1-9]'
 k delete -f "$fake_decider" --ignore-not-found >/dev/null
 if [[ -n "$saved_model" ]]; then k apply -f - <<<"$saved_model" >/dev/null; fi
 

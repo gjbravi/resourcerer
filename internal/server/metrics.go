@@ -28,13 +28,13 @@ var (
 	}, []string{"query", "result"})
 	decisionCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "resourcerer_decision_requests_total",
-		Help: "Calls to the decision model by result: ok, error (no usable response) or invalid (an answer that does not fit the question).",
-	}, []string{"result"})
-	decisionSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Help: "Calls to a decision model by model and result: ok, error (no usable response) or invalid (an answer that does not fit the question).",
+	}, []string{"model", "result"})
+	decisionSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "resourcerer_decision_request_duration_seconds",
-		Help:    "Time the decision model took to answer.",
+		Help:    "Time a decision model took to answer, by model.",
 		Buckets: []float64{0.25, 0.5, 1, 2.5, 5, 10, 30, 60},
-	})
+	}, []string{"model"})
 )
 
 func init() {

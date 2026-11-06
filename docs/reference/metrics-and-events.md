@@ -69,8 +69,8 @@ own logs.
 | `resourcerer_http_requests_total` | counter | `route`, `method`, `code` | API and UI requests. `route` is the API path after `/api/v1/`, with `workload` for `workloads/{ns}/{kind}/{name}`; `ui` for the UI. |
 | `resourcerer_http_request_duration_seconds` | histogram | `route`, `method` | Time to answer. |
 | `resourcerer_server_cache_requests_total` | counter | `query`, `result`: `hit`, `shared`, `miss` | Lookups of the cache in front of the live queries; `shared` waited for the same query already running. |
-| `resourcerer_decision_requests_total` | counter | `result`: `ok`, `error`, `invalid` | Calls to the [decision model](../guides/decision-models.md). |
-| `resourcerer_decision_request_duration_seconds` | histogram | | Time the decision model took to answer. |
+| `resourcerer_decision_requests_total` | counter | `model`, `result`: `ok`, `error`, `invalid` | Calls to a [decision model](../guides/decision-models.md); `model` is its `spec.model`. |
+| `resourcerer_decision_request_duration_seconds` | histogram | `model` | Time a decision model took to answer. |
 
 ### Applier
 
