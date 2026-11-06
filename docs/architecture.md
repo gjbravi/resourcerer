@@ -125,7 +125,8 @@ regenerates the affected recommendations (the controller watches namespaces and 
 The controller reconciles each workload kind with its own controller. A reconcile is cheap until the workload is
 **due**: its schedule slot passed, a regeneration was requested, its settings or current requests changed, or the
 last run failed. Slots are spread over the schedule period by hashing the workload's name, so a cluster does not
-query Prometheus all at once.
+query Prometheus all at once. A run that ends `Pending` or `Error` is retried after a minute, doubling each time up to
+the schedule period, so workloads that never collect history and a Prometheus outage do not become a query a minute.
 
 ```mermaid
 sequenceDiagram
@@ -141,6 +142,9 @@ sequenceDiagram
     alt not due
         C-->>C: requeue at the next slot
     else due
+        opt the requests changed and the last history entry is an apply
+            C->>K: managed fields of the pod template: who changed what we applied
+        end
         C->>P: busiest pod's CPU and memory per container (learning period)
         C->>P: pod count, CPU throttling, OOM and HPA context
         C->>E: Recommend(settings, containers, HPA, history)
@@ -479,6 +483,8 @@ flowchart TB
     ds --- svc
     dc --- cmd
     sm -.-> dc
+    sm -.-> ds
+    sm -.-> da
 ```
 
 - **The CRDs** ship in `charts/resourcerer-crds`, a release of its own installed before `resourcerer` and upgraded
@@ -490,9 +496,12 @@ flowchart TB
   read-only.
 - **Cache footprint**: only the defaults ConfigMap's namespace is cached for ConfigMaps, and managed fields are
   stripped from cached objects, since caching every ConfigMap in a large cluster costs hundreds of MiB.
-- **Metrics**: `resourcerer_recommendation{namespace, workload_kind, workload, container, resource, type}` and
-  `resourcerer_optimization_score`, scraped through the ServiceMonitor; the charts read recommendation history from
-  them.
+- **Metrics**: every component serves them on `:8081`, scraped through the ServiceMonitor or annotations (see
+  [Metrics and events](reference/metrics-and-events.md)). The UI charts read recommendation history from
+  `resourcerer_recommendation`. The workload, cost and drift gauges are a collector that reads the Recommendations from
+  the cache at scrape time, on the leader only, so deleted workloads leave no series behind. The Prometheus client
+  counts every query by purpose in a `RoundTripper` (`internal/prom/metrics.go`); callers tag the context with
+  `prom.For`, and the server tags it with the route.
 
 ## Where this is going
 

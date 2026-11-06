@@ -3,6 +3,8 @@ package applier
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+
+	"github.com/gjbravi/resourcerer/api/v1alpha1"
 )
 
 // These show applies happening, applies being held, applies being undone and how far a policy is from its
@@ -11,8 +13,8 @@ import (
 var (
 	applyCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "resourcerer_apply_total",
-		Help: "Applies and reverts by result: Succeeded, Failed or Rejected.",
-	}, []string{"result"})
+		Help: "Applies and reverts by action (Apply, Revert), trigger (manual: a person; auto: auto-deploy) and result: Succeeded, Failed or Rejected.",
+	}, []string{"action", "trigger", "result"})
 	deferredCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "resourcerer_apply_deferred_total",
 		Help: "Automatic applies held by an apply policy, by the rule that held them.",
@@ -31,7 +33,17 @@ func init() {
 	metrics.Registry.MustRegister(applyCounter, deferredCounter, revertedCounter, slotsGauge)
 }
 
-func countApply(result string) { applyCounter.WithLabelValues(result).Inc() }
+// countApply counts an apply or a revert; ar is the request a person made, nil for auto-deploy.
+func countApply(ar *v1alpha1.ApplyRequest, result string) {
+	action, trigger := string(v1alpha1.ActionApply), "auto"
+	if ar != nil {
+		trigger = "manual"
+		if ar.Action == v1alpha1.ActionRevert {
+			action = string(v1alpha1.ActionRevert)
+		}
+	}
+	applyCounter.WithLabelValues(action, trigger, result).Inc()
+}
 
 // deferApply counts a held apply under the short reason a metric reader filters by, rather than the spec
 // field path the status carries.

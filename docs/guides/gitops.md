@@ -76,6 +76,22 @@ For a `HelmRelease`, set the chart's `resources` values empty for those workload
 resourcerer applied; the next regeneration then finds the requests changed and recommends again. Take the Helm values
 from the **Patches** tab into your values file to stop the back and forth.
 
+### Notice an apply that was undone
+
+When something other than resourcerer changes the resources an apply set, the controller records who:
+
+- the `RecommendationOverwritten` warning event on the workload names the field manager (`argocd-controller`,
+  `kustomize-controller`, `helm`, `kubectl-edit`…), the hash and the containers;
+- `resourcerer_apply_overwritten_total{manager}` counts them, and `resourcerer_workload_drifted` marks the workloads
+  whose requests no longer match their last apply, until it is applied again or reverted.
+
+Auto-deploy does not apply the same recommendation twice, so an overwritten apply stays undone: fix the GitOps
+configuration above, or commit the recommendation.
+
+```bash
+kubectl get events -A --field-selector reason=RecommendationOverwritten
+```
+
 ## Settings in Git
 
 Settings are annotations (`resourcerer.io/<key>`) on namespaces and workloads, so they belong in Git with the

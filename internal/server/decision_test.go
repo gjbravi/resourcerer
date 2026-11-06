@@ -36,7 +36,7 @@ func fakeProm(t *testing.T) *prom.Client {
 			strings.Join(vals, ","))
 	}))
 	t.Cleanup(ts.Close)
-	p, err := prom.New(ts.URL, "5m")
+	p, err := prom.New(ts.URL, "5m", prom.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

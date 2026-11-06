@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -25,8 +26,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	"github.com/gjbravi/resourcerer/api/v1alpha1"
 	"github.com/gjbravi/resourcerer/internal/applier"
 	"github.com/gjbravi/resourcerer/internal/cluster"
 	"github.com/gjbravi/resourcerer/internal/prom"
@@ -39,6 +42,15 @@ import (
 
 // version is set at build time with -ldflags "-X main.version=...".
 var version = "dev"
+
+var buildInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "resourcerer_build_info",
+	Help: "1 for the version and component this process runs.",
+}, []string{"version", "component"})
+
+func init() {
+	metrics.Registry.MustRegister(buildInfo)
+}
 
 var components = []string{"controller", "applier", "server"}
 
@@ -62,6 +74,7 @@ func main() {
 		promURL     = fs.String("prometheus-url", "http://prometheus-server.monitoring.svc", "Prometheus-compatible API base URL")
 		rateWindow  = fs.String("rate-window", "5m", "rate() window for CPU usage; at least 4× the scrape interval")
 		minStep     = fs.Duration("min-step", 30*time.Second, "finest query resolution; about the scrape interval")
+		promTimeout = fs.Duration("prometheus-timeout", 2*time.Minute, "longest a Prometheus query may take, response included; 0 means no limit")
 		httpAddr    = fs.String("http-bind-address", ":8080", "address for the API and UI")
 		metricsAddr = fs.String("metrics-bind-address", ":8081", "address for Prometheus metrics; 0 disables")
 		probeAddr   = fs.String("health-probe-bind-address", ":8082", "address for liveness and readiness probes")
@@ -102,7 +115,7 @@ func main() {
 		}
 		cfg.DefaultsConfigMap = types.NamespacedName{Namespace: ns, Name: name}
 	}
-	p, err := prom.New(*promURL, *rateWindow)
+	p, err := prom.New(*promURL, *rateWindow, prom.Options{Timeout: *promTimeout, UserAgent: fmt.Sprintf("resourcerer/%s (%s)", version, role)})
 	if err != nil {
 		fail(err, "create Prometheus client")
 	}
@@ -129,10 +142,17 @@ func main() {
 	if err != nil {
 		fail(err, "create manager")
 	}
+	buildInfo.WithLabelValues(version, role).Set(1)
 	if run["controller"] {
 		if err := recommender.Setup(mgr, cfg, p, *minStep); err != nil {
 			fail(err, "set up recommender")
 		}
+		c := mgr.GetClient()
+		metrics.Registry.MustRegister(recommender.FleetCollector{Elected: mgr.Elected(), List: func(ctx context.Context) ([]v1alpha1.Recommendation, error) {
+			var l v1alpha1.RecommendationList
+			err := c.List(ctx, &l)
+			return l.Items, err
+		}})
 	}
 	if run["applier"] {
 		if err := applier.Setup(mgr); err != nil {

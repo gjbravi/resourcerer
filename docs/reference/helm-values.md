@@ -45,6 +45,7 @@ See [Exposing the UI](../guides/exposing-the-ui.md) for the two ways to put an i
 | `prometheus.url` | `http://prometheus-server.monitoring.svc` | Prometheus-compatible API with cAdvisor and kube-state-metrics data. |
 | `prometheus.rateWindow` | `5m` | `rate()` window for CPU usage; at least 4× the scrape interval. |
 | `prometheus.minStep` | `30s` | Finest query resolution, about the scrape interval. |
+| `prometheus.timeout` | `2m` | Longest a query may take, response included; `0s` means no limit. |
 
 ## Cost
 
@@ -96,8 +97,8 @@ See [Exposing the UI](../guides/exposing-the-ui.md) for the two ways to put an i
 
 | Value | Default | Description |
 |---|---|---|
-| `metrics.scrapeAnnotations` | `true` | `prometheus.io/scrape` annotations on the controller's and the applier's metrics Services. |
-| `metrics.serviceMonitor.enabled` | `false` | A Prometheus Operator `ServiceMonitor` for both instead. |
+| `metrics.scrapeAnnotations` | `true` | `prometheus.io/scrape` annotations on the controller's, the server's and the applier's metrics Services. |
+| `metrics.serviceMonitor.enabled` | `false` | A Prometheus Operator `ServiceMonitor` for all of them instead. |
 | `metrics.serviceMonitor.interval` | `30s` | |
 | `metrics.serviceMonitor.labels` | `{}` | Labels your Prometheus selects ServiceMonitors by. |
 

@@ -199,13 +199,14 @@ log, rather than refusing every apply. See [Upgrade and uninstall](../getting-st
 
 | Metric | Labels | Use |
 |---|---|---|
-| `resourcerer_apply_total` | `result` = `Succeeded`, `Failed`, `Rejected` | how often applies happen and fail |
+| `resourcerer_apply_total` | `action` = `Apply`, `Revert`; `trigger` = `manual`, `auto`; `result` = `Succeeded`, `Failed`, `Rejected` | how often applies happen and fail, and who started them |
 | `resourcerer_apply_deferred_total` | `reason` = `window`, `freeze`, `cooldown`, `concurrency`, `namespace`, `rate`, `spread`, `rollout`, `policy` | how much auto-deploy is being held, and why |
 | `resourcerer_apply_reverted_total` | `reason` = `manual` | how often an apply is undone; every revert in this version is one a person asked for |
 | `resourcerer_applypolicy_slots_available` | `policy` | how far a `maxConcurrent` policy is from its limit, like Karpenter's allowed disruptions |
 
-The applier serves them on `:8081`, as the controller does its own; the chart exposes both Services
-(`<release>-metrics` and `<release>-applier-metrics`) and scrapes them when `metrics.scrapeAnnotations` is on.
+The applier serves them on `:8081`, as the controller and the server do their own; the chart exposes the three
+Services (`<release>-metrics`, `<release>-server-metrics` and `<release>-applier-metrics`) and scrapes them when
+`metrics.scrapeAnnotations` is on.
 
 Watch `resourcerer_apply_deferred_total` for the first hours of a policy in `Enforce`: a window that was meant to
 allow a nightly batch and a window that never opens look the same without it.

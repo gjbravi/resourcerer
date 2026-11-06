@@ -156,7 +156,7 @@ func TestInfoCarriesWhatThePageReads(t *testing.T) {
 	// This is the first test to ask `/info` successfully: every earlier one stopped at the 401, which is how the whole
 	// object went unpinned. It answers with the Prometheus behind the cluster, so that has to be reachable enough to
 	// be described — refused is a fine answer, an absent client is not.
-	prometheus, err := prom.New("http://127.0.0.1:1", "5m")
+	prometheus, err := prom.New("http://127.0.0.1:1", "5m", prom.Options{})
 	if err != nil {
 		t.Fatalf("prom client: %v", err)
 	}

@@ -43,6 +43,10 @@ They must be scoped, deduplicated and bounded.
    `resource` label keeps them apart).
 8. **No cluster label.** resourcerer's own queries assume the Prometheus it talks to sees one cluster. Do not add a
    `cluster` matcher in code.
+9. **Say what it is for.** The client counts every query in `resourcerer_prometheus_requests_total` and
+   `resourcerer_prometheus_samples_total` by `purpose`, read from the context: tag a new controller path with
+   `prom.For(ctx, "<purpose>")` (`usage`, `signals`, `allocation`, `pricing` exist); server handlers get their route
+   as the purpose already. Untagged queries count as `other`, which hides where load comes from.
 
 ## Test it
 

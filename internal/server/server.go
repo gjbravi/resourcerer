@@ -124,7 +124,7 @@ func (s *Server) authenticate(h http.HandlerFunc) http.HandlerFunc {
 			writeReason(w, http.StatusForbidden, "forbidden", id.User+" is not allowed to use resourcerer")
 			return
 		}
-		h(w, r.WithContext(auth.WithIdentity(r.Context(), id)))
+		h(w, r.WithContext(prom.For(auth.WithIdentity(r.Context(), id), routeName(r.Pattern))))
 	}
 }
 
@@ -877,14 +877,23 @@ func (c *cache) get(key string, ttl time.Duration, fetch func() (any, error)) an
 			delete(c.entries, k)
 		}
 	}
+	query, _, _ := strings.Cut(key, "|")
 	if e, ok := c.entries[key]; ok {
 		c.mu.Unlock()
+		result := "hit"
+		select {
+		case <-e.done:
+		default:
+			result = "shared"
+		}
+		cacheCounter.WithLabelValues(query, result).Inc()
 		<-e.done
 		return e.value
 	}
 	e := &entry{done: make(chan struct{})}
 	c.entries[key] = e
 	c.mu.Unlock()
+	cacheCounter.WithLabelValues(query, "miss").Inc()
 
 	v, err := fetch()
 	c.mu.Lock()
@@ -941,7 +950,10 @@ func writeReason(w http.ResponseWriter, code int, reason, msg string) {
 func logRequests(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		h.ServeHTTP(w, r)
+		sw := &statusWriter{ResponseWriter: w}
+		h.ServeHTTP(sw, r)
+		// The mux sets r.Pattern on this request when it matches a route.
+		observe(r, sw.code, time.Since(start))
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			log.Log.WithName("api").V(1).Info("request", "method", r.Method, "path", r.URL.Path, "duration", time.Since(start).String())
 		}

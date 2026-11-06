@@ -17,6 +17,7 @@ helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <ver
 | `prometheus.url` | `http://prometheus-server.monitoring.svc` | Prometheus-compatible API. |
 | `prometheus.rateWindow` | `5m` | `rate()` window for CPU; at least 4× the scrape interval. |
 | `prometheus.minStep` | `30s` | Finest query resolution, about the scrape interval. |
+| `prometheus.timeout` | `2m` | Longest a query may take, response included; `0s` means no limit. |
 | `clusterName` | `kubernetes` | Name shown in the UI. |
 | `selection` | `all` | `all` (opt out with `resourcerer.io/enabled=false`) or `label` (opt in with `=true`). |
 | `excludedNamespaces` | `kube-system`, `kube-public`, `kube-node-lease` | Never managed; the release namespace is added. |
@@ -44,8 +45,8 @@ helm install resourcerer oci://ghcr.io/gjbravi/charts/resourcerer --version <ver
 | `controller.replicas`, `applier.replicas`, `server.replicas` | `1` | Leader election above 1 for controller and applier. |
 | `server.ui` | `true` | Serve the embedded UI. |
 | `server.service`, `server.ingress` | ClusterIP, disabled | The chart authenticates nothing at the Ingress; `auth.strategy` decides who may use the UI. |
-| `metrics.scrapeAnnotations` | `true` | `prometheus.io/scrape` on the controller and applier metrics Services. |
-| `metrics.serviceMonitor.enabled` | `false` | Prometheus Operator ServiceMonitor instead, for both. |
+| `metrics.scrapeAnnotations` | `true` | `prometheus.io/scrape` on the controller, server and applier metrics Services. |
+| `metrics.serviceMonitor.enabled` | `false` | Prometheus Operator ServiceMonitor instead, for all of them. |
 
 With `auth.strategy: oidc` the parameters are rendered into a ConfigMap named `<fullname>-auth` — release
 `rz` gives `rz-resourcerer-auth` — under the key `oidc.yaml`, which the server reads at start and every 30s, and the

@@ -86,7 +86,8 @@ A redeploy replaces the pods, so restart the port-forward afterwards.
 See the `resourcerer-promql` skill. In short: scope every query to the workload (`prom.Owner` joins pods through
 ReplicaSets), deduplicate series that can overlap (`topk by (...) (1, ...)`), read Karpenter metrics with
 `last_over_time(...[5m])` because they can arrive a minute late, use `RangeComplete` where a partial Thanos response
-must not be stored as valid, and cap windows and points so large clusters stay cheap.
+must not be stored as valid, cap windows and points so large clusters stay cheap, and tag the context with
+`prom.For(ctx, purpose)` so the query is counted under what it is for (the server tags each route's).
 
 ### UI
 
@@ -179,6 +180,7 @@ Words the code and the UI use with a specific meaning:
 | **Apply policy** | A `ClusterApplyPolicy` or `ApplyPolicy` deciding when an apply may start: windows, freezes and a rate. Every policy that selects a workload must allow the apply. |
 | **Window / Freeze** | A recurring period in a time zone an apply may start in / a one-off period nothing is applied in, both kinds of apply included. |
 | **Hold** | The applier's name for an apply a policy refuses now: it is deferred, not cancelled, and the decision carries the rule and the instant it ends. |
+| **Overwritten / drifted** | An applied recommendation whose resources another field manager changed afterwards, such as a GitOps sync (`RecommendationOverwritten`); the workload stays drifted until it is applied again or reverted. |
 | **In progress** | An apply of ours whose rollout has not finished. A rate limit counts those, and a workload is never applied on top of a rollout, ours or not. |
 
 ## Skills
