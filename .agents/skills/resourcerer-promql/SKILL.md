@@ -34,8 +34,9 @@ They must be scoped, deduplicated and bounded.
    from the window (`prom.Step`, `max(window/points, minStep)`), set a context timeout (10–30s), and cache live server
    queries (`s.cache.get(key, ttl, ...)`). Watch for wide metrics a join only needs a few series of:
    `karpenter_cloudprovider_instance_type_offering_price_estimate` has a series per offering of the region (tens of
-   thousands), so range queries narrow it to the instance types the nodes had (`LabelValues` first). Run independent
-   range queries in parallel.
+   thousands): read it only instantly, at current prices, narrowed to the instance types the nodes had, and never in
+   a per-workload range query. What is the same for every workload (node prices) is computed once and cached
+   (`Pricer.Nodes`), so each workload's query stays on its own namespace's series.
 6. **Missing is not zero.** An empty result usually means "does not apply" (a workload without Istio has no 5xx
    series). Return nil or skip, and make the UI say so; never store 0.
 7. **Joins with optional sides.** `a + b` drops series missing on either side. To sum CPU and memory requests where

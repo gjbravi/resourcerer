@@ -44,7 +44,8 @@ cost:
   allocation: node
 ```
 
-Each workload is then priced at the nodes its pods ran on over its learning period, weighted by time and requests. The
+Each workload is then priced at the nodes its pods ran on over its learning period, weighted by time and requests,
+at each node's current price: what those nodes cost today, the estimate the savings are about. The
 **How the cost is calculated** section of the Impact tab shows:
 
 - the **workload factor** next to the cluster factor;

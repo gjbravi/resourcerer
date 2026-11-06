@@ -45,8 +45,8 @@ type Bucket struct {
 }
 
 // Place reads where the workload ran over the window ending at end.
-func Place(ctx context.Context, p *prom.Client, ref prom.Ref, static engine.Rates, clusterFactor float64, window time.Duration, end time.Time, minStep time.Duration) (Placement, error) {
-	h, err := fetch(ctx, p, ref, static, window, end, minStep)
+func Place(ctx context.Context, pr *Pricer, ref prom.Ref, static engine.Rates, clusterFactor float64, window time.Duration, end time.Time, minStep time.Duration) (Placement, error) {
+	h, err := fetch(ctx, pr, ref, static, window, end, minStep)
 	if err != nil {
 		return Placement{}, err
 	}

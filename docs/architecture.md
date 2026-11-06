@@ -218,7 +218,7 @@ flowchart TD
     static --> cluster
     cluster --> alloc{cost.allocation}
     alloc -->|cluster| wrates[workload rates = cluster rates]
-    alloc -->|node| place[node factor per node<br/>weighted by time and requests<br/>over the learning period]
+    alloc -->|node| place[node factor per node at today's price<br/>weighted by time and requests<br/>over the learning period]
     place --> wrates2[workload rates = configured × F<br/>unpriced requests at k]
     wrates --> monthly[monthly cost now and recommended]
     wrates2 --> monthly
@@ -239,14 +239,18 @@ stateDiagram-v2
 ```
 
 - **Node allocation** values each pod's requests at the configured rates, multiplies them by the factor of the node
-  it ran on (node price ÷ the node's capacity at the same rates; reserved capacity priced as on-demand), and averages
-  over the learning period (at most 336 points). Requests on nodes without a price count at the cluster
+  it ran on (the node's current price ÷ its capacity at the same rates; reserved capacity priced as on-demand), and
+  averages over the learning period (at most 336 points). Requests on nodes without a price count at the cluster
   factor. The result, with the capacity mix and top instance types, is stored in `status.pricing`, and the same
-  factor prices both the current and the recommended requests, so savings stay comparable. Karpenter prices every
-  offering of the region (tens of thousands of series), so the node prices are read only for the instance types the
-  nodes had in the window, and the three range queries run in parallel.
-- **Placement** (`GET .../placement`) reuses the same queries to show where the workload ran over its learning
-  period, by capacity type and instance type, computed on request and cached for 5 minutes.
+  factor prices both the current and the recommended requests, so savings stay comparable.
+  The node prices are the cluster's, not a workload's: `Pricer.Nodes` (`internal/cluster/nodes.go`) reads the Karpenter
+  nodes seen over the window and the current offering prices for their instance types in three instant queries, and
+  keeps them for 10 minutes. Each workload then needs one light range query, its requests by node from
+  kube-state-metrics, and the pricing is done in Go (`split`, `combine`). Karpenter prices every offering of the
+  region, tens of thousands of series: reading their history for every workload loaded a Thanos store gateway until it
+  failed, while an estimate prices at today's prices anyway.
+- **Placement** (`GET .../placement`) reuses the same node prices and query to show where the workload ran over its
+  learning period, by capacity type and instance type, computed on request and cached for 5 minutes.
 - **Chart ranges**: the workload's charts open on its learning period (`range=learning`), so what they show matches
   the numbers above them; fixed zooms (1h to 1m) stay available.
 

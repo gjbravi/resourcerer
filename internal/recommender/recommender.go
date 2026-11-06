@@ -389,7 +389,7 @@ func (r *Reconciler) price(ctx context.Context, w *workload.Workload, p cluster.
 		return p.Rates, out
 	}
 	ref := prom.Ref{Namespace: w.Namespace(), Kind: w.Kind, Name: w.Name()}
-	a, err := cluster.Allocate(prom.For(ctx, "allocation"), r.Prom, ref, p.Static, k, learning, now, r.MinStep)
+	a, err := cluster.Allocate(prom.For(ctx, "allocation"), r.Cluster.Pricer, ref, p.Static, k, learning, now, r.MinStep)
 	if err != nil {
 		log.FromContext(ctx).V(1).Info("allocate cost by node", "error", err.Error())
 		out.Reason = err.Error()
