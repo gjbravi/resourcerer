@@ -4,9 +4,9 @@ go 1.26.0
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/prometheus/client_golang v1.24.1
-	github.com/prometheus/common v0.70.1
-	golang.org/x/oauth2 v0.36.0
+	github.com/prometheus/client_golang v1.25.0
+	github.com/prometheus/common v0.72.0
+	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.24.0
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
@@ -148,7 +148,6 @@ require (
 	github.com/karamaru-alpha/copyloopvar v1.2.2 // indirect
 	github.com/kisielk/errcheck v1.30.0 // indirect
 	github.com/kkHAIKE/contextcheck v1.1.6 // indirect
-	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/kulti/thelper v0.7.1 // indirect
 	github.com/kunwardeep/paralleltest v1.0.16 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
