@@ -82,7 +82,7 @@ func (t instrumented) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := t.next.RoundTrip(req)
 	if err != nil {
 		inflightGauge.Dec()
-		requestsCounter.WithLabelValues(purpose, typ, errorCode(err)).Inc()
+		requestsCounter.WithLabelValues(purpose, typ, errorCode(req.Context(), err)).Inc()
 		durationHistogram.WithLabelValues(purpose, typ).Observe(time.Since(start).Seconds())
 		return nil, err
 	}
@@ -105,9 +105,11 @@ func queryType(path string) string {
 	return "other"
 }
 
-func errorCode(err error) string {
+// errorCode tells a query that ran out of time from one that failed. The client's timeout cancels the request through
+// its context, and the transport may report that as a plain cancellation: the context says why.
+func errorCode(ctx context.Context, err error) string {
 	var ne net.Error
-	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) {
 		return "timeout"
 	}
 	return "error"
