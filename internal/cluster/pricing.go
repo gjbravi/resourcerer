@@ -87,7 +87,7 @@ func (p *Pricer) Pricing(ctx context.Context, static engine.Rates, mode string, 
 		mode = CostStatic
 	}
 	if mode == CostStatic || p == nil || (p.Prom == nil && p.fetch == nil) {
-		return Pricing{Rates: static, Mode: mode, Source: CostStatic, State: PricingOK}
+		return report(Pricing{Rates: static, Mode: mode, Source: CostStatic, State: PricingOK})
 	}
 	refresh = max(refresh, MinRefresh)
 
@@ -103,7 +103,7 @@ func (p *Pricer) Pricing(ctx context.Context, static engine.Rates, mode string, 
 		if fetch == nil {
 			fetch = p.karpenter
 		}
-		got, err := fetch(ctx)
+		got, err := fetch(prom.For(ctx, "pricing"))
 		if err == nil {
 			got.CalibratedAt = p.attempted
 			p.good, p.err, p.failures = &got, nil, 0
@@ -127,7 +127,7 @@ func (p *Pricer) Pricing(ctx context.Context, static engine.Rates, mode string, 
 		if mode == CostKarpenter {
 			out.State = PricingError
 		}
-		return out
+		return report(out)
 	}
 	out := *p.good
 	out.Rates = Calibrate(static, out.HourlyCost, out.CPUCores, out.MemoryBytes)
@@ -138,7 +138,7 @@ func (p *Pricer) Pricing(ctx context.Context, static engine.Rates, mode string, 
 			out.State = PricingError
 		}
 	}
-	return out
+	return report(out)
 }
 
 func (p *Pricer) karpenter(ctx context.Context) (Pricing, error) {

@@ -103,8 +103,11 @@ workload.
 ## Watch it
 
 - The **Auto-deploy** view of the workload list shows the workloads with it on.
-- `resourcerer_apply_total{result}` counts applies and failures; `resourcerer_apply_deferred_total{reason}` counts the
-  ones a policy held, and why. See [Metrics and events](../reference/metrics-and-events.md).
+- `resourcerer_apply_total{trigger="auto"}` counts what auto-deploy applied and what failed;
+  `resourcerer_apply_deferred_total{reason}` counts the ones a policy held, and why. See
+  [Metrics and events](../reference/metrics-and-events.md).
+- `resourcerer_apply_overwritten_total{manager}` and the `RecommendationOverwritten` event show an apply that
+  something else changed back, such as a GitOps sync: see [GitOps](gitops.md).
 - The `ApplyDeferred` event on a workload says which policy held it.
 
 ## Turn it off

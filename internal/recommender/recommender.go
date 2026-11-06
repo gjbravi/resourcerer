@@ -39,16 +39,23 @@ import (
 
 type Reconciler struct {
 	client.Client
+	// APIReader reads managed fields, which the cache strips.
+	APIReader client.Reader
 	// Rollouts is true when the Argo Rollouts CRD is installed.
 	Rollouts bool
 	// emitted remembers the last announced hash per workload; the cache can lag behind status patches.
-	emitted  sync.Map
-	Kind     string
-	Cluster  cluster.Config
-	Prom     *prom.Client
-	MinStep  time.Duration
-	Recorder events.EventRecorder
-	Now      func() time.Time
+	emitted sync.Map
+	// retries counts the computations in a row that ended Pending or Error, per workload, for the backoff.
+	retries sync.Map
+	// overwritten remembers the applies already reported as overwritten, so a workload synced back on every
+	// resync counts once.
+	overwritten sync.Map
+	Kind        string
+	Cluster     cluster.Config
+	Prom        *prom.Client
+	MinStep     time.Duration
+	Recorder    events.EventRecorder
+	Now         func() time.Time
 }
 
 // RolloutsInstalled reports whether the API server serves Argo Rollouts.
@@ -65,8 +72,8 @@ func Setup(mgr ctrl.Manager, cfg cluster.Config, p *prom.Client, minStep time.Du
 	}
 	log.Log.WithName("recommender").Info("watching workload kinds", "kinds", kinds, "argoRollouts", rollouts)
 	for _, kind := range kinds {
-		r := &Reconciler{Client: mgr.GetClient(), Kind: kind, Cluster: cfg, Prom: p, MinStep: minStep, Rollouts: rollouts,
-			Recorder: mgr.GetEventRecorder("resourcerer"), Now: time.Now}
+		r := &Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Kind: kind, Cluster: cfg, Prom: p, MinStep: minStep,
+			Rollouts: rollouts, Recorder: mgr.GetEventRecorder("resourcerer"), Now: time.Now}
 		if err := r.setup(mgr); err != nil {
 			return err
 		}
@@ -196,24 +203,35 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	inputs := r.containerInputs(w)
 
 	st := rec.Status
+	resized := !sameCurrent(st.Containers, inputs)
+	_, retrying := r.retries.Load(key.String())
+	// An Error recorded before this process started has no backoff of its own yet: compute it now.
 	due := st.GeneratedAt == nil || st.NextScheduleAt == nil || !now.Before(st.NextScheduleAt.Time) ||
 		(rec.Spec.RegenerateRequestedAt != nil && rec.Spec.RegenerateRequestedAt.After(st.GeneratedAt.Time)) ||
-		!sameSettings(st.Settings, eff) || !sameCurrent(st.Containers, inputs) || st.Phase == v1alpha1.PhaseError
+		!sameSettings(st.Settings, eff) || resized || (st.Phase == v1alpha1.PhaseError && !retrying)
 	if !due {
 		export(rec)
 		return ctrl.Result{RequeueAfter: time.Until(st.NextScheduleAt.Time) + time.Second}, nil
 	}
+	if resized && exists {
+		r.reportOverwrite(ctx, obj, rec, w)
+	}
 
-	in, avg, err := r.gather(ctx, w, eff, inputs, now)
+	started := time.Now()
+	in, avg, err := r.gather(prom.For(ctx, "usage"), w, eff, inputs, now)
 	patch := client.MergeFrom(rec.DeepCopy())
 	if err != nil {
 		logger.Error(err, "read usage history")
+		generationsCounter.WithLabelValues(r.Kind, string(v1alpha1.PhaseError)).Inc()
+		generationSeconds.WithLabelValues(r.Kind).Observe(time.Since(started).Seconds())
+		retry := now.Add(retryAfter(r.retry(key.String()), period))
 		rec.Status.Phase = v1alpha1.PhaseError
 		rec.Status.Message = "Metrics unavailable: " + err.Error()
+		rec.Status.NextScheduleAt = &metav1.Time{Time: retry}
 		if perr := r.Status().Patch(ctx, rec, patch); perr != nil {
 			return ctrl.Result{}, perr
 		}
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		return ctrl.Result{RequeueAfter: time.Until(retry) + time.Second}, nil
 	}
 	out := engine.Recommend(in)
 	rates, priced := r.price(ctx, w, pricing, eff.Duration(settings.LearningPeriod), now)
@@ -224,8 +242,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	next := nextSlot(now, period, w.Namespace()+"/"+w.Kind+"/"+w.Name())
 	if out.Phase == "Pending" {
-		// Retry soon instead of waiting a full period for the first usable history.
-		next = now.Add(min(period, time.Minute))
+		// Retry sooner than a full period for the first usable history, backing off while none comes.
+		next = now.Add(retryAfter(r.retry(key.String()), period))
+	} else {
+		r.retries.Delete(key.String())
 	}
 	rec.Status.TemplateRef = nil
 	if t := w.TemplateRef; t != nil {
@@ -283,6 +303,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := r.Status().Patch(ctx, rec, patch); err != nil {
 		return ctrl.Result{}, err
 	}
+	generationsCounter.WithLabelValues(r.Kind, out.Phase).Inc()
+	generationSeconds.WithLabelValues(r.Kind).Observe(time.Since(started).Seconds())
 	export(rec)
 	last, _ := r.emitted.Swap(key.String(), hash)
 	if changed && last != hash && out.Phase != "Pending" {
@@ -367,7 +389,7 @@ func (r *Reconciler) price(ctx context.Context, w *workload.Workload, p cluster.
 		return p.Rates, out
 	}
 	ref := prom.Ref{Namespace: w.Namespace(), Kind: w.Kind, Name: w.Name()}
-	a, err := cluster.Allocate(ctx, r.Prom, ref, p.Static, k, learning, now, r.MinStep)
+	a, err := cluster.Allocate(prom.For(ctx, "allocation"), r.Prom, ref, p.Static, k, learning, now, r.MinStep)
 	if err != nil {
 		log.FromContext(ctx).V(1).Info("allocate cost by node", "error", err.Error())
 		out.Reason = err.Error()
@@ -507,6 +529,7 @@ func (r *Reconciler) reliability(ctx context.Context, w *workload.Workload, cs [
 // to the workload; one that fails is logged and left out, so a bad query never blocks the recommendation.
 func (r *Reconciler) signals(ctx context.Context, w *workload.Workload, cfg signals.Config, ov signals.Overrides, learning time.Duration, skip []string) []v1alpha1.SignalStatus {
 	vars := signals.VarsFor(prom.Ref{Namespace: w.Namespace(), Kind: w.Kind, Name: w.Name()}, learning)
+	ctx = prom.For(ctx, "signals")
 	var out []v1alpha1.SignalStatus
 	for _, s := range cfg.Signals {
 		if ov.Disabled[s.ID] {
@@ -514,6 +537,7 @@ func (r *Reconciler) signals(ctx context.Context, w *workload.Workload, cfg sign
 		}
 		res, err := s.Evaluate(ctx, r.Prom, vars, s.LevelsWith(ov), skip)
 		if err != nil {
+			signalErrorsCounter.WithLabelValues(s.ID).Inc()
 			log.FromContext(ctx).V(1).Info("evaluate reliability signal", "signal", s.ID, "error", err.Error())
 			continue
 		}
@@ -553,6 +577,28 @@ func (r *Reconciler) hpa(ctx context.Context, w *workload.Workload) *engine.HPA 
 		return out
 	}
 	return nil
+}
+
+// retry counts one more computation in a row that ended Pending or Error, and returns how many there have been.
+func (r *Reconciler) retry(key string) int {
+	n := 1
+	if v, ok := r.retries.Load(key); ok {
+		n = v.(int) + 1
+	}
+	r.retries.Store(key, n)
+	return n
+}
+
+// retryAfter is how long to wait after the attempts-th computation in a row ended Pending or Error: a minute, doubling
+// with each one, never more than the schedule's period. A workload scaled to zero never collects history, and a
+// Prometheus that is down fails every workload at once; retrying each of them every minute for as long as it lasts
+// would load Prometheus most when it can least take it.
+func retryAfter(attempts int, period time.Duration) time.Duration {
+	d := time.Minute
+	for i := 1; i < attempts && d < period; i++ {
+		d *= 2
+	}
+	return max(time.Minute, min(d, period))
 }
 
 // nextSlot spreads workloads over the schedule period by hashing their name, so they do not all query at once.

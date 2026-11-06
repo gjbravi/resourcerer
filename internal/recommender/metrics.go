@@ -20,8 +20,32 @@ var (
 	}, []string{"namespace", "workload_kind", "workload"})
 )
 
+// What computing recommendations costs and how it ends: a reconcile that only finds the next one is not due yet is
+// not counted, so these are the Prometheus-heavy ones. Failures to read Prometheus end in the Error phase, never in a
+// reconcile error, so controller-runtime's own counters do not see them.
+var (
+	generationsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "resourcerer_recommendation_generations_total",
+		Help: "Recommendations computed, by workload kind and the phase they ended in; Error when Prometheus could not be read.",
+	}, []string{"workload_kind", "phase"})
+	generationSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "resourcerer_recommendation_generation_duration_seconds",
+		Help:    "Time to compute one recommendation, Prometheus queries included.",
+		Buckets: []float64{0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+	}, []string{"workload_kind"})
+	signalErrorsCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "resourcerer_signal_errors_total",
+		Help: "Reliability signal queries that failed; the signal is left out of the workload's status.",
+	}, []string{"signal"})
+	overwrittenCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "resourcerer_apply_overwritten_total",
+		Help: "Applied recommendations whose resources another field manager changed afterwards, by that manager.",
+	}, []string{"manager"})
+)
+
 func init() {
-	metrics.Registry.MustRegister(recommendationGauge, scoreGauge)
+	metrics.Registry.MustRegister(recommendationGauge, scoreGauge, generationsCounter, generationSeconds, signalErrorsCounter,
+		overwrittenCounter)
 }
 
 func export(rec *v1alpha1.Recommendation) {

@@ -253,7 +253,7 @@ func (r *Reconciler) apply(ctx context.Context, rec *v1alpha1.Recommendation, by
 	if err := r.record(ctx, rec, ar, entry); err != nil {
 		return true, err
 	}
-	countApply("Succeeded")
+	countApply(ar, "Succeeded")
 	return true, nil
 }
 
@@ -282,6 +282,7 @@ func (r *Reconciler) revert(ctx context.Context, rec *v1alpha1.Recommendation, a
 	}
 	// A revert starts a rollout like any other apply, and counts against the limits while it runs.
 	r.markApplying(rec)
+	countApply(&ar, "Succeeded")
 	revertedCounter.WithLabelValues("manual").Inc()
 	return true, nil
 }
@@ -394,7 +395,7 @@ func (r *Reconciler) record(ctx context.Context, rec *v1alpha1.Recommendation, a
 func (r *Reconciler) finish(ctx context.Context, rec *v1alpha1.Recommendation, ar *v1alpha1.ApplyRequest, result, msg string) error {
 	patch := client.MergeFrom(rec.DeepCopy())
 	r.mark(rec, ar, result, msg)
-	countApply(result)
+	countApply(ar, result)
 	if result != "Succeeded" {
 		r.event(ctx, rec, corev1.EventTypeWarning, "ApplyFailed", "Apply", "%s: %s", result, msg)
 		log.FromContext(ctx).Info("apply not done", "result", result, "message", msg)

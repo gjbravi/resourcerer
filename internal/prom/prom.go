@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http"
 	"regexp"
 	"sort"
 	"strings"
@@ -24,8 +25,17 @@ type Client struct {
 	RateWindow string
 }
 
-func New(url, rateWindow string) (*Client, error) {
-	c, err := api.NewClient(api.Config{Address: url})
+// Options tune how the client talks to Prometheus.
+type Options struct {
+	// Timeout bounds each query, response included; zero means none.
+	Timeout time.Duration
+	// UserAgent names the sender in Prometheus's logs, such as resourcerer/1.2.0 (controller).
+	UserAgent string
+}
+
+func New(url, rateWindow string, o Options) (*Client, error) {
+	rt := instrumented{next: api.DefaultRoundTripper, userAgent: o.UserAgent}
+	c, err := api.NewClient(api.Config{Address: url, Client: &http.Client{Transport: rt, Timeout: o.Timeout}})
 	if err != nil {
 		return nil, err
 	}
@@ -148,6 +158,7 @@ func (c *Client) Instant(ctx context.Context, q string, label string) (map[strin
 	if !ok {
 		return nil, fmt.Errorf("unexpected result type %s", v.Type())
 	}
+	countSamples(ctx, len(vec))
 	out := map[string]float64{}
 	for _, s := range vec {
 		if f := float64(s.Value); !math.IsNaN(f) && !math.IsInf(f, 0) {
@@ -336,6 +347,7 @@ func (c *Client) rangeQuery(ctx context.Context, q string, start, end time.Time,
 	}
 	out := map[string][]Point{}
 	for _, s := range m {
+		countSamples(ctx, len(s.Values))
 		key := string(s.Metric[model.LabelName(label)])
 		pts := make([]Point, 0, len(s.Values))
 		for _, p := range s.Values {
@@ -389,7 +401,7 @@ type Check struct {
 
 func (c *Client) Status(ctx context.Context, url string) Status {
 	st := Status{URL: url}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(For(ctx, "status"), 5*time.Second)
 	defer cancel()
 	b, err := c.API.Buildinfo(ctx)
 	if err != nil {

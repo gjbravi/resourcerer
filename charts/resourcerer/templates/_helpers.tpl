@@ -47,6 +47,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 - --prometheus-url={{ .Values.prometheus.url }}
 - --rate-window={{ .Values.prometheus.rateWindow }}
 - --min-step={{ .Values.prometheus.minStep }}
+- --prometheus-timeout={{ .Values.prometheus.timeout }}
 - --health-probe-bind-address=:8082
 {{- end }}
 

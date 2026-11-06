@@ -45,6 +45,24 @@ the same for usage history.
 `prometheus.url` is called without credentials. For an API that needs them, put a proxy that adds them in front, in
 the cluster, or expose a read-only endpoint to the `resourcerer` namespace with a NetworkPolicy.
 
+## Load on Prometheus
+
+resourcerer queries Prometheus in two places. The controller computes each recommendation on its schedule (`@daily`
+by default, spread over the day by workload); a recommendation that ends `Pending` or `Error` is tried again after a
+minute, then two, four and so on up to the schedule, so workloads scaled to zero or a Prometheus that is down do not
+turn into a query every minute. The server runs live queries when someone opens a workload page, behind a cache that
+shares identical queries and keeps answers for 30 seconds or more.
+
+Every query is bounded by `prometheus.timeout` (`2m`) and counted by what it was for in
+`resourcerer_prometheus_requests_total`, `resourcerer_prometheus_samples_total` and the other
+[Prometheus query metrics](../reference/metrics-and-events.md#every-component-prometheus-queries). Queries carry the
+`User-Agent` `resourcerer/<version> (<component>)`, so they can be told apart in Prometheus's, Thanos's or Mimir's
+own query logs.
+
+```promql title="Queries per second resourcerer sends, by purpose"
+sum by (purpose) (rate(resourcerer_prometheus_requests_total[5m]))
+```
+
 ## Check the connection
 
 The UI's **Settings** page shows whether Prometheus answers, its version and its retention. From the command line,
@@ -58,7 +76,8 @@ kubectl -n <namespace> get recommendation <name> -o jsonpath='{.status.message}'
 ## Recommendation history
 
 The UI's charts show how the recommended values changed over time from the controller's own metrics,
-`resourcerer_recommendation` and `resourcerer_optimization_score`, so Prometheus must scrape the controller:
+`resourcerer_recommendation` and `resourcerer_optimization_score`, so Prometheus must scrape the controller. The
+other [metrics](../reference/metrics-and-events.md) come with the same scrape:
 
 - with annotation-based discovery, keep `metrics.scrapeAnnotations: true` (the default);
 - with the Prometheus Operator, set `metrics.serviceMonitor.enabled: true`, and its `labels` to what your Prometheus

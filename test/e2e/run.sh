@@ -14,6 +14,10 @@ fail() {
     echo "--- $r status"
     k -n "${r%%/*}" get rec "${r##*/}" -o json | jq '.status | del(.containers[]?.basis)' || true
   done
+  if [[ -n "${CPORT:-}" ]]; then
+    echo "--- controller cost calibration and Prometheus queries"
+    curl -fs "http://localhost:$CPORT/metrics" | grep -E '^resourcerer_(cost_calibration|prometheus_requests_total)' || true
+  fi
   for c in controller applier; do
     echo "--- $c logs"
     k -n resourcerer logs "deploy/resourcerer-$c" --tail=40 || true
@@ -42,7 +46,9 @@ free_port() { # <first port to try>: the first one nothing answers on
 MPORT="${E2E_METRICS_PORT:-$(free_port 18091)}"
 PF=""
 MPF=""
-trap 'kill $PF $MPF 2>/dev/null || true' EXIT
+CPF=""
+SPF=""
+trap 'kill $PF $MPF $CPF $SPF 2>/dev/null || true' EXIT
 # Right after a rollout the forward can land on a terminating pod and exit; reopen it until the API answers.
 k -n resourcerer rollout status deploy/resourcerer-server --timeout=120s >/dev/null
 for _ in $(seq 1 20); do
@@ -63,10 +69,22 @@ k -n resourcerer port-forward svc/resourcerer-applier-metrics "$MPORT:8081" >/de
 MPF=$!
 metric() { curl -fs "http://localhost:$MPORT/metrics" | grep -qE "$1"; }
 wait_for "the applier's metrics endpoint answers" 60 curl -fs "http://localhost:$MPORT/metrics"
+# The controller's and the server's: what they ask Prometheus, what they compute and what people ask of them.
+CPORT="$(free_port $((MPORT + 1)))"
+k -n resourcerer port-forward svc/resourcerer-metrics "$CPORT:8081" >/dev/null 2>&1 &
+CPF=$!
+cmetric() { curl -fs "http://localhost:$CPORT/metrics" | grep -qE "$1"; }
+wait_for "the controller's metrics endpoint answers" 60 curl -fs "http://localhost:$CPORT/metrics"
+SPORT="$(free_port $((CPORT + 1)))"
+k -n resourcerer port-forward svc/resourcerer-server-metrics "$SPORT:8081" >/dev/null 2>&1 &
+SPF=$!
+smetric() { curl -fs "http://localhost:$SPORT/metrics" | grep -qE "$1"; }
+wait_for "the server's metrics endpoint answers" 60 curl -fs "http://localhost:$SPORT/metrics"
 
 # Start from the manifests, also when an earlier run stopped halfway.
 k apply --server-side --force-conflicts -f "$(dirname "$0")/../../hack/demo.yaml" >/dev/null
 k delete cap e2e-closed-window e2e-slots e2e-audit e2e-bad-zone --ignore-not-found >/dev/null 2>&1 || true
+k -n demo delete deploy idle --ignore-not-found >/dev/null 2>&1 || true
 k label ns demo resourcerer.io/apply-policy- >/dev/null 2>&1 || true
 k -n demo annotate deploy api resourcerer.io/auto-deploy- resourcerer.io/cpu.optimization-goal- >/dev/null 2>&1 || true
 k -n demo annotate deploy worker resourcerer.io/memory.optimization-goal- >/dev/null 2>&1 || true
@@ -89,6 +107,29 @@ wait_for "the CRDs belong to the resourcerer-crds release and are kept on uninst
 wait_for "creates a Recommendation per workload" 60 k -n demo get rec deployment-api deployment-worker statefulset-cache daemonset-log-agent deployment-web deployment-indexer
 wait_for "recommendations leave Pending once history exists" 360 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.phase}') =~ ^(Learning|Ready)$ ]]"
+
+# A workload that never collects history, here one scaled to zero, is retried less often each time it is still
+# Pending, up to its schedule, instead of being queried every minute for as long as it lasts.
+k apply -f - >/dev/null <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: idle
+  namespace: demo
+  annotations: { resourcerer.io/schedule: "@every 30m" }
+spec:
+  replicas: 0
+  selector: { matchLabels: { app: idle } }
+  template:
+    metadata: { labels: { app: idle } }
+    spec:
+      containers:
+        - { name: idle, image: busybox, resources: { requests: { cpu: 10m } } }
+EOF
+wait_for "a workload scaled to zero is retried with a backoff while it stays Pending" 240 bash -c \
+  "kubectl --context $CTX -n demo get rec deployment-idle -o json | jq -e '.status.phase == \"Pending\"
+     and ((.status.nextScheduleAt | fromdate) - (.status.generatedAt | fromdate)) >= 120'"
+k -n demo delete deploy idle >/dev/null
 wait_for "istio-proxy is not optimized" 60 bash -c \
   "[[ \$(kubectl --context $CTX -n demo get rec deployment-api -o jsonpath='{.status.containers[?(@.name==\"istio-proxy\")].skipped}') == true ]]"
 # The demo's istio-proxy is throttled by its CPU limit; a container resourcerer does not optimize stays out of
@@ -368,10 +409,29 @@ wait_for "with every policy gone, applies are allowed again" 120 decision demo d
   '.status.applyPolicy.auto.state == "Allowed" and .status.applyPolicy.manual.state == "Allowed"'
 
 # The metrics the issue asks for: applies by result, holds by rule, reverts, and slots left per policy.
-wait_for "the applier exports the apply counters" 60 metric '^resourcerer_apply_total\{result="Succeeded"\} [1-9]'
+wait_for "the applier counts the applies people make" 60 metric '^resourcerer_apply_total\{action="Apply",result="Succeeded",trigger="manual"\} [1-9]'
+wait_for "the applier counts the applies auto-deploy makes" 60 metric '^resourcerer_apply_total\{action="Apply",result="Succeeded",trigger="auto"\} [1-9]'
+wait_for "the applier counts the reverts that went through" 60 metric '^resourcerer_apply_total\{action="Revert",result="Succeeded",trigger="manual"\} [1-9]'
 wait_for "the applier counts the holds by the rule that held them" 60 metric '^resourcerer_apply_deferred_total\{reason="window"\} [1-9]'
 wait_for "the applier counts the reverts" 60 metric '^resourcerer_apply_reverted_total\{reason="manual"\} [1-9]'
 wait_for "a policy exports the slots it has left" 60 metric '^resourcerer_applypolicy_slots_available\{policy="ClusterApplyPolicy/e2e-slots"\}'
+wait_for "each component names its version" 30 cmetric '^resourcerer_build_info\{component="controller",version="[^"]+"\} 1'
+wait_for "the controller counts its Prometheus queries by purpose" 30 cmetric '^resourcerer_prometheus_requests_total\{code="200",purpose="usage",type="range"\} [1-9]'
+wait_for "and the samples they returned" 30 cmetric '^resourcerer_prometheus_samples_total\{purpose="usage"\} [1-9]'
+wait_for "the controller counts the recommendations it computed by phase" 30 \
+  cmetric '^resourcerer_recommendation_generations_total\{phase="(Ready|Learning)",workload_kind="Deployment"\} [1-9]'
+wait_for "the controller exports the workloads by kind, phase and auto-deploy" 30 \
+  cmetric '^resourcerer_workloads\{auto_deploy="true",pending="(true|false)",phase="[A-Za-z]+",workload_kind="Deployment"\} [1-9]'
+wait_for "the controller exports each workload's cost now and with the recommendation" 30 \
+  cmetric '^resourcerer_workload_monthly_cost\{namespace="demo",state="recommended",workload="api",workload_kind="Deployment"\} '
+wait_for "the controller exports requests now and with the recommendation" 30 \
+  cmetric '^resourcerer_workload_requests\{namespace="demo",resource="cpu",state="current",workload="api",workload_kind="Deployment"\} '
+# A recalibration that fails leaves the state stale until the next one, a minute later: wait for two.
+wait_for "the controller says where cost rates come from" 120 cmetric '^resourcerer_cost_calibration\{source="karpenter",state="ok"\} 1'
+wait_for "the server counts requests by route" 30 smetric '^resourcerer_http_requests_total\{code="200",method="GET",route="workload/reliability"\} [1-9]'
+wait_for "the server counts its Prometheus queries by the route that sent them" 30 \
+  smetric '^resourcerer_prometheus_requests_total\{code="200",purpose="workload/reliability",type="(range|instant)"\} [1-9]'
+wait_for "the server counts its cache lookups" 30 smetric '^resourcerer_server_cache_requests_total\{query="[a-z]+",result="miss"\} [1-9]'
 
 # auto-deploy.containers limits auto-deploy to some containers. Naming only istio-proxy, which containers.skip leaves
 # out by default, applies nothing and says why; once it is optimized, auto-deploy changes it alone.
@@ -419,8 +479,21 @@ jq -e '.state.recommendation and .state.replay and .state.fixes and .questions.v
 ! grep -qw "${target%%/*}" <<<"$(jq -c .state <<<"$sent")" \
   && pass "the state does not name the namespace" \
   || fail "the state does not name the namespace: $(jq -c .state <<<"$sent")"
+wait_for "the server counts the decision model's answers" 30 smetric '^resourcerer_decision_requests_total\{model="fake-decider",result="ok"\} [1-9]'
 k delete -f "$fake_decider" --ignore-not-found >/dev/null
 if [[ -n "$saved_model" ]]; then k apply -f - <<<"$saved_model" >/dev/null; fi
+
+# An applied recommendation that something else changes back, as a GitOps sync would, is reported: counted by the
+# field manager that changed it, announced on the workload, and the workload marked as drifted.
+curl -fs -X POST "$API/workloads/demo/Deployment/api/apply" -d "{\"hash\":\"$(rec_field demo deployment-api '{.status.hash}')\"}" >/dev/null
+wait_for "an apply to overwrite" 60 decision demo deployment-api '.status.history[0].action == "Apply"'
+k -n demo set resources deploy api --containers=api --requests=cpu=123m >/dev/null
+wait_for "an overwritten apply is counted by the manager that changed it" 120 cmetric '^resourcerer_apply_overwritten_total\{manager="kubectl-set"\} [1-9]'
+wait_for "the workload is marked as drifted" 60 cmetric '^resourcerer_workload_drifted\{namespace="demo",workload="api",workload_kind="Deployment"\} 1'
+wait_for "and the overwrite is announced on the workload" 30 bash -c \
+  "kubectl --context $CTX -n demo get events --field-selector reason=RecommendationOverwritten -o json | jq -e '.items | length > 0'"
+curl -fs -X POST "$API/workloads/demo/Deployment/api/revert" >/dev/null
+wait_for "a revert ends the drift" 120 bash -c "! curl -fs http://localhost:$CPORT/metrics | grep -q '^resourcerer_workload_drifted{namespace=\"demo\",workload=\"api\"'"
 
 # The server ends the placement window at the last full minute and caches the answer for minutes, so the first
 # request must come after the minute in which the controller's allocation above saw where on-demand-app ran.

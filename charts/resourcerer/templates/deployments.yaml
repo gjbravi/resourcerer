@@ -6,7 +6,7 @@
 ---
 {{- /* Authentication is the server's alone: only its container gets the flags and the secret material, and an
       anonymous install renders neither, so its pod spec is the one every existing install already runs. */ -}}
-{{- $serverArgs := list "--http-bind-address=:8080" "--metrics-bind-address=0" }}
+{{- $serverArgs := list "--http-bind-address=:8080" "--metrics-bind-address=:8081" }}
 {{- $serverEnv := list }}
 {{- /* Go's flag package keeps the last occurrence and accepts one or two dashes, so an --auth-* or -auth-* flag in
       extraArgs would win over the ones the chart adds below and silently change how the server authenticates — while
@@ -39,7 +39,7 @@
 {{- end }}
 {{- end }}
 {{- include "resourcerer.deployment" (dict "root" . "component" "server" "values" .Values.server
-  "args" $serverArgs "ports" (list (dict "name" "http" "port" 8080)) "env" $serverEnv) }}
+  "args" $serverArgs "ports" (list (dict "name" "http" "port" 8080) (dict "name" "metrics" "port" 8081)) "env" $serverEnv) }}
 {{- if .Values.applier.enabled }}
 ---
 {{ include "resourcerer.deployment" (dict "root" . "component" "applier" "values" .Values.applier

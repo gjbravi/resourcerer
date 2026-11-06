@@ -118,14 +118,19 @@ func (s *Server) evaluate(ctx context.Context, rec *v1alpha1.Recommendation, dm 
 		token = string(v)
 	}
 	timeout := time.Duration(max(dm.Spec.TimeoutSeconds, 1)) * time.Second
+	asked := time.Now()
 	resp, err := decision.Ask(ctx, http.DefaultClient, dm.Spec.Endpoint, token, timeout, req)
+	decisionSeconds.WithLabelValues(dm.Spec.Model).Observe(time.Since(asked).Seconds())
 	if err != nil {
+		decisionCounter.WithLabelValues(dm.Spec.Model, "error").Inc()
 		return nil, err
 	}
 	a, err := decision.Verdict(req, resp)
 	if err != nil {
+		decisionCounter.WithLabelValues(dm.Spec.Model, "invalid").Inc()
 		return nil, err
 	}
+	decisionCounter.WithLabelValues(dm.Spec.Model, "ok").Inc()
 	return &Evaluation{Version: resp.Model, EvaluatedAt: now.UTC().Format(time.RFC3339), Hash: st.Hash, Choice: a.Choice, Options: a.Options}, nil
 }
 

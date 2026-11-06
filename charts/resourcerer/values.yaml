@@ -31,6 +31,9 @@ prometheus:
   rateWindow: 5m
   # -- Finest query resolution, about the scrape interval.
   minStep: 30s
+  # -- Longest a query may take, response included, before resourcerer gives up on it; `0s` means no limit.
+  # A slow Prometheus then fails a recommendation, which is retried with a backoff, instead of holding a worker.
+  timeout: 2m
 
 # -- Cluster defaults for optimization settings, keyed by annotation name without the
 # `resourcerer.io/` prefix. Namespaces and workloads override them with annotations.
@@ -254,12 +257,13 @@ server:
     tls: []
 
 metrics:
-  # -- Add prometheus.io/scrape annotations to the metrics Services: the controller's, and the applier's
-  # when it is enabled. The UI charts recommendation history from the resourcerer_recommendation metric, and
-  # the applier's `resourcerer_apply_*` counters are how a held herd of applies becomes visible.
+  # -- Add prometheus.io/scrape annotations to the metrics Services: the controller's, the server's, and the
+  # applier's when it is enabled. The UI charts recommendation history from the resourcerer_recommendation metric,
+  # the applier's `resourcerer_apply_*` counters are how a held herd of applies becomes visible, and every component
+  # counts the queries it sends to Prometheus.
   scrapeAnnotations: true
   serviceMonitor:
-    # -- Create a Prometheus Operator ServiceMonitor instead, for both metrics Services.
+    # -- Create a Prometheus Operator ServiceMonitor instead, for every metrics Service.
     enabled: false
     interval: 30s
     labels: {}
