@@ -1,0 +1,28 @@
+# An example Grafana for trying the resourcerer dashboard, with the Grafana Helm chart: Prometheus as the data source
+# and the dashboard loaded from the resourcerer repository at the version you run. Not a production setup: no
+# persistence, and adapt the Prometheus URL to yours.
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-server.monitoring.svc
+        access: proxy
+        isDefault: true
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: resourcerer
+        orgId: 1
+        folder: resourcerer
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/resourcerer
+dashboards:
+  resourcerer:
+    resourcerer:
+      url: https://raw.githubusercontent.com/gjbravi/resourcerer/v${RESOURCERER_VERSION}/docs/assets/grafana/resourcerer-dashboard.json

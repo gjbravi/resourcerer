@@ -1,0 +1,3057 @@
+{
+ "title": "resourcerer",
+ "uid": "resourcerer",
+ "tags": [
+  "resourcerer",
+  "kubernetes",
+  "rightsizing"
+ ],
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "refresh": "30s",
+ "time": {
+  "from": "now-3h",
+  "to": "now"
+ },
+ "editable": true,
+ "graphTooltip": 1,
+ "description": "How resourcerer is doing across the cluster: savings, workloads, applies, load on Prometheus and health.",
+ "templating": {
+  "list": [
+   {
+    "name": "datasource",
+    "type": "datasource",
+    "query": "prometheus",
+    "label": "Data source"
+   },
+   {
+    "name": "namespace",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "${datasource}"
+    },
+    "label": "Namespace",
+    "query": {
+     "query": "label_values(resourcerer_workload_monthly_cost, namespace)",
+     "refId": "ns"
+    },
+    "definition": "label_values(resourcerer_workload_monthly_cost, namespace)",
+    "includeAll": true,
+    "multi": true,
+    "allValue": ".*",
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    },
+    "refresh": 2,
+    "sort": 1
+   },
+   {
+    "name": "kind",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "${datasource}"
+    },
+    "label": "Kind",
+    "query": {
+     "query": "label_values(resourcerer_workloads, workload_kind)",
+     "refId": "kind"
+    },
+    "definition": "label_values(resourcerer_workloads, workload_kind)",
+    "includeAll": true,
+    "multi": true,
+    "allValue": ".*",
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    },
+    "refresh": 2,
+    "sort": 1
+   }
+  ]
+ },
+ "panels": [
+  {
+   "type": "row",
+   "title": "Summary",
+   "id": 1,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Estimated savings / month",
+   "description": "Current minus recommended monthly cost, over every workload: what applying everything would change. Negative when the recommendations need more capacity than they free.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workload_monthly_cost{state=\"current\", namespace=~\"$namespace\", workload_kind=~\"$kind\"}) - sum(resourcerer_workload_monthly_cost{state=\"recommended\", namespace=~\"$namespace\", workload_kind=~\"$kind\"})",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "green"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 0,
+    "y": 1
+   },
+   "id": 2,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Reclaimable / month",
+   "description": "What applying every recommendation that lowers requests would save; workloads that need more are not subtracted. The Overview's Reclaimable.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(clamp_min(resourcerer_workload_monthly_cost{state=\"current\", namespace=~\"$namespace\", workload_kind=~\"$kind\"} - ignoring(state) resourcerer_workload_monthly_cost{state=\"recommended\", namespace=~\"$namespace\", workload_kind=~\"$kind\"}, 0))",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "green"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 4,
+    "y": 1
+   },
+   "id": 3,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Monthly cost now",
+   "description": "Requests \u00d7 average replicas \u00d7 rates \u00d7 730, summed over the managed workloads. Not the node bill: idle capacity and excluded namespaces are not in it.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workload_monthly_cost{state=\"current\", namespace=~\"$namespace\", workload_kind=~\"$kind\"})",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 8,
+    "y": 1
+   },
+   "id": 4,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Managed workloads",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workloads{workload_kind=~\"$kind\"})",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "purple"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "purple",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 12,
+    "y": 1
+   },
+   "id": 5,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Ready",
+   "description": "Share of managed workloads whose recommendation can be applied with full history.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workloads{workload_kind=~\"$kind\", phase=\"Ready\"}) / sum(resourcerer_workloads{workload_kind=~\"$kind\"})",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "green"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 15,
+    "y": 1
+   },
+   "id": 6,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Pending an apply",
+   "description": "Recommendations that differ from the requests by more than auto-deploy.threshold.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workloads{workload_kind=~\"$kind\", pending=\"true\"})",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "orange"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "orange",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 18,
+    "y": 1
+   },
+   "id": 7,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Auto-deploy on",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workloads{workload_kind=~\"$kind\", auto_deploy=\"true\"})",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 21,
+    "y": 1
+   },
+   "id": 8,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Savings",
+   "id": 9,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 5
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Monthly cost: now and with the recommendations",
+   "description": "The distance between the lines is what applying everything would save.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workload_monthly_cost{state=\"current\", namespace=~\"$namespace\", workload_kind=~\"$kind\"})",
+     "legendFormat": "now",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workload_monthly_cost{state=\"recommended\", namespace=~\"$namespace\", workload_kind=~\"$kind\"})",
+     "legendFormat": "with recommendations",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "now"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "with recommendations"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 6
+   },
+   "id": 10,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Reclaimable and net savings / month",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(clamp_min(resourcerer_workload_monthly_cost{state=\"current\", namespace=~\"$namespace\", workload_kind=~\"$kind\"} - ignoring(state) resourcerer_workload_monthly_cost{state=\"recommended\", namespace=~\"$namespace\", workload_kind=~\"$kind\"}, 0))",
+     "legendFormat": "reclaimable",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workload_monthly_cost{state=\"current\", namespace=~\"$namespace\", workload_kind=~\"$kind\"}) - sum(resourcerer_workload_monthly_cost{state=\"recommended\", namespace=~\"$namespace\", workload_kind=~\"$kind\"})",
+     "legendFormat": "net",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "reclaimable"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "net"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 6
+   },
+   "id": 11,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "table",
+   "title": "Reclaimable / month by namespace",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sort_desc(sum by (namespace) (clamp_min(resourcerer_workload_monthly_cost{state=\"current\", namespace=~\"$namespace\", workload_kind=~\"$kind\"} - ignoring(state) resourcerer_workload_monthly_cost{state=\"recommended\", namespace=~\"$namespace\", workload_kind=~\"$kind\"}, 0)))",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD"
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Value"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "Reclaimable"
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "gauge",
+         "mode": "lcd"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "sortBy": [
+     {
+      "displayName": "Reclaimable",
+      "desc": true
+     }
+    ]
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      }
+     }
+    }
+   ],
+   "gridPos": {
+    "h": 9,
+    "w": 8,
+    "x": 0,
+    "y": 14
+   },
+   "id": 12,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "table",
+   "title": "Top workloads by reclaimable / month",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "topk(15, sum by (namespace, workload_kind, workload) (clamp_min(resourcerer_workload_monthly_cost{state=\"current\", namespace=~\"$namespace\", workload_kind=~\"$kind\"} - ignoring(state) resourcerer_workload_monthly_cost{state=\"recommended\", namespace=~\"$namespace\", workload_kind=~\"$kind\"}, 0)))",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD"
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Value"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "Reclaimable"
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "gauge",
+         "mode": "lcd"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "sortBy": [
+     {
+      "displayName": "Reclaimable",
+      "desc": true
+     }
+    ]
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      }
+     }
+    }
+   ],
+   "gridPos": {
+    "h": 9,
+    "w": 10,
+    "x": 8,
+    "y": 14
+   },
+   "id": 13,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "table",
+   "title": "Workloads that need more capacity",
+   "description": "Recommendations that raise cost, usually to fix throttling or OOM kills.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "topk(10, sum by (namespace, workload_kind, workload) (clamp_min(resourcerer_workload_monthly_cost{state=\"recommended\", namespace=~\"$namespace\", workload_kind=~\"$kind\"} - ignoring(state) resourcerer_workload_monthly_cost{state=\"current\", namespace=~\"$namespace\", workload_kind=~\"$kind\"}, 0)) > 0)",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD"
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Value"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "Extra / month"
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "gauge",
+         "mode": "lcd"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "sortBy": [
+     {
+      "displayName": "Extra / month",
+      "desc": true
+     }
+    ]
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      }
+     }
+    }
+   ],
+   "gridPos": {
+    "h": 9,
+    "w": 6,
+    "x": 18,
+    "y": 14
+   },
+   "id": 14,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Capacity",
+   "id": 15,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 23
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "CPU requested: now and with the recommendations",
+   "description": "Cores: requests \u00d7 average replicas of the managed workloads, against what the nodes offer.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workload_requests{namespace=~\"$namespace\", workload_kind=~\"$kind\", resource=\"cpu\", state=\"current\"})",
+     "legendFormat": "now",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workload_requests{namespace=~\"$namespace\", workload_kind=~\"$kind\", resource=\"cpu\", state=\"recommended\"})",
+     "legendFormat": "with recommendations",
+     "refId": "B"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(kube_node_status_allocatable{resource=\"cpu\"})",
+     "legendFormat": "cluster allocatable",
+     "refId": "C"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "now"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "with recommendations"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "cluster allocatable"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#888888"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 24
+   },
+   "id": 16,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Memory requested: now and with the recommendations",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workload_requests{namespace=~\"$namespace\", workload_kind=~\"$kind\", resource=\"memory\", state=\"current\"})",
+     "legendFormat": "now",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workload_requests{namespace=~\"$namespace\", workload_kind=~\"$kind\", resource=\"memory\", state=\"recommended\"})",
+     "legendFormat": "with recommendations",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "now"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "with recommendations"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 24
+   },
+   "id": 17,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Cost rates in use",
+   "description": "Per core-hour (cpu) and GiB-hour (memory). Cost moving while requests stay flat is a price change, not rightsizing.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "max by (resource) ((resourcerer_cost_rate) * on (instance) group_left () max by (instance, component) (resourcerer_build_info{component=~\"controller|all\"}))",
+     "legendFormat": "{{resource}}",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "max((resourcerer_cost_cluster_factor) * on (instance) group_left () max by (instance, component) (resourcerer_build_info{component=~\"controller|all\"}))",
+     "legendFormat": "cluster factor",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "cluster factor"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "unit",
+        "value": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 24
+   },
+   "id": 18,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Workloads",
+   "id": 19,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 32
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "By kind",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (workload_kind) (resourcerer_workloads{workload_kind=~\"$kind\"})",
+     "legendFormat": "{{workload_kind}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 40,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 33
+   },
+   "id": 20,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "By phase",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (phase) (resourcerer_workloads{workload_kind=~\"$kind\"})",
+     "legendFormat": "{{phase}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 40,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Ready"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Learning"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Pending"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Warning"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Error"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Unsupported"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#888888"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 33
+   },
+   "id": 21,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Backlog and adoption",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workloads{workload_kind=~\"$kind\", pending=\"true\"})",
+     "legendFormat": "pending an apply",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(resourcerer_workloads{workload_kind=~\"$kind\", auto_deploy=\"true\"})",
+     "legendFormat": "auto-deploy on",
+     "refId": "B"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "count(resourcerer_workload_drifted{namespace=~\"$namespace\", workload_kind=~\"$kind\"}) or vector(0)",
+     "legendFormat": "drifted",
+     "refId": "C"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pending an apply"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "auto-deploy on"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "drifted"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 33
+   },
+   "id": 22,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Applies",
+   "id": 23,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 41
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Applies and reverts / hour",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (action, trigger, result) (increase(resourcerer_apply_total[1h]))",
+     "legendFormat": "{{action}} {{trigger}} {{result}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 40,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 42
+   },
+   "id": 24,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Held by an apply policy / hour",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (reason) (increase(resourcerer_apply_deferred_total[1h]))",
+     "legendFormat": "{{reason}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 40,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 42
+   },
+   "id": 25,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Applies undone by another manager",
+   "description": "An applied recommendation whose values a GitOps sync, Helm or a person changed back. See the RecommendationOverwritten events.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "round(sum by (manager) (increase(resourcerer_apply_overwritten_total[1h])))",
+     "legendFormat": "{{manager}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 40,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 42
+   },
+   "id": 26,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Load on Prometheus",
+   "id": 27,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 50
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Queries / s by purpose",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (purpose) (rate(resourcerer_prometheus_requests_total[5m]))",
+     "legendFormat": "{{purpose}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "fillOpacity": 40,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 51
+   },
+   "id": 28,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Samples / s by purpose",
+   "description": "What the queries cost Prometheus to evaluate and send.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (purpose) (rate(resourcerer_prometheus_samples_total[5m]))",
+     "legendFormat": "{{purpose}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 40,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 51
+   },
+   "id": 29,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Query duration p95 by purpose",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "histogram_quantile(0.95, sum by (le, purpose) (rate(resourcerer_prometheus_request_duration_seconds_bucket[5m])))",
+     "legendFormat": "{{purpose}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 51
+   },
+   "id": 30,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Failed queries / s by code",
+   "description": "error: no response; timeout: past prometheus.timeout.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (code, purpose) (rate(resourcerer_prometheus_requests_total{code!~\"2..\"}[5m]))",
+     "legendFormat": "{{code}} {{purpose}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 59
+   },
+   "id": 31,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Response bytes / s by component",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (component) ((rate(resourcerer_prometheus_response_bytes_total[5m])) * on (instance) group_left (component) max by (instance, component) (resourcerer_build_info))",
+     "legendFormat": "{{component}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "Bps",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 59
+   },
+   "id": 32,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Queries in flight by component",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (component) ((resourcerer_prometheus_requests_in_flight) * on (instance) group_left (component) max by (instance, component) (resourcerer_build_info))",
+     "legendFormat": "{{component}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 59
+   },
+   "id": 33,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Server",
+   "id": 34,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 67
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Requests / s by route",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (route) (rate(resourcerer_http_requests_total{route!=\"ui\"}[5m]))",
+     "legendFormat": "{{route}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "fillOpacity": 40,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 68
+   },
+   "id": 35,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Latency p95 by route",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "histogram_quantile(0.95, sum by (le, route) (rate(resourcerer_http_request_duration_seconds_bucket{route!=\"ui\"}[5m])))",
+     "legendFormat": "{{route}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 68
+   },
+   "id": 36,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Errors / s by route and code",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (route, code) (rate(resourcerer_http_requests_total{code=~\"5..|4..\"}[5m]))",
+     "legendFormat": "{{route}} {{code}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 68
+   },
+   "id": 37,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Cache: share answered without querying",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (query) (rate(resourcerer_server_cache_requests_total{result!=\"miss\"}[15m])) / sum by (query) (rate(resourcerer_server_cache_requests_total[15m]))",
+     "legendFormat": "{{query}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 76
+   },
+   "id": 38,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Decision models",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "round(sum by (model, result) (increase(resourcerer_decision_requests_total[1h])))",
+     "legendFormat": "{{model}} {{result}} / h",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "histogram_quantile(0.95, sum by (le, model) (rate(resourcerer_decision_request_duration_seconds_bucket[1h])))",
+     "legendFormat": "{{model}} p95 seconds",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 76
+   },
+   "id": 39,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Health",
+   "id": 40,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 84
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Components up",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "count((up == 1) * on (instance) group_left () max by (instance, component) (resourcerer_build_info))",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "green"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 0,
+    "y": 85
+   },
+   "id": 41,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Oldest recommendation",
+   "description": "Time since the stalest recommendation was computed. With the default @daily schedule, past a day and a half something is not refreshing.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "max(time() - resourcerer_recommendation_generated_timestamp_seconds{namespace=~\"$namespace\", workload_kind=~\"$kind\"})",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "color": {
+      "mode": "thresholds",
+      "fixedColor": "text"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 129600
+       },
+       {
+        "color": "red",
+        "value": 259200
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 3,
+    "y": 85
+   },
+   "id": 42,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Least history",
+   "description": "The recommendation with the least usage history over its learning period.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "min(resourcerer_recommendation_history_coverage_ratio{namespace=~\"$namespace\", workload_kind=~\"$kind\"})",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "color": {
+      "mode": "thresholds",
+      "fixedColor": "text"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 0.5
+       },
+       {
+        "color": "green",
+        "value": 0.95
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 6,
+    "y": 85
+   },
+   "id": 43,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Cost calibration",
+   "description": "Where cost rates come from, and the state of the last calibration.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "max by (source, state) ((resourcerer_cost_calibration) * on (instance) group_left () max by (instance, component) (resourcerer_build_info{component=~\"controller|all\"}))",
+     "legendFormat": "{{source}} \u00b7 {{state}}",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "name"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 9,
+    "y": 85
+   },
+   "id": 44,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Signal errors / h",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum(increase(resourcerer_signal_errors_total[1h])) or vector(0)",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds",
+      "fixedColor": "text"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 13,
+    "y": 85
+   },
+   "id": 45,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Settings warnings",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "count(resourcerer_settings_warnings{namespace=~\"$namespace\", workload_kind=~\"$kind\"}) or vector(0)",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds",
+      "fixedColor": "text"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 16,
+    "y": 85
+   },
+   "id": 46,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Reconcile errors / h",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum((increase(controller_runtime_reconcile_errors_total[1h])) * on (instance) group_left () max by (instance, component) (resourcerer_build_info)) or vector(0)",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds",
+      "fixedColor": "text"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 5,
+    "x": 19,
+    "y": 85
+   },
+   "id": 47,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Recommendations computed / h by phase",
+   "description": "Only the reconciles that query Prometheus. Pending and Error back off up to the schedule.",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (phase) (increase(resourcerer_recommendation_generations_total[1h]))",
+     "legendFormat": "{{phase}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 40,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Ready"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Learning"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Pending"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Error"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 89
+   },
+   "id": 48,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Time to compute one, p95 by kind",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "histogram_quantile(0.95, sum by (le, workload_kind) (rate(resourcerer_recommendation_generation_duration_seconds_bucket[15m])))",
+     "legendFormat": "{{workload_kind}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 89
+   },
+   "id": 49,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Work queue depth",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "sum by (name) ((workqueue_depth) * on (instance) group_left () max by (instance, component) (resourcerer_build_info))",
+     "legendFormat": "{{name}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 2,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 89
+   },
+   "id": 50,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  },
+  {
+   "type": "table",
+   "title": "Versions",
+   "description": "",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "expr": "max by (component, version) (resourcerer_build_info)",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Value"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "Up"
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "gauge",
+         "mode": "lcd"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "sortBy": [
+     {
+      "displayName": "Up",
+      "desc": true
+     }
+    ]
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      }
+     }
+    }
+   ],
+   "gridPos": {
+    "h": 5,
+    "w": 24,
+    "x": 0,
+    "y": 97
+   },
+   "id": 51,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   }
+  }
+ ]
+}

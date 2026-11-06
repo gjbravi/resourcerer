@@ -25,6 +25,10 @@ kubectl --context kind-resourcerer -n resourcerer port-forward svc/resourcerer 8
 Open [http://localhost:8080](http://localhost:8080). After a few minutes the demo workloads are `Ready`, with
 savings, reliability signals and Karpenter-priced placement to look at.
 
+`make kind-grafana` adds Grafana with the [example dashboard](grafana-dashboard.md), at
+[http://localhost:3000/d/resourcerer](http://localhost:3000/d/resourcerer) after
+`kubectl --context kind-resourcerer -n monitoring port-forward svc/grafana 3000:80`.
+
 Behind a TLS-intercepting proxy, pass its root CA: `EXTRA_CA_CERT=/path/to/ca.pem make kind-up`.
 
 The values used are in `hack/resourcerer-values.yaml`: a good example of a configuration with Karpenter pricing,
