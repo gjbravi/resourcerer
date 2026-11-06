@@ -67,18 +67,20 @@ if [[ -n "${E2E_METRICS_PORT:-}" ]] && curl -s -o /dev/null --max-time 2 "http:/
 fi
 k -n resourcerer port-forward svc/resourcerer-applier-metrics "$MPORT:8081" >/dev/null 2>&1 &
 MPF=$!
-metric() { curl -fs "http://localhost:$MPORT/metrics" | grep -qE "$1"; }
+# grep reads the whole page: with -q it stops at the first match, curl dies writing the rest and pipefail fails a check
+# that matched.
+metric() { curl -fs "http://localhost:$MPORT/metrics" | grep -E "$1" >/dev/null; }
 wait_for "the applier's metrics endpoint answers" 60 curl -fs "http://localhost:$MPORT/metrics"
 # The controller's and the server's: what they ask Prometheus, what they compute and what people ask of them.
 CPORT="$(free_port $((MPORT + 1)))"
 k -n resourcerer port-forward svc/resourcerer-metrics "$CPORT:8081" >/dev/null 2>&1 &
 CPF=$!
-cmetric() { curl -fs "http://localhost:$CPORT/metrics" | grep -qE "$1"; }
+cmetric() { curl -fs "http://localhost:$CPORT/metrics" | grep -E "$1" >/dev/null; }
 wait_for "the controller's metrics endpoint answers" 60 curl -fs "http://localhost:$CPORT/metrics"
 SPORT="$(free_port $((CPORT + 1)))"
 k -n resourcerer port-forward svc/resourcerer-server-metrics "$SPORT:8081" >/dev/null 2>&1 &
 SPF=$!
-smetric() { curl -fs "http://localhost:$SPORT/metrics" | grep -qE "$1"; }
+smetric() { curl -fs "http://localhost:$SPORT/metrics" | grep -E "$1" >/dev/null; }
 wait_for "the server's metrics endpoint answers" 60 curl -fs "http://localhost:$SPORT/metrics"
 
 # Start from the manifests, also when an earlier run stopped halfway.
