@@ -1,32 +1,51 @@
 ---
 title: Grafana dashboard
-description: "See how resourcerer is doing across the cluster in Grafana: savings, workloads, applies, load on Prometheus and health."
+description: "An example Grafana dashboard of how resourcerer is doing across the cluster: a starting point to import and adapt."
 ---
 
-The UI answers whether to apply one workload's recommendation. The Grafana dashboard answers how resourcerer is doing
-as a whole, over time: what it would save and what was applied, how far along the workloads are, how much it asks of
-Prometheus, and whether it is healthy. It reads the [metrics](../reference/metrics-and-events.md) resourcerer
-exports, so Prometheus must scrape them first (see [Prometheus](../configuration/prometheus.md#recommendation-history)).
+The UI answers whether to apply one workload's recommendation. A dashboard over resourcerer's
+[metrics](../reference/metrics-and-events.md) answers how it is doing as a whole, over time: what it would save and
+what was applied, how far along the workloads are, how much it asks of Prometheus, and whether it is healthy.
 
-## Install it
+The repository publishes an example: a starting point to import and adapt to your Grafana, your Prometheus and what
+your team watches, not part of the chart. Prometheus must scrape resourcerer first (see
+[Prometheus](../configuration/prometheus.md#recommendation-history)).
 
-The chart ships the dashboard in a ConfigMap for a Grafana that loads dashboards from labelled ConfigMaps: the sidecar
-of the Grafana chart, which kube-prometheus-stack enables by default.
+## Import it
 
-```yaml title="values.yaml"
-metrics:
-  grafanaDashboard:
-    enabled: true
-    # The label your sidecar looks for; grafana_dashboard: "1" is the default of both charts.
-    labels:
-      grafana_dashboard: "1"
-    # When the sidecar only watches some namespaces.
-    namespace: monitoring
+The dashboard is `docs/assets/grafana/resourcerer-dashboard.json` in the repository. Take it from the tag of the
+version you run, so it matches its metrics:
+
+```bash
+RESOURCERER_VERSION=1.0.0
+curl -fsSLO https://raw.githubusercontent.com/gjbravi/resourcerer/v${RESOURCERER_VERSION}/docs/assets/grafana/resourcerer-dashboard.json
 ```
 
-Without the sidecar, import `charts/resourcerer/dashboards/resourcerer.json` from the
-[repository](https://github.com/gjbravi/resourcerer/blob/main/charts/resourcerer/dashboards/resourcerer.json) in
-Grafana (**Dashboards → New → Import**) and pick your Prometheus data source.
+Then, in Grafana, **Dashboards → New → Import** and pick your Prometheus data source. With a Grafana that loads
+dashboards from labelled ConfigMaps (the sidecar of the Grafana chart and of kube-prometheus-stack), put the file in
+one:
+
+```bash
+kubectl -n monitoring create configmap grafana-dashboard-resourcerer --from-file=resourcerer-dashboard.json
+kubectl -n monitoring label configmap grafana-dashboard-resourcerer grafana_dashboard=1
+```
+
+## Try it with a Grafana of its own
+
+To look at it without touching your Grafana, install one next to your Prometheus with the Grafana Helm chart and
+[these values](https://github.com/gjbravi/resourcerer/blob/main/docs/assets/grafana/grafana-values.yaml), which load
+the dashboard from the repository. They have no persistence: for trying, not for production.
+
+```bash
+helm repo add grafana https://grafana.github.io/helm-charts
+curl -fsSL https://raw.githubusercontent.com/gjbravi/resourcerer/v${RESOURCERER_VERSION}/docs/assets/grafana/grafana-values.yaml \
+  | envsubst > grafana-values.yaml
+helm install grafana grafana/grafana --namespace monitoring --values grafana-values.yaml
+kubectl -n monitoring port-forward svc/grafana 3000:80
+```
+
+The `admin` password is in the `grafana` Secret:
+`kubectl -n monitoring get secret grafana -o jsonpath='{.data.admin-password}' | base64 -d`.
 
 ## What it shows
 
@@ -46,13 +65,17 @@ The **Namespace** and **Kind** filters at the top narrow the workload panels.
 The costs are the ones the Overview shows: requests × average replicas × rates × 730 for the managed workloads, not
 the node bill. See [Costs](../concepts/costs.md).
 
-## Change it
+Panels that need to know which process a series comes from match it by `instance` to `resourcerer_build_info`, so
+they work whatever your release and scrape job are called. A Prometheus shared by several clusters needs a cluster
+filter added to the queries.
+
+## Change the example
 
 The JSON is generated: edit `hack/grafana-dashboard.py` and run `make dashboard`; `make lint` fails when the two
-differ. To try a change, `make kind-up` runs Grafana next to Prometheus, and `make kind-deploy` installs the
-dashboard there:
+differ. `make kind-grafana` installs Grafana on the kind cluster with the dashboard, and loads it again after a change:
 
 ```bash
+make kind-grafana
 kubectl --context kind-resourcerer -n monitoring port-forward svc/grafana 3000:80
 # http://localhost:3000/d/resourcerer
 ```

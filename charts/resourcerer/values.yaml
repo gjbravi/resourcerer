@@ -267,18 +267,6 @@ metrics:
     enabled: false
     interval: 30s
     labels: {}
-  grafanaDashboard:
-    # -- Ship a Grafana dashboard of how resourcerer is doing across the cluster (savings, workloads, applies, load
-    # on Prometheus, health) in a ConfigMap, for a Grafana that loads dashboards from labelled ConfigMaps.
-    enabled: false
-    # -- Labels the Grafana sidecar selects dashboards by.
-    labels:
-      grafana_dashboard: "1"
-    # -- Annotations on the ConfigMap, such as the folder the sidecar puts the dashboard in
-    # (`grafana_folder: resourcerer` with the Grafana chart's `folderAnnotation` set to it).
-    annotations: {}
-    # -- Namespace of the ConfigMap, when the sidecar only watches its own; the release namespace when empty.
-    namespace: ""
 
 rbac:
   create: true

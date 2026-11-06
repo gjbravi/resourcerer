@@ -17,7 +17,7 @@ Docker, `kind`, `kubectl`, `helm`, Go and Node.js, and `make`.
 ```bash
 git clone https://github.com/gjbravi/resourcerer.git
 cd resourcerer
-make kind-up        # the cluster, Prometheus, Grafana and demo workloads
+make kind-up        # the cluster, Prometheus and demo workloads
 make kind-deploy    # build the image, load it into kind, install the two charts
 kubectl --context kind-resourcerer -n resourcerer port-forward svc/resourcerer 8080:80
 ```
@@ -25,7 +25,7 @@ kubectl --context kind-resourcerer -n resourcerer port-forward svc/resourcerer 8
 Open [http://localhost:8080](http://localhost:8080). After a few minutes the demo workloads are `Ready`, with
 savings, reliability signals and Karpenter-priced placement to look at.
 
-The [Grafana dashboard](grafana-dashboard.md) is at
+`make kind-grafana` adds Grafana with the [example dashboard](grafana-dashboard.md), at
 [http://localhost:3000/d/resourcerer](http://localhost:3000/d/resourcerer) after
 `kubectl --context kind-resourcerer -n monitoring port-forward svc/grafana 3000:80`.
 

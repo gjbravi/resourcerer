@@ -499,16 +499,6 @@ wait_for "and the overwrite is announced on the workload" 30 bash -c \
 curl -fs -X POST "$API/workloads/demo/Deployment/api/revert" >/dev/null
 wait_for "a revert ends the drift" 120 bash -c "! curl -fs http://localhost:$CPORT/metrics | grep -q '^resourcerer_workload_drifted{namespace=\"demo\",workload=\"api\"'"
 
-# The chart ships its Grafana dashboard to the sidecar of the Grafana make kind-up runs; a cluster made before that has none.
-if k -n monitoring get svc grafana >/dev/null 2>&1; then
-  k -n resourcerer get cm resourcerer-grafana-dashboard -o json | jq -e '.data["resourcerer.json"] | fromjson | .uid == "resourcerer"' >/dev/null \
-    && pass "the chart ships the Grafana dashboard" || fail "the chart ships the Grafana dashboard"
-  wait_for "Grafana loads the dashboard" 120 bash -c \
-    "kubectl --context $CTX get --raw /api/v1/namespaces/monitoring/services/grafana:80/proxy/api/dashboards/uid/resourcerer | jq -e '.dashboard.panels | length > 40'"
-else
-  echo "SKIP Grafana is not installed: recreate the cluster with make kind-up to check the dashboard"
-fi
-
 # The server ends the placement window at the last full minute and caches the answer for minutes, so the first
 # request must come after the minute in which the controller's allocation above saw where on-demand-app ran.
 # Asked last, that minute has usually passed already.

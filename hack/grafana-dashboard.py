@@ -1,7 +1,7 @@
 """Writes the resourcerer Grafana dashboard: how resourcerer is doing across the cluster.
 
-make dashboard runs it into charts/resourcerer/dashboards/resourcerer.json, which the chart ships in a ConfigMap
-(metrics.grafanaDashboard.enabled); make lint fails when the two differ. Edit this file, not the JSON.
+make dashboard runs it into docs/assets/grafana/resourcerer-dashboard.json, an example the docs publish for people to
+import and adapt (docs/guides/grafana-dashboard.md); make lint fails when the two differ. Edit this file, not the JSON.
 """
 import json
 import sys

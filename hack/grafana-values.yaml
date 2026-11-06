@@ -1,4 +1,4 @@
-# Grafana for the kind environment (make kind-up): no login, the kind Prometheus as the only data
+# Grafana for the kind environment (make kind-grafana): no login, the kind Prometheus as the only data
 # source, and dashboards loaded from ConfigMaps labelled grafana_dashboard=1.
 grafana.ini:
   auth.anonymous:

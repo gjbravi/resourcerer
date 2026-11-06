@@ -63,7 +63,3 @@ applyPolicies:
             to: "23:59"
         rate:
           maxConcurrent: 1
-# make kind-up runs Grafana with the dashboard sidecar (hack/grafana-values.yaml), which loads this one.
-metrics:
-  grafanaDashboard:
-    enabled: true
