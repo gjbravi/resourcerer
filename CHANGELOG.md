@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.0-rc.6](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.5...v1.0.0-rc.6) (2026-11-06)
+
+
+### Features
+
+* **metrics:** observe prometheus load, fleet savings and overwritten applies ([#76](https://github.com/gjbravi/resourcerer/issues/76)) ([6745119](https://github.com/gjbravi/resourcerer/commit/6745119794066b78f932e84f361ddf130bb5ca56))
+
+
+### Bug Fixes
+
+* **chart:** honor metric labels in the servicemonitor ([#73](https://github.com/gjbravi/resourcerer/issues/73)) ([f5d7f54](https://github.com/gjbravi/resourcerer/commit/f5d7f54e4864f881a627ec553da1bd5d265e6541))
+* **prom:** count a query cut by its timeout as a timeout ([#78](https://github.com/gjbravi/resourcerer/issues/78)) ([4cb244d](https://github.com/gjbravi/resourcerer/commit/4cb244dcb467e149ac28d2fbe7e7d07283e55dcc))
+
 ## [1.0.0-rc.5](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.4...v1.0.0-rc.5) (2026-11-05)
 
 
