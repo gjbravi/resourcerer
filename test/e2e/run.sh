@@ -14,6 +14,10 @@ fail() {
     echo "--- $r status"
     k -n "${r%%/*}" get rec "${r##*/}" -o json | jq '.status | del(.containers[]?.basis)' || true
   done
+  if [[ -n "${CPORT:-}" ]]; then
+    echo "--- controller cost calibration and Prometheus queries"
+    curl -fs "http://localhost:$CPORT/metrics" | grep -E '^resourcerer_(cost_calibration|prometheus_requests_total)' || true
+  fi
   for c in controller applier; do
     echo "--- $c logs"
     k -n resourcerer logs "deploy/resourcerer-$c" --tail=40 || true
@@ -424,7 +428,8 @@ wait_for "the controller exports each workload's cost now and with the recommend
   cmetric '^resourcerer_workload_monthly_cost\{namespace="demo",state="recommended",workload="api",workload_kind="Deployment"\} '
 wait_for "the controller exports requests now and with the recommendation" 30 \
   cmetric '^resourcerer_workload_requests\{namespace="demo",resource="cpu",state="current",workload="api",workload_kind="Deployment"\} '
-wait_for "the controller says where cost rates come from" 30 cmetric '^resourcerer_cost_calibration\{source="karpenter",state="ok"\} 1'
+# A recalibration that fails leaves the state stale until the next one, a minute later: wait for two.
+wait_for "the controller says where cost rates come from" 120 cmetric '^resourcerer_cost_calibration\{source="karpenter",state="ok"\} 1'
 wait_for "the server counts requests by route" 30 smetric '^resourcerer_http_requests_total\{code="200",method="GET",route="workload/reliability"\} [1-9]'
 wait_for "the server counts its Prometheus queries by the route that sent them" 30 \
   smetric '^resourcerer_prometheus_requests_total\{code="200",purpose="workload/reliability",type="(range|instant)"\} [1-9]'
