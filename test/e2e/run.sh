@@ -67,18 +67,20 @@ if [[ -n "${E2E_METRICS_PORT:-}" ]] && curl -s -o /dev/null --max-time 2 "http:/
 fi
 k -n resourcerer port-forward svc/resourcerer-applier-metrics "$MPORT:8081" >/dev/null 2>&1 &
 MPF=$!
-metric() { curl -fs "http://localhost:$MPORT/metrics" | grep -qE "$1"; }
+# grep reads the whole page: with -q it stops at the first match, curl dies writing the rest and pipefail fails a check
+# that matched.
+metric() { curl -fs "http://localhost:$MPORT/metrics" | grep -E "$1" >/dev/null; }
 wait_for "the applier's metrics endpoint answers" 60 curl -fs "http://localhost:$MPORT/metrics"
 # The controller's and the server's: what they ask Prometheus, what they compute and what people ask of them.
 CPORT="$(free_port $((MPORT + 1)))"
 k -n resourcerer port-forward svc/resourcerer-metrics "$CPORT:8081" >/dev/null 2>&1 &
 CPF=$!
-cmetric() { curl -fs "http://localhost:$CPORT/metrics" | grep -qE "$1"; }
+cmetric() { curl -fs "http://localhost:$CPORT/metrics" | grep -E "$1" >/dev/null; }
 wait_for "the controller's metrics endpoint answers" 60 curl -fs "http://localhost:$CPORT/metrics"
 SPORT="$(free_port $((CPORT + 1)))"
 k -n resourcerer port-forward svc/resourcerer-server-metrics "$SPORT:8081" >/dev/null 2>&1 &
 SPF=$!
-smetric() { curl -fs "http://localhost:$SPORT/metrics" | grep -qE "$1"; }
+smetric() { curl -fs "http://localhost:$SPORT/metrics" | grep -E "$1" >/dev/null; }
 wait_for "the server's metrics endpoint answers" 60 curl -fs "http://localhost:$SPORT/metrics"
 
 # Start from the manifests, also when an earlier run stopped halfway.
@@ -88,6 +90,8 @@ k -n demo delete deploy idle --ignore-not-found >/dev/null 2>&1 || true
 k label ns demo resourcerer.io/apply-policy- >/dev/null 2>&1 || true
 k -n demo annotate deploy api resourcerer.io/auto-deploy- resourcerer.io/cpu.optimization-goal- >/dev/null 2>&1 || true
 k -n demo annotate deploy worker resourcerer.io/memory.optimization-goal- >/dev/null 2>&1 || true
+k -n demo annotate deploy orders resourcerer.io/auto-deploy- resourcerer.io/auto-deploy.containers- resourcerer.io/containers.skip- \
+  resourcerer.io/learning-period- >/dev/null 2>&1 || true
 k -n payments annotate deploy checkout resourcerer.io/learning-period- >/dev/null 2>&1 || true
 
 rec_field() { k -n "$1" get rec "$2" -o jsonpath="$3"; }
@@ -434,7 +438,9 @@ wait_for "the server counts its Prometheus queries by the route that sent them" 
 wait_for "the server counts its cache lookups" 30 smetric '^resourcerer_server_cache_requests_total\{query="[a-z]+",result="miss"\} [1-9]'
 
 # auto-deploy.containers limits auto-deploy to some containers. Naming only istio-proxy, which containers.skip leaves
-# out by default, applies nothing and says why; once it is optimized, auto-deploy changes it alone.
+# out by default, applies nothing and says why; once it is optimized, auto-deploy changes it alone. Auto-deploy never
+# applies a hash twice, and an earlier run may have applied and reverted this one: start from a new Recommendation.
+k -n demo delete rec deployment-orders --ignore-not-found >/dev/null
 k -n demo annotate deploy orders --overwrite resourcerer.io/auto-deploy=Enabled resourcerer.io/auto-deploy.containers=istio-proxy >/dev/null
 wait_for "auto-deploy limited to a container that is not optimized applies nothing, and says why" 120 bash -c \
   "kubectl --context $CTX -n demo get rec deployment-orders -o json | jq -e '.status.autoDeployScope.reason | test(\"none of the containers\")'"

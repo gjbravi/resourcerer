@@ -38,6 +38,8 @@ lint: lint-workflows lint-docs ## Run linters
 	helm lint charts/resourcerer-crds
 	helm template resourcerer charts/resourcerer >/dev/null
 	helm template resourcerer-crds charts/resourcerer-crds >/dev/null
+	python3 hack/grafana-dashboard.py | diff -q - docs/assets/grafana/resourcerer-dashboard.json >/dev/null \
+		|| { echo "the Grafana dashboard is stale: run make dashboard"; exit 1; }
 
 .PHONY: lint-workflows
 lint-workflows: ## Lint GitHub Actions workflows
@@ -46,6 +48,10 @@ lint-workflows: ## Lint GitHub Actions workflows
 .PHONY: lint-docs
 lint-docs: ## Check that docs and agent skills match the repository (MERMAID=1 also renders diagrams)
 	./hack/lint-docs.sh
+
+.PHONY: dashboard
+dashboard: ## Write the example Grafana dashboard into the docs from hack/grafana-dashboard.py
+	python3 hack/grafana-dashboard.py > docs/assets/grafana/resourcerer-dashboard.json
 
 .PHONY: verify-generate
 verify-generate: generate ## Fail when generated code or the CRDs are out of date
@@ -106,6 +112,10 @@ image: ## Build the container image
 .PHONY: kind-up
 kind-up: ## Create a kind cluster with metrics-server, VPA and demo workloads
 	CLUSTER_NAME=$(CLUSTER_NAME) ./hack/kind-up.sh
+
+.PHONY: kind-grafana
+kind-grafana: ## Optional: Grafana on the kind cluster with the example dashboard from the docs
+	CLUSTER_NAME=$(CLUSTER_NAME) ./hack/kind-grafana.sh
 
 .PHONY: kind-deploy
 kind-deploy: image kind-install ## Build, load into kind and install the charts

@@ -1,0 +1,32 @@
+# Grafana for the kind environment (make kind-grafana): no login, the kind Prometheus as the only data
+# source, and dashboards loaded from ConfigMaps labelled grafana_dashboard=1.
+grafana.ini:
+  auth.anonymous:
+    enabled: true
+    org_role: Admin
+  auth:
+    disable_login_form: true
+  users:
+    default_theme: dark
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        url: http://prometheus-server.monitoring.svc
+        access: proxy
+        isDefault: true
+        jsonData:
+          timeInterval: 10s
+sidecar:
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    labelValue: "1"
+    searchNamespace: ALL
+persistence:
+  enabled: false
+resources:
+  requests: { cpu: 50m, memory: 128Mi }

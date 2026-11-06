@@ -145,6 +145,7 @@ nav:
       - Karpenter costs: guides/karpenter-costs.md
       - Exposing the UI: guides/exposing-the-ui.md
       - Large clusters: guides/large-clusters.md
+      - Grafana dashboard: guides/grafana-dashboard.md
       - Try it on kind: guides/try-on-kind.md
   - Reference:
       - Settings and annotations: reference/settings.md
