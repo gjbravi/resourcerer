@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-rc.7](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.6...v1.0.0-rc.7) (2026-11-06)
+
+
+### Bug Fixes
+
+* **cluster:** price nodes once at current prices for node allocation ([#80](https://github.com/gjbravi/resourcerer/issues/80)) ([58b3225](https://github.com/gjbravi/resourcerer/commit/58b3225939cf6e79e6ec297760cad707cbc43613))
+
 ## [1.0.0-rc.6](https://github.com/gjbravi/resourcerer/compare/v1.0.0-rc.5...v1.0.0-rc.6) (2026-11-06)
 
 
